@@ -271,6 +271,17 @@ The architecture is considered successful if:
 - the platform evolves through extension rather than modification
 
 ---
+# Non-Goals
+
+At this stage, Fablit is not intended to:
+
+- become a general-purpose Learning Management System (LMS)
+- replace classroom teaching
+- depend on proprietary AI services
+- require cloud-native infrastructure for local development
+- optimize for premature scalability over simplicity
+
+These constraints help keep the platform focused on its core mission.
 
 # Closing Statement
 
