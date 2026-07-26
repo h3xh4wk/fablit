@@ -1,0 +1,160 @@
+# SPEC-004 — Shared Platform Services
+
+**Specification ID:** SPEC-004  
+**Title:** Shared Platform Services  
+**Version:** 0.1.0  
+**Status:** Draft  
+**Priority:** High  
+**Epic:** Platform Foundation
+
+---
+
+# Purpose
+
+Provide reusable platform services that can be shared across all future modules of Fablit.
+
+These services shall reduce duplication, improve consistency, and simplify feature development.
+
+This specification intentionally excludes business logic.
+
+---
+
+# Background
+
+Every Skill Lab, Assessment, and API endpoint will require common platform capabilities.
+
+Rather than implementing these independently, they shall be provided by reusable platform services.
+
+---
+
+# Objectives
+
+The platform shall provide shared services for:
+
+- dependency injection
+- error handling
+- API responses
+- validation
+- application lifecycle
+- service registration
+
+---
+
+# Scope
+
+## In Scope
+
+- Dependency injection
+- Common response models
+- Exception handling
+- Base service classes
+- Shared utilities
+- Application lifecycle hooks
+
+---
+
+## Out of Scope
+
+- Authentication
+- Database
+- Business rules
+- Assessment logic
+- AI integrations
+- User management
+
+---
+
+# Functional Requirements
+
+## FR-001
+
+The platform shall provide centralized exception handling.
+
+---
+
+## FR-002
+
+API responses shall follow a consistent structure.
+
+Example:
+
+```json
+{
+  "success": true,
+  "data": {},
+  "message": ""
+}
+```
+
+---
+
+## FR-003
+
+The platform shall expose reusable dependency providers.
+
+---
+
+## FR-004
+
+Common validation utilities shall be reusable across modules.
+
+---
+
+## FR-005
+
+Application startup and shutdown events shall be centrally managed.
+
+---
+
+## FR-006
+
+Platform services shall remain independent of educational domain concepts.
+
+---
+
+## FR-007
+
+Future modules shall depend upon platform services rather than duplicating functionality.
+
+---
+
+# Non-Functional Requirements
+
+Platform services shall be:
+
+- modular
+- reusable
+- testable
+- framework-independent where practical
+- well documented
+
+---
+
+# Acceptance Criteria
+
+- Common dependencies available
+- Exception handling operational
+- Standard response model implemented
+- Lifecycle events managed
+- Unit tests passing
+- Documentation complete
+
+---
+
+# Deliverables
+
+- dependencies.py
+- exceptions.py
+- responses.py
+- lifecycle.py
+- shared utilities
+- developer documentation
+
+---
+
+# Definition of Done
+
+- Shared services implemented
+- Automated tests passing
+- Documentation updated
+- Reusable by future modules

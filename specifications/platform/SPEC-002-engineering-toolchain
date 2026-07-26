@@ -1,0 +1,170 @@
+# SPEC-002 — Engineering Toolchain
+
+**Specification ID:** SPEC-002  
+**Title:** Engineering Toolchain  
+**Version:** 0.1.0  
+**Status:** Draft  
+**Priority:** High  
+**Epic:** Platform Foundation
+
+---
+
+# Purpose
+
+Establish a consistent development environment that ensures code quality, repeatability, and maintainability across all contributors.
+
+This specification focuses on engineering workflows rather than application features.
+
+---
+
+# Objectives
+
+The project shall provide:
+
+- consistent formatting
+- static analysis
+- type checking
+- automated testing
+- pre-commit validation
+- continuous integration
+- reproducible development environments
+
+---
+
+# Scope
+
+## In Scope
+
+- uv
+- Ruff
+- mypy
+- pytest
+- Playwright
+- pre-commit
+- GitHub Actions
+
+---
+
+## Out of Scope
+
+- deployment
+- application features
+- authentication
+- database
+- frontend functionality
+
+---
+
+# Functional Requirements
+
+## FR-001
+
+Dependency management shall use **uv**.
+
+---
+
+## FR-002
+
+Formatting and linting shall use **Ruff**.
+
+---
+
+## FR-003
+
+Static type analysis shall use **mypy**.
+
+---
+
+## FR-004
+
+Backend tests shall use **pytest**.
+
+---
+
+## FR-005
+
+Browser tests shall use **Playwright**.
+
+---
+
+## FR-006
+
+Developers shall be able to execute all quality checks using a single command.
+
+Example:
+
+```
+make check
+```
+
+or
+
+```
+just check
+```
+
+(The implementation may choose either approach.)
+
+---
+
+## FR-007
+
+GitHub Actions shall execute:
+
+- formatting
+- linting
+- type checking
+- unit tests
+
+on every pull request.
+
+---
+
+## FR-008
+
+Pre-commit hooks shall prevent common quality issues before commit.
+
+---
+
+# Non-Functional Requirements
+
+The engineering toolchain shall:
+
+- work on Linux
+- work on macOS
+- work on Windows
+- work in GitHub Codespaces
+- work in GitHub Actions
+- work without proprietary software
+
+---
+
+# Acceptance Criteria
+
+- Dependencies install successfully
+- Ruff passes
+- mypy passes
+- pytest passes
+- Playwright smoke test passes
+- pre-commit executes successfully
+- GitHub Actions succeeds
+
+---
+
+# Deliverables
+
+- pyproject.toml
+- uv.lock
+- .pre-commit-config.yaml
+- GitHub Actions workflow
+- Playwright configuration
+- Developer documentation
+
+---
+
+# Definition of Done
+
+- Engineering toolchain configured
+- CI pipeline green
+- Local setup documented
+- Contributor onboarding verified
