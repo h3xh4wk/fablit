@@ -18,3 +18,7 @@ Source = "https://github.com/h3xh4wk/fablit"
 [build-system]
 requires = ["setuptools>=83.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+exclude = ["tests*", "docs*", "specifications*"]
