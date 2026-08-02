@@ -1,10 +1,10 @@
 # SPEC-003 — Configuration & Logging
 
-**Specification ID:** SPEC-003  
-**Title:** Configuration & Logging  
-**Version:** 0.1.0  
-**Status:** Draft  
-**Priority:** High  
+**Specification ID:** SPEC-003
+**Title:** Configuration & Logging
+**Version:** 0.1.0
+**Status:** Draft
+**Priority:** High
 **Epic:** Platform Foundation
 
 ---

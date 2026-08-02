@@ -1,8 +1,8 @@
 # Fablit Architecture Principles
 
-**Document ID:** AP-001  
-**Version:** 0.1.0  
-**Status:** Draft  
+**Document ID:** AP-001
+**Version:** 0.1.0
+**Status:** Draft
 **Last Updated:** 2026-07-26
 
 ---

@@ -1,8 +1,8 @@
 # Fablit Domain Language
 
-**Document ID:** DL-001  
-**Version:** 0.1.0  
-**Status:** Draft  
+**Document ID:** DL-001
+**Version:** 0.1.0
+**Status:** Draft
 **Last Updated:** 2026-07-26
 
 ---
