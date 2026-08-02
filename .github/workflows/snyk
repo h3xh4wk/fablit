@@ -1,0 +1,28 @@
+name: Manual Snyk Security Scan
+
+on:
+  workflow_dispatch: # Allows you to manually trigger this from the GitHub Actions tab
+
+jobs:
+  snyk-monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # 1. Install uv on the GitHub runner
+      - name: Install uv
+        run: curl -LsSf https://astral.sh | sh
+
+      # 2. Generate the temporary requirements file on the fly
+      - name: Generate temporary requirements file
+        run: uv pip compile pyproject.toml -o requirements.txt
+
+      # 3. Upload findings to Snyk Dashboard
+      - name: Run Snyk Monitor
+        uses: snyk/actions/python@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          command: monitor
