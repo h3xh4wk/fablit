@@ -17,6 +17,13 @@ Install the application and development dependencies:
 uv sync --dev
 ```
 
+Install Git hooks for local quality checks:
+
+```bash
+uv run pre-commit install
+uv run pre-commit run --all-files
+```
+
 ## Run the application
 
 Start the FastAPI application with a single command:
@@ -37,10 +44,17 @@ The bootstrap platform exposes:
 Run the automated checks locally:
 
 ```bash
+uv run pre-commit run --all-files
 uv run ruff format --check .
 uv run ruff check .
 uv run mypy
-uv run pytest
+uv run pytest --cov=app --cov-report=xml
+```
+
+You can also run the consolidated developer workflow:
+
+```bash
+make check
 ```
 
 Playwright is included in the development toolchain for future browser-level checks. SPEC-001 does not add browser workflows beyond confirming FastAPI documentation routes are available through API tests.
