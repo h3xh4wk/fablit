@@ -3,6 +3,9 @@ name: Manual Snyk Security Scan
 on:
   workflow_dispatch: # Allows you to manually trigger this from the GitHub Actions tab
 
+permissions:
+  contents: read
+
 jobs:
   snyk-monitor:
     runs-on: ubuntu-latest
