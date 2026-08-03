@@ -1,10 +1,10 @@
 # SPEC-001 — Bootstrap Platform
 
-**Specification ID:** SPEC-001  
-**Title:** Bootstrap Platform  
-**Version:** 0.1.0  
-**Status:** Approved  
-**Priority:** High  
+**Specification ID:** SPEC-001
+**Title:** Bootstrap Platform
+**Version:** 0.1.0
+**Status:** Approved
+**Priority:** High
 **Epic:** Platform Foundation
 
 ---

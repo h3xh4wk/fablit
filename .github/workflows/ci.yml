@@ -22,6 +22,8 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         run: uv sync --dev
+      - name: Run pre-commit
+        run: uv run pre-commit run --all-files
       - name: Check formatting
         run: uv run ruff format --check .
       - name: Lint
@@ -29,6 +31,12 @@ jobs:
       - name: Type check
         run: uv run mypy
       - name: Test
-        run: uv run pytest
+        run: uv run pytest --cov=app --cov-report=xml --cov-fail-under=80
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
       - name: Build package
         run: uv run python -m build --sdist --wheel --outdir /tmp/dist

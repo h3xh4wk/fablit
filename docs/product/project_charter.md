@@ -1,8 +1,8 @@
 # Fablit Project Charter
 
-**Document ID:** PC-001  
-**Version:** 0.1.0  
-**Status:** Draft  
+**Document ID:** PC-001
+**Version:** 0.1.0
+**Status:** Draft
 **Last Updated:** 2026-07-26
 
 ---
