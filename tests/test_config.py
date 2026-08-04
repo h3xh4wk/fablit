@@ -4,8 +4,9 @@ import json
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
-from fablit.config import ConfigValidationError, AppConfig, load_config
+from fablit.config import AppConfig, ConfigValidationError, load_config
 
 
 def test_load_config_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -51,7 +52,9 @@ def test_load_config_from_json_file_and_environment_precedence(
     assert config.config_file == config_file
 
 
-def test_invalid_configuration_raises_validation_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_invalid_configuration_raises_validation_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("FABLIT_PORT", "-1")
 
     with pytest.raises(ConfigValidationError):
@@ -61,5 +64,5 @@ def test_invalid_configuration_raises_validation_error(monkeypatch: pytest.Monke
 def test_app_config_defaults_are_frozen() -> None:
     config = AppConfig()
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         config.service_name = "changed"

@@ -46,8 +46,9 @@ class AppConfig(BaseSettings):
     def normalize_environment(cls, value: str) -> str:
         normalized = value.lower()
         if normalized not in SUPPORTED_ENVIRONMENTS:
+            allowed = ", ".join(sorted(SUPPORTED_ENVIRONMENTS))
             raise ValueError(
-                f"Unsupported environment '{value}'. Must be one of: {', '.join(sorted(SUPPORTED_ENVIRONMENTS))}."
+                f"Unsupported environment '{value}'. Must be one of: {allowed}."
             )
         return normalized
 
@@ -55,8 +56,9 @@ class AppConfig(BaseSettings):
     def normalize_log_format(cls, value: str) -> str:
         normalized = value.lower()
         if normalized not in SUPPORTED_LOG_FORMATS:
+            allowed = ", ".join(sorted(SUPPORTED_LOG_FORMATS))
             raise ValueError(
-                f"Unsupported log format '{value}'. Must be one of: {', '.join(sorted(SUPPORTED_LOG_FORMATS))}."
+                f"Unsupported log format '{value}'. Must be one of: {allowed}."
             )
         return normalized
 
@@ -71,7 +73,8 @@ def _load_config_file(path: Path) -> dict[str, Any]:
     if suffix in {".yaml", ".yml"}:
         if yaml is None:
             raise ConfigError(
-                "YAML configuration support requires PyYAML. Install it or use JSON format."
+                "YAML configuration support requires PyYAML. "
+                "Install it or use JSON format."
             )
         return yaml.safe_load(raw_text) or {}
 

@@ -3,15 +3,15 @@ from __future__ import annotations
 import json
 import logging
 from contextvars import ContextVar
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from logging import LogRecord
 from typing import Any
 
 from .config import AppConfig
 
-_LOG_CONTEXT: ContextVar[dict[str, str | None]] = ContextVar(
+_LOG_CONTEXT: ContextVar[dict[str, str | None] | None] = ContextVar(
     "fablit_log_context",
-    default={"request_id": None, "trace_id": None},
+    default=None,
 )
 
 
@@ -31,7 +31,12 @@ class RequestContextFilter(logging.Filter):
 
 
 class StructuredLogFormatter(logging.Formatter):
-    def __init__(self, service_name: str, environment: str, log_format: str = "json") -> None:
+    def __init__(
+        self,
+        service_name: str,
+        environment: str,
+        log_format: str = "json",
+    ) -> None:
         super().__init__()
         self.service_name = service_name
         self.environment = environment
@@ -39,7 +44,7 @@ class StructuredLogFormatter(logging.Formatter):
 
     def format(self, record: LogRecord) -> str:
         record_dict: dict[str, Any] = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "service": getattr(record, "service", self.service_name),
@@ -50,20 +55,22 @@ class StructuredLogFormatter(logging.Formatter):
         }
 
         if hasattr(record, "status_code"):
-            record_dict["status_code"] = getattr(record, "status_code")
+            record_dict["status_code"] = record.status_code
         if hasattr(record, "method"):
-            record_dict["method"] = getattr(record, "method")
+            record_dict["method"] = record.method
         if hasattr(record, "path"):
-            record_dict["path"] = getattr(record, "path")
+            record_dict["path"] = record.path
         if hasattr(record, "client"):
-            record_dict["client"] = getattr(record, "client")
+            record_dict["client"] = record.client
 
         if record.exc_info:
             record_dict["exception"] = self.formatException(record.exc_info)
 
         if self.log_format == "text":
             pieces = [
-                f"{key}={value}" for key, value in record_dict.items() if value is not None
+                f"{key}={value}"
+                for key, value in record_dict.items()
+                if value is not None
             ]
             return " ".join(pieces)
 
@@ -83,10 +90,16 @@ class StructuredLogHandler(logging.StreamHandler):
 
 
 def get_request_context() -> dict[str, str | None]:
-    return _LOG_CONTEXT.get().copy()
+    context = _LOG_CONTEXT.get()
+    if context is None:
+        return {"request_id": None, "trace_id": None}
+    return context.copy()
 
 
-def set_request_context(request_id: str | None = None, trace_id: str | None = None) -> Any:
+def set_request_context(
+    request_id: str | None = None,
+    trace_id: str | None = None,
+) -> Any:
     return _LOG_CONTEXT.set({"request_id": request_id, "trace_id": trace_id})
 
 

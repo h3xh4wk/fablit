@@ -1,10 +1,10 @@
 """FastAPI application entry point for the Fablit bootstrap platform."""
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
-import logging
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse
 

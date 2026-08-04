@@ -2,9 +2,9 @@
 
 from .config import AppConfig, ConfigError, ConfigValidationError, load_config
 from .logging import (
+    RequestContextFilter,
     StructuredLogFormatter,
     StructuredLogHandler,
-    RequestContextFilter,
     get_request_context,
     init_logging,
     reset_request_context,

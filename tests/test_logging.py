@@ -1,11 +1,16 @@
 from __future__ import annotations
 
-import io
 import json
 import logging
 
 from fablit.config import AppConfig
-from fablit.logging import StructuredLogFormatter, get_request_context, init_logging, reset_request_context, set_request_context
+from fablit.logging import (
+    StructuredLogFormatter,
+    get_request_context,
+    init_logging,
+    reset_request_context,
+    set_request_context,
+)
 
 
 def test_request_context_is_set_and_reset() -> None:
@@ -51,7 +56,10 @@ def test_init_logging_sets_root_logger_level_and_handlers() -> None:
 
     root_logger = logging.getLogger()
     assert root_logger.level == logging.DEBUG
-    assert any(isinstance(handler.formatter, StructuredLogFormatter) for handler in root_logger.handlers)
+    assert any(
+        isinstance(handler.formatter, StructuredLogFormatter)
+        for handler in root_logger.handlers
+    )
 
 
 def test_logging_handler_emits_structured_records(capfd) -> None:
