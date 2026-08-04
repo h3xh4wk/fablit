@@ -5,7 +5,7 @@ import logging
 from contextvars import ContextVar
 from datetime import UTC, datetime
 from logging import LogRecord
-from typing import Any
+from typing import Any, TextIO
 
 from .config import AppConfig
 
@@ -23,6 +23,9 @@ class RequestContextFilter(logging.Filter):
 
     def filter(self, record: LogRecord) -> bool:
         context = _LOG_CONTEXT.get()
+        if context is None:
+            context = {"request_id": None, "trace_id": None}
+
         record.service = self.service_name
         record.environment = self.environment
         record.request_id = context.get("request_id")
@@ -77,7 +80,7 @@ class StructuredLogFormatter(logging.Formatter):
         return json.dumps(record_dict, default=str, separators=(",", ":"))
 
 
-class StructuredLogHandler(logging.StreamHandler):
+class StructuredLogHandler(logging.StreamHandler[TextIO]):
     def __init__(self, config: AppConfig) -> None:
         super().__init__()
         self.setFormatter(

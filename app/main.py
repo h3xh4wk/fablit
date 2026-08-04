@@ -1,11 +1,11 @@
 """FastAPI application entry point for the Fablit bootstrap platform."""
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import PlainTextResponse
 
 from fablit.config import load_config
@@ -36,7 +36,10 @@ app = FastAPI(
 
 
 @app.middleware("http")
-async def request_logging_middleware(request: Request, call_next):
+async def request_logging_middleware(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
     request_id = request.headers.get("X-Request-ID") or str(uuid4())
     trace_id = request.headers.get("X-Trace-ID")
     token = set_request_context(request_id=request_id, trace_id=trace_id)

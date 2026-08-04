@@ -62,7 +62,7 @@ def test_invalid_configuration_raises_validation_error(
 
 
 def test_app_config_defaults_are_frozen() -> None:
-    config = AppConfig()
+    config = AppConfig.model_validate({})
 
     with pytest.raises(ValidationError):
         config.service_name = "changed"

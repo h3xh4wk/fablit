@@ -3,13 +3,13 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from pydantic import Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings
 
 try:
-    import yaml
+    import yaml  # type: ignore[import-untyped]
 except ImportError:  # pragma: no cover
     yaml = None
 
@@ -76,10 +76,13 @@ def _load_config_file(path: Path) -> dict[str, Any]:
                 "YAML configuration support requires PyYAML. "
                 "Install it or use JSON format."
             )
-        return yaml.safe_load(raw_text) or {}
+        loaded = cast(dict[str, Any], yaml.safe_load(raw_text))
+        if not loaded:
+            return {}
+        return loaded
 
     if suffix == ".json" or not suffix:
-        return json.loads(raw_text)
+        return cast(dict[str, Any], json.loads(raw_text))
 
     raise ConfigError(
         "Unsupported configuration file type. Use JSON (.json) or YAML (.yaml/.yml)."

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 
+import pytest
 from fablit.config import AppConfig
 from fablit.logging import (
     StructuredLogFormatter,
@@ -45,11 +46,13 @@ def test_structured_log_formatter_outputs_json() -> None:
 
 
 def test_init_logging_sets_root_logger_level_and_handlers() -> None:
-    config = AppConfig(
-        service_name="fablit-test",
-        environment="testing",
-        log_level="DEBUG",
-        log_format="json",
+    config = AppConfig.model_validate(
+        {
+            "service_name": "fablit-test",
+            "environment": "testing",
+            "log_level": "DEBUG",
+            "log_format": "json",
+        }
     )
 
     init_logging(config)
@@ -62,12 +65,16 @@ def test_init_logging_sets_root_logger_level_and_handlers() -> None:
     )
 
 
-def test_logging_handler_emits_structured_records(capfd) -> None:
-    config = AppConfig(
-        service_name="fablit-test",
-        environment="testing",
-        log_level="INFO",
-        log_format="json",
+def test_logging_handler_emits_structured_records(
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    config = AppConfig.model_validate(
+        {
+            "service_name": "fablit-test",
+            "environment": "testing",
+            "log_level": "INFO",
+            "log_format": "json",
+        }
     )
 
     init_logging(config)
