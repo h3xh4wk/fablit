@@ -39,6 +39,22 @@ The bootstrap platform exposes:
 - `GET /docs` — FastAPI Swagger UI
 - `GET /redoc` — FastAPI ReDoc documentation
 
+## Configuration and logging
+
+Fablit loads configuration from environment variables, an optional JSON or YAML config file referenced by `FABLIT_CONFIG`, and built-in defaults.
+
+Key settings include:
+
+- `FABLIT_SERVICE_NAME`
+- `FABLIT_ENV`
+- `FABLIT_HOST`
+- `FABLIT_PORT`
+- `FABLIT_DEBUG`
+- `FABLIT_LOG_LEVEL`
+- `FABLIT_LOG_FORMAT`
+
+The application initializes structured logging during startup and attaches service and environment context to every log record.
+
 ## Quality checks
 
 Run the automated checks locally:
