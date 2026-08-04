@@ -4,6 +4,7 @@ import json
 import logging
 
 import pytest
+
 from fablit.config import AppConfig
 from fablit.logging import (
     StructuredLogFormatter,
