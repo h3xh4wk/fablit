@@ -8,9 +8,14 @@ from typing import Any, cast
 from pydantic import Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings
 
+from importlib import import_module
+
+# Dynamically import PyYAML without needing a mypy type-ignore comment.
+# Annotate `yaml` as Any so assigning `None` is type-safe across envs.
+yaml: Any
 try:
-    import yaml  # type: ignore[import-untyped]
-except ImportError:  # pragma: no cover
+    yaml = import_module("yaml")
+except ModuleNotFoundError:  # pragma: no cover
     yaml = None
 
 SUPPORTED_ENVIRONMENTS = {"development", "testing", "production"}
