@@ -2,7 +2,7 @@
 
 Fablit is an open-source educational platform for helping learners build practical skills through deliberate practice, meaningful feedback, and continuous reflection.
 
-This repository currently implements **SPEC-001 — Bootstrap Platform** only. It intentionally avoids educational-domain features such as Skill Labs, Assessments, Content Packs, authentication, databases, AI services, analytics, and user management.
+This repository implements **SPEC-001 — Bootstrap Platform** and **SPEC-004 — Shared Platform Services**. It intentionally avoids educational-domain features such as Skill Labs, Assessments, Content Packs, authentication, databases, AI services, analytics, and user management.
 
 ## Requirements
 
@@ -36,6 +36,7 @@ The bootstrap platform exposes:
 
 - `GET /` — returns `Welcome to Fablit`
 - `GET /health` — returns `{ "status": "healthy" }`
+- `GET /metrics` — returns in-memory Prometheus-style metrics
 - `GET /docs` — FastAPI Swagger UI
 - `GET /redoc` — FastAPI ReDoc documentation
 
