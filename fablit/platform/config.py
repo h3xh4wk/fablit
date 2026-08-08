@@ -34,7 +34,9 @@ class ConfigLoader:
         if config_path:
             config_file_path = Path(config_path)
             if config_file_path.exists():
-                config_data.update(json.loads(config_file_path.read_text(encoding="utf-8")))
+                config_data.update(
+                    json.loads(config_file_path.read_text(encoding="utf-8"))
+                )
             else:
                 raise FileNotFoundError(config_file_path)
 
@@ -45,7 +47,9 @@ class ConfigLoader:
                 override_path = Path(override.path)
                 if override_path.exists():
                     config_file_path = override_path
-                    config_data.update(json.loads(override_path.read_text(encoding="utf-8")))
+                    config_data.update(
+                        json.loads(override_path.read_text(encoding="utf-8"))
+                    )
 
         config_data.update(_resolve_environment_overrides())
 

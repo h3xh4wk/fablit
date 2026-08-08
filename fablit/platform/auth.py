@@ -36,12 +36,9 @@ class IntrospectionClient:
         if not token:
             return AuthContext(active=False)
         payload = self._introspect_fn(token)
+        scope = payload.get("scope")
         return AuthContext(
             principal=payload.get("sub"),
-            scopes=(
-                list(payload.get("scope", "").split())
-                if payload.get("scope")
-                else []
-            ),
+            scopes=list(scope.split()) if scope else [],
             active=bool(payload.get("active", False)),
         )
