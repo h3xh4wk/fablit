@@ -10,10 +10,12 @@ from fastapi.responses import PlainTextResponse
 
 from fablit.config import load_config
 from fablit.logging import init_logging, reset_request_context, set_request_context
+from fablit.platform.metrics import MetricsRegistry
 
 config = load_config()
 init_logging(config)
 logger = logging.getLogger("fablit.app")
+metrics_registry = MetricsRegistry()
 
 
 @asynccontextmanager
@@ -43,6 +45,7 @@ async def request_logging_middleware(
     request_id = request.headers.get("X-Request-ID") or str(uuid4())
     trace_id = request.headers.get("X-Trace-ID")
     token = set_request_context(request_id=request_id, trace_id=trace_id)
+    metrics_registry.counter("requests_total").inc()
 
     try:
         response = await call_next(request)
@@ -70,3 +73,9 @@ async def homepage() -> str:
 async def health() -> dict[str, str]:
     """Return the platform health status."""
     return {"status": "healthy"}
+
+
+@app.get("/metrics", response_class=PlainTextResponse)
+async def metrics() -> str:
+    """Expose the in-memory metrics registry in Prometheus-like format."""
+    return metrics_registry.render()

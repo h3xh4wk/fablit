@@ -55,6 +55,10 @@ Key settings include:
 
 The application initializes structured logging during startup and attaches service and environment context to every log record.
 
+## Shared platform services
+
+The repository now includes a lightweight shared-platform package under fablit.platform with reusable helpers for configuration loading, structured correlation context, metrics, authentication helpers, resilience primitives, and health checks. See examples/platform_services.py for a simple integration example.
+
 ## Quality checks
 
 Run the automated checks locally:
