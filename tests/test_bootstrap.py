@@ -21,6 +21,14 @@ def test_health_returns_healthy_status() -> None:
     assert response.json() == {"status": "healthy"}
 
 
+def test_metrics_endpoint_exposes_registry_output() -> None:
+    with TestClient(app) as client:
+        response = client.get("/metrics")
+
+    assert response.status_code == 200
+    assert "requests_total" in response.text
+
+
 def test_openapi_documentation_routes_are_available() -> None:
     with TestClient(app) as client:
         docs_response = client.get("/docs")
