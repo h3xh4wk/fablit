@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator
+from collections.abc import Iterator, MutableMapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Any
@@ -60,7 +60,11 @@ def get_correlation_id(key: str) -> str | None:
 class StructuredLogger(logging.LoggerAdapter[logging.Logger]):
     """A small adapter that enriches log records with correlation IDs."""
 
-    def process(self, msg: str, kwargs: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    def process(
+        self,
+        msg: str,
+        kwargs: MutableMapping[str, Any],
+    ) -> tuple[str, MutableMapping[str, Any]]:
         kwargs.setdefault("extra", {})
         kwargs["extra"].setdefault("request_id", get_correlation_id("request_id"))
         kwargs["extra"].setdefault("trace_id", get_correlation_id("trace_id"))
