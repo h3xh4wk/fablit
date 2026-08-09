@@ -2,8 +2,8 @@
 
 **Specification ID:** SPEC-005
 **Title:** Assessment Activity Domain Foundation
-**Version:** 0.1.0
-**Status:** Draft
+**Version:** 0.2.0
+**Status:** Implemented
 **Priority:** High
 **Epic:** Learning Platform
 
@@ -466,23 +466,44 @@ Tests should focus on domain behaviour rather than implementation details.
 
 SPEC-005 is complete when:
 
-* [ ] An Assessment domain model exists.
-* [ ] An Assessment Activity domain model exists.
-* [ ] Assessments have stable identities.
-* [ ] Assessment Activities have stable identities.
-* [ ] Assessment Activities belong to an Assessment.
-* [ ] Assessment Activities have deterministic ordering.
-* [ ] Duplicate activity positions are rejected.
-* [ ] Assessments cannot exist without the required minimum activity structure.
-* [ ] Assessment Activities require valid activity types.
-* [ ] Assessment Activities contain sufficient interaction information.
-* [ ] Invalid domain states are rejected.
-* [ ] The domain model contains no examination-specific concepts.
-* [ ] The domain model does not require a database.
-* [ ] Automated tests cover the domain rules.
-* [ ] Existing platform tests continue to pass.
-* [ ] CI quality gates continue to pass.
-* [ ] Documentation reflects the implemented domain model.
+* [x] An Assessment domain model exists.
+* [x] An Assessment Activity domain model exists.
+* [x] Assessments have stable identities.
+* [x] Assessment Activities have stable identities.
+* [x] Assessment Activities belong to an Assessment.
+* [x] Assessment Activities have deterministic ordering.
+* [x] Duplicate activity positions are rejected.
+* [x] Assessments cannot exist without the required minimum activity structure.
+* [x] Assessment Activities require valid activity types.
+* [x] Assessment Activities contain sufficient interaction information.
+* [x] Invalid domain states are rejected.
+* [x] The domain model contains no examination-specific concepts.
+* [x] The domain model does not require a database.
+* [x] Automated tests cover the domain rules.
+* [x] Existing platform tests continue to pass.
+* [x] CI quality gates continue to pass.
+* [x] Documentation reflects the implemented domain model.
+
+---
+
+# Implementation
+
+The implemented learning-domain foundation is organized as:
+
+```text
+fablit/
+└── domain/
+    ├── __init__.py
+    ├── activity.py
+    ├── assessment.py
+    └── types.py
+```
+
+The domain package provides in-memory models for Assessments and Assessment Activities, together with the controlled terminology and domain errors they require.
+
+The domain layer is intentionally independent of platform infrastructure and persistence: it can be imported and used in memory without framework or database dependencies.
+
+Automated tests under `tests/domain` cover the externally observable domain behaviour, including validation, composition, ordering, and domain independence.
 
 ---
 
