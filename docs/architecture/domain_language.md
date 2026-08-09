@@ -404,49 +404,51 @@ Progress
 
 The following rules guide domain modelling.
 
-## DR-001
+These product-level rules use the `DLR-` prefix to distinguish them from the SPEC-005 domain rules (`DR-001`–`DR-010`), which are documented in the Assessment Domain Model (SPEC-005) section above.
+
+## DLR-001
 
 Every Assessment contains one or more Assessment Activities.
 
 ---
 
-## DR-002
+## DLR-002
 
 Every Assessment Activity accepts exactly one Submission per attempt.
 
 ---
 
-## DR-003
+## DLR-003
 
 Every Submission produces one Evaluation.
 
 ---
 
-## DR-004
+## DLR-004
 
 Every Evaluation produces Feedback.
 
 ---
 
-## DR-005
+## DLR-005
 
 Reflection always occurs after Feedback.
 
 ---
 
-## DR-006
+## DLR-006
 
 Progress is calculated from learner history rather than individual assessments.
 
 ---
 
-## DR-007
+## DLR-007
 
 Skill Labs are reusable across multiple Content Packs.
 
 ---
 
-## DR-008
+## DLR-008
 
 Content Packs compose learning experiences but do not define platform behaviour.
 
