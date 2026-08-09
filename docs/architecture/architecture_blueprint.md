@@ -3,7 +3,7 @@
 **Document ID:** AB-001
 **Version:** 0.1.0
 **Status:** Draft
-**Last Updated:** 2026-07-26
+**Last Updated:** 2026-08-09
 
 ---
 
@@ -146,6 +146,8 @@ Assessments define:
 - timing
 - scoring rules
 - completion criteria
+
+SPEC-005 implements the Assessment and Assessment Activity concepts as an in-memory learning-domain model (`fablit.domain`), independent of the Platform Core. Activity order is enforced by the domain model; timing, scoring rules, and completion criteria are deferred to future specifications.
 
 ---
 
