@@ -1,9 +1,9 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 0.1.0
+**Version:** 0.2.0
 **Status:** Draft
-**Last Updated:** 2026-07-26
+**Last Updated:** 2026-08-09
 
 ---
 
@@ -130,6 +130,53 @@ Examples include:
 - Reflection Prompt
 
 Assessment Activities are reusable building blocks.
+
+---
+
+## Assessment Domain Model (SPEC-005)
+
+SPEC-005 establishes the in-memory learning-domain foundation for Assessments and Assessment Activities.
+
+The implementation lives in `fablit.domain` and is intentionally independent of platform infrastructure, persistence, and examination-specific concepts.
+
+### Relationship
+
+```
+Assessment
+    │
+    ├── Activity 1 (position 0)
+    ├── Activity 2 (position 1)
+    ├── Activity 3 (position 2)
+    └── ...
+```
+
+An Assessment owns its Assessment Activities. Activities carry an explicit zero-based position, and the positions within an Assessment must form a complete sequential range with no duplicates.
+
+### Domain Rules Reference
+
+The following rules are enforced by the SPEC-005 domain model:
+
+| Rule | Description |
+|------|-------------|
+| DR-001 | An Assessment must have a unique identity. |
+| DR-002 | An Assessment Activity must have a unique identity. |
+| DR-003 | An Assessment must contain at least one Assessment Activity. |
+| DR-004 | An Assessment Activity belongs to one Assessment. |
+| DR-005 | Assessment Activities have deterministic ordering within an Assessment. |
+| DR-006 | Activity ordering must not contain duplicate positions. |
+| DR-007 | An Assessment Activity must declare a valid activity type. |
+| DR-008 | An Assessment Activity must contain sufficient information to describe the learner interaction. |
+| DR-009 | Assessment and Assessment Activity remain independent of examination-specific terminology. |
+| DR-010 | The domain model must not require persistence infrastructure. |
+
+### Activity Types
+
+The initial controlled set of Activity Types (extensible through future specifications):
+
+- Multiple Choice
+- Written Response
+- Observation
+- Reflection
 
 ---
 
