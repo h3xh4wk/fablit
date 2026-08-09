@@ -1,8 +1,8 @@
 """Controlled terminology and domain errors for the Fablit learning domain.
 
-This module belongs to the learning-domain layer introduced by SPEC-005. It
-must remain independent of platform infrastructure, persistence, and
-examination-specific concepts.
+This module belongs to the learning-domain layer introduced by SPEC-005 and
+extended by SPEC-006. It must remain independent of platform infrastructure,
+persistence, and examination-specific concepts.
 """
 
 from __future__ import annotations
@@ -43,6 +43,19 @@ class ActivityStatus(StrEnum):
     INACTIVE = "inactive"
 
 
+class SubmissionStatus(StrEnum):
+    """Lifecycle states of a Submission.
+
+    The lifecycle distinguishes an editable, possibly incomplete Draft from a
+    complete, immutable Submitted Submission. Additional states shall be
+    introduced through future specifications when concrete use cases require
+    them.
+    """
+
+    DRAFT = "draft"
+    SUBMITTED = "submitted"
+
+
 class DomainError(Exception):
     """Base class for all learning-domain errors."""
 
@@ -57,3 +70,11 @@ class InvalidAssessmentError(DomainError):
 
 class DuplicateActivityPositionError(InvalidAssessmentError):
     """Raised when an Assessment contains two activities with the same position."""
+
+
+class InvalidSubmissionError(DomainError):
+    """Raised when a Submission violates a domain rule."""
+
+
+class InvalidSubmissionTransitionError(InvalidSubmissionError):
+    """Raised when a Submission lifecycle transition is invalid."""

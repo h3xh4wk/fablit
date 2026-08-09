@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from fablit.domain import (
     ActivityStatus,
@@ -10,6 +12,8 @@ from fablit.domain import (
     Assessment,
     AssessmentActivity,
     AssessmentStatus,
+    Submission,
+    SubmissionStatus,
 )
 
 
@@ -35,3 +39,27 @@ def make_assessment(**overrides: Any) -> Assessment:
     }
     values.update(overrides)
     return Assessment(**values)
+
+
+def make_submission(**overrides: Any) -> Submission:
+    """Build a valid Draft Submission, overriding any field via kwargs."""
+    values: dict[str, Any] = {
+        "learner_id": uuid4(),
+        "activity_id": uuid4(),
+        "response": "A thoughtful response to the prompt.",
+    }
+    values.update(overrides)
+    return Submission(**values)
+
+
+def make_submitted_submission(**overrides: Any) -> Submission:
+    """Build a valid Submitted Submission, overriding any field via kwargs."""
+    values: dict[str, Any] = {
+        "learner_id": uuid4(),
+        "activity_id": uuid4(),
+        "response": "A thoughtful response to the prompt.",
+        "status": SubmissionStatus.SUBMITTED,
+        "submitted_at": datetime.now(UTC),
+    }
+    values.update(overrides)
+    return Submission(**values)

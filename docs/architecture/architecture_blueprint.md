@@ -165,6 +165,8 @@ Examples include:
 
 Submissions are immutable records of learner work.
 
+SPEC-006 implements the Submission concept as an in-memory learning-domain model (`fablit.domain`), independent of the Platform Core. Submissions reference the learner and the Assessment Activity by stable identity, support a Draft → Submitted lifecycle, and deliberately exclude evaluation, feedback, persistence, and examination-specific concepts.
+
 ---
 
 ## Evaluation

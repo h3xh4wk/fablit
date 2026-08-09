@@ -1,4 +1,4 @@
-"""Domain independence tests (SPEC-005)."""
+"""Domain independence tests (SPEC-005, SPEC-006)."""
 
 from __future__ import annotations
 
@@ -55,10 +55,10 @@ def test_domain_code_has_no_framework_dependencies() -> None:
         assert f"from {module}" not in source
 
 
-def test_domain_has_no_submission_implementation() -> None:
+def test_domain_has_no_evaluation_or_feedback_implementation() -> None:
     source = _domain_source_text()
-    assert "class Submission" not in source
     assert "class Evaluation" not in source
+    assert "class Feedback" not in source
 
 
 def test_same_model_works_for_design_education() -> None:
