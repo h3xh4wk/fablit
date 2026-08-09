@@ -1,7 +1,7 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 0.2.0
+**Version:** 0.3.0
 **Status:** Draft
 **Last Updated:** 2026-08-09
 
@@ -177,6 +177,71 @@ The initial controlled set of Activity Types (extensible through future specific
 - Written Response
 - Observation
 - Reflection
+
+---
+
+## Submission Domain Model (SPEC-006)
+
+SPEC-006 establishes the in-memory Submission domain model for the learner's response to an Assessment Activity.
+
+The implementation lives in `fablit.domain` and is intentionally independent of platform infrastructure, persistence, evaluation, feedback, and examination-specific concepts.
+
+### Relationship
+
+```
+Assessment
+    │
+    └── Assessment Activity
+              │
+              │ receives
+              ▼
+          Submission
+              ▲
+              │
+              │ produced by
+              │
+           Learner
+```
+
+A Submission references a Learner and an Assessment Activity by stable identity only. It never duplicates the activity definition.
+
+### Lifecycle
+
+The initial Submission lifecycle is intentionally small:
+
+```
+Draft
+  │
+  │ submit
+  ▼
+Submitted
+```
+
+A Draft may be incomplete. Submitting a Draft requires a learner response, records the submission timestamp, and produces an immutable Submitted Submission whose core response and associations cannot be silently modified.
+
+### Domain Rules Reference
+
+The following rules are enforced by the SPEC-006 domain model:
+
+| Rule | Description |
+|------|-------------|
+| DR-001 | A Submission must have a unique identity. |
+| DR-002 | A Submission must identify a learner. |
+| DR-003 | A Submission must identify an Assessment Activity. |
+| DR-004 | A Submission must contain a response appropriate to its lifecycle state. |
+| DR-005 | A Draft Submission may be incomplete. |
+| DR-006 | A Submitted Submission must contain the required learner response. |
+| DR-007 | A Submitted Submission must contain a submission timestamp. |
+| DR-008 | A Submitted Submission shall not allow silent modification of its core learner response or associations. |
+| DR-009 | A Submission shall reference an Assessment Activity by identity. |
+| DR-010 | A Submission shall not contain evaluation results. |
+| DR-011 | A Submission shall not contain feedback. |
+| DR-012 | A Submission shall not require persistence infrastructure. |
+| DR-013 | A Submission shall not contain examination-specific concepts. |
+
+### Response Representation
+
+A Submission carries a generic, extensible learner response. SPEC-006 deliberately avoids a premature hierarchy of submission types; richer response forms (multiple-choice selections, structured responses, artifact references) may be introduced by future specifications without redesigning the Submission aggregate.
 
 ---
 
@@ -404,7 +469,7 @@ Progress
 
 The following rules guide domain modelling.
 
-These product-level rules use the `DLR-` prefix to distinguish them from the SPEC-005 domain rules (`DR-001`–`DR-010`), which are documented in the Assessment Domain Model (SPEC-005) section above.
+These product-level rules use the `DLR-` prefix to distinguish them from the SPEC-005 and SPEC-006 domain rules (`DR-001`–`DR-013`), which are documented in the Assessment Domain Model (SPEC-005) and Submission Domain Model (SPEC-006) sections above.
 
 ## DLR-001
 

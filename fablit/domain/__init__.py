@@ -1,4 +1,4 @@
-"""Learning-domain models for Fablit (SPEC-005).
+"""Learning-domain models for Fablit (SPEC-005, SPEC-006).
 
 The domain layer is intentionally independent of platform infrastructure:
 it can be imported and used in memory without persistence or framework
@@ -7,6 +7,7 @@ dependencies.
 
 from .activity import AssessmentActivity
 from .assessment import Assessment
+from .submission import Submission
 from .types import (
     ActivityStatus,
     ActivityType,
@@ -15,6 +16,9 @@ from .types import (
     DuplicateActivityPositionError,
     InvalidActivityError,
     InvalidAssessmentError,
+    InvalidSubmissionError,
+    InvalidSubmissionTransitionError,
+    SubmissionStatus,
 )
 
 __all__ = [
@@ -27,4 +31,8 @@ __all__ = [
     "DuplicateActivityPositionError",
     "InvalidActivityError",
     "InvalidAssessmentError",
+    "InvalidSubmissionError",
+    "InvalidSubmissionTransitionError",
+    "Submission",
+    "SubmissionStatus",
 ]
