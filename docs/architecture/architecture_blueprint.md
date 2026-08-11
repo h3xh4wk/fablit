@@ -182,6 +182,8 @@ Evaluation may be:
 
 Evaluation produces Feedback.
 
+SPEC-007 implements the Evaluation concept as an in-memory learning-domain model (`fablit.domain`), independent of the Platform Core. Evaluations reference the Submission by stable identity (SPEC-006), contain one or more structured Findings with stable identities, record a timezone-aware evaluation timestamp, and are immutable after creation. Scoring, Feedback, evaluation mechanisms, AI providers, and persistence are deliberately excluded from the model.
+
 ---
 
 ## Feedback

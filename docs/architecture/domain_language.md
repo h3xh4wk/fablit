@@ -1,9 +1,9 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 0.3.0
+**Version:** 0.4.0
 **Status:** Draft
-**Last Updated:** 2026-08-09
+**Last Updated:** 2026-08-11
 
 ---
 
@@ -245,6 +245,63 @@ A Submission carries a generic, extensible learner response. SPEC-006 deliberate
 
 ---
 
+## Evaluation Domain Model (SPEC-007)
+
+SPEC-007 establishes the in-memory Evaluation domain model for the structured interpretation of a learner's Submission.
+
+The implementation lives in `fablit.domain` and is intentionally independent of platform infrastructure, persistence, evaluation mechanisms, AI providers, feedback, and examination-specific concepts.
+
+### Relationship
+
+```
+Submission
+    │
+    │ evaluated
+    ▼
+Evaluation
+    │
+    ├── Finding
+    ├── Finding
+    └── ...
+```
+
+An Evaluation references exactly one Submission by stable identity (SPEC-006). It never duplicates the Submission. Each Evaluation contains one or more structured Findings, each with a stable identity so it can be referenced without relying on collection position.
+
+### Lifecycle
+
+The Evaluation lifecycle is intentionally minimal:
+
+```
+Evaluation (immutable record)
+```
+
+An Evaluation is created complete and immutable: its Submission association, Findings, identity, and evaluation timestamp cannot be silently modified. If a Submission requires another evaluation, a new Evaluation is created rather than mutating an existing one.
+
+### Domain Rules Reference
+
+The following rules are enforced by the SPEC-007 domain model:
+
+| Rule | Description |
+|------|-------------|
+| DR-001 | An Evaluation must have a unique identity. |
+| DR-002 | An Evaluation must reference exactly one Submission. |
+| DR-003 | An Evaluation must contain at least one structured Finding. |
+| DR-004 | A Finding must contain sufficient information to represent a meaningful observation or judgement. |
+| DR-005 | An Evaluation must record when it occurred. |
+| DR-006 | An Evaluation is immutable after creation. |
+| DR-007 | Creating an Evaluation must not modify its Submission. |
+| DR-008 | An Evaluation does not require a numerical score. |
+| DR-009 | An Evaluation must not contain Feedback. |
+| DR-010 | An Evaluation must not depend on a specific evaluation mechanism. |
+| DR-011 | An Evaluation must not contain examination-specific concepts. |
+| DR-012 | An Evaluation must not require persistence infrastructure. |
+
+### Finding Structure
+
+A Finding is deliberately not a score. Each Finding carries a meaningful observation or judgement about the learner's work and a stable identity. The initial structure is intentionally small and extensible; richer Finding dimensions (evidence, criteria references, categories) may be introduced by future specifications without redesigning the Evaluation aggregate.
+
+---
+
 ## Submission
 
 A Submission is the learner's response to an Assessment Activity.
@@ -469,7 +526,7 @@ Progress
 
 The following rules guide domain modelling.
 
-These product-level rules use the `DLR-` prefix to distinguish them from the SPEC-005 and SPEC-006 domain rules (`DR-001`–`DR-013`), which are documented in the Assessment Domain Model (SPEC-005) and Submission Domain Model (SPEC-006) sections above.
+These product-level rules use the `DLR-` prefix to distinguish them from the SPEC-005, SPEC-006, and SPEC-007 domain rules (`DR-001`–`DR-013`), which are documented in the Assessment Domain Model (SPEC-005), Submission Domain Model (SPEC-006), and Evaluation Domain Model (SPEC-007) sections above.
 
 ## DLR-001
 
