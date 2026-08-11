@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **SPEC-008 — Feedback Domain Foundation**: in-memory `Feedback` domain model under `fablit.domain`.
+  - Stable identity, Evaluation identity reference (SPEC-007), a single general learner-facing content field, and a timezone-aware creation timestamp as domain state.
+  - Meaningful-content validation rejecting empty and whitespace-only guidance; immutable after creation; creating Feedback does not modify the associated Evaluation.
+  - Scoring, Reflection, feedback-generation mechanisms, AI providers, and persistence are deliberately excluded from the model.
+  - Domain exception: `InvalidFeedbackError`.
+  - Unit and domain-independence tests (100% coverage for `fablit.domain`).
+  - Documentation updates to the Domain Language, Architecture Blueprint, and README.
+
+See [SPEC-008](specifications/platform/SPEC-008-feedback-domain-foundation.md) for details.
+
 - **SPEC-005 — Assessment Activity Domain Foundation**: in-memory `Assessment` and `AssessmentActivity` domain models under `fablit.domain`.
   - Stable unique identities, metadata, lifecycle status, and controlled activity types.
   - Domain validation enforcing identity, required metadata, minimum activity count, and deterministic sequential activity ordering.

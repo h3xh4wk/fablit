@@ -200,6 +200,8 @@ Feedback may include:
 
 Feedback prioritizes learning over grading.
 
+SPEC-008 implements the Feedback concept as an in-memory learning-domain model (`fablit.domain`), independent of the Platform Core. Feedback references the Evaluation by stable identity (SPEC-007), carries a single general learner-facing content field, records a timezone-aware creation timestamp, and is immutable after creation. Scoring, Reflection, feedback-generation mechanisms, AI providers, and persistence are deliberately excluded from the model.
+
 ---
 
 ## Reflection

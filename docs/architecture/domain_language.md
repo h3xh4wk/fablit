@@ -1,7 +1,7 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 0.4.0
+**Version:** 0.5.0
 **Status:** Draft
 **Last Updated:** 2026-08-11
 
@@ -302,6 +302,63 @@ A Finding is deliberately not a score. Each Finding carries a meaningful observa
 
 ---
 
+## Feedback Domain Model (SPEC-008)
+
+SPEC-008 establishes the in-memory Feedback domain model for learner-facing guidance derived from an Evaluation.
+
+The implementation lives in `fablit.domain` and is intentionally independent of platform infrastructure, persistence, feedback-generation mechanisms, AI providers, scoring, Reflection, and examination-specific concepts.
+
+### Relationship
+
+```
+Evaluation
+    │
+    │ interpreted for learner
+    ▼
+Feedback
+    │
+    │ enables
+    ▼
+Reflection (future specification)
+```
+
+Feedback references exactly one Evaluation by stable identity (SPEC-007). It never duplicates the Evaluation. Feedback is the learner-facing interpretation derived from the Evaluation's structured findings; it is not merely a copy of those findings exposed to the learner.
+
+### Lifecycle
+
+The Feedback lifecycle is intentionally minimal:
+
+```
+Feedback (immutable record)
+```
+
+Feedback is created complete and immutable: its Evaluation association, content, identity, and creation timestamp cannot be silently modified. If new or revised feedback is required, a new Feedback instance is created rather than mutating an existing one.
+
+### Content Representation
+
+Feedback carries a single, general learner-facing content field. SPEC-008 deliberately avoids a premature hierarchy of feedback categories; separate fields for strengths, improvement areas, next steps, and reflection prompts may be introduced by future specifications without redesigning the Feedback aggregate.
+
+### Domain Rules Reference
+
+The following rules are enforced by the SPEC-008 domain model:
+
+| Rule | Description |
+|------|-------------|
+| DR-001 | Feedback must have a unique identity. |
+| DR-002 | Feedback must reference exactly one Evaluation. |
+| DR-003 | Feedback must contain at least one meaningful learner-facing piece of guidance. |
+| DR-004 | Feedback content must not be empty or whitespace-only. |
+| DR-005 | Feedback must record when it was created. |
+| DR-006 | Feedback is immutable after creation. |
+| DR-007 | Creating Feedback must not modify its Evaluation. |
+| DR-008 | Feedback does not require a numerical score. |
+| DR-009 | Feedback must not contain learner Reflection. |
+| DR-010 | Feedback must not depend on a specific generation mechanism. |
+| DR-011 | Feedback must not require persistence infrastructure. |
+| DR-012 | Feedback must not contain examination-specific concepts. |
+
+---
+
 ## Submission
 
 A Submission is the learner's response to an Assessment Activity.
@@ -526,7 +583,7 @@ Progress
 
 The following rules guide domain modelling.
 
-These product-level rules use the `DLR-` prefix to distinguish them from the SPEC-005, SPEC-006, and SPEC-007 domain rules (`DR-001`–`DR-013`), which are documented in the Assessment Domain Model (SPEC-005), Submission Domain Model (SPEC-006), and Evaluation Domain Model (SPEC-007) sections above.
+These product-level rules use the `DLR-` prefix to distinguish them from the SPEC-005, SPEC-006, SPEC-007, and SPEC-008 domain rules (`DR-001`–`DR-013`), which are documented in the Assessment Domain Model (SPEC-005), Submission Domain Model (SPEC-006), Evaluation Domain Model (SPEC-007), and Feedback Domain Model (SPEC-008) sections above.
 
 ## DLR-001
 
