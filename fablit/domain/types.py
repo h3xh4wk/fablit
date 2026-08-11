@@ -1,8 +1,8 @@
 """Controlled terminology and domain errors for the Fablit learning domain.
 
 This module belongs to the learning-domain layer introduced by SPEC-005 and
-extended by SPEC-006. It must remain independent of platform infrastructure,
-persistence, and examination-specific concepts.
+extended by SPEC-006 and SPEC-007. It must remain independent of platform
+infrastructure, persistence, and examination-specific concepts.
 """
 
 from __future__ import annotations
@@ -78,3 +78,11 @@ class InvalidSubmissionError(DomainError):
 
 class InvalidSubmissionTransitionError(InvalidSubmissionError):
     """Raised when a Submission lifecycle transition is invalid."""
+
+
+class InvalidEvaluationError(DomainError):
+    """Raised when an Evaluation violates a domain rule."""
+
+
+class InvalidEvaluationFindingError(InvalidEvaluationError):
+    """Raised when an Evaluation Finding violates a domain rule."""

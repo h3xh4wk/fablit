@@ -12,6 +12,8 @@ from fablit.domain import (
     Assessment,
     AssessmentActivity,
     AssessmentStatus,
+    Evaluation,
+    EvaluationFinding,
     Submission,
     SubmissionStatus,
 )
@@ -63,3 +65,23 @@ def make_submitted_submission(**overrides: Any) -> Submission:
     }
     values.update(overrides)
     return Submission(**values)
+
+
+def make_finding(**overrides: Any) -> EvaluationFinding:
+    """Build a valid EvaluationFinding, overriding any field via kwargs."""
+    values: dict[str, Any] = {
+        "observation": "The response demonstrates a clear understanding of the prompt.",
+    }
+    values.update(overrides)
+    return EvaluationFinding(**values)
+
+
+def make_evaluation(**overrides: Any) -> Evaluation:
+    """Build a valid Evaluation, overriding any field via kwargs."""
+    values: dict[str, Any] = {
+        "submission_id": uuid4(),
+        "findings": (make_finding(),),
+        "evaluated_at": datetime.now(UTC),
+    }
+    values.update(overrides)
+    return Evaluation(**values)

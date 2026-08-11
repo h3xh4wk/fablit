@@ -26,3 +26,13 @@ See [SPEC-005](specifications/platform/SPEC-005-assessment-activity-domain-found
   - Documentation updates to the Domain Language, Architecture Blueprint, and README.
 
 See [SPEC-006](specifications/platform/SPEC-006-submission-domain-foundation.md) for details.
+
+- **SPEC-007 — Evaluation Domain Foundation**: in-memory `Evaluation` and `EvaluationFinding` domain models under `fablit.domain`.
+  - Stable identity, Submission identity reference (SPEC-006), one-or-more structured Findings with stable identities, and a timezone-aware evaluation timestamp as domain state.
+  - Immutable after creation; creating an Evaluation does not modify the associated Submission.
+  - Scoring, Feedback, evaluation mechanisms, AI providers, and persistence are deliberately excluded from the model.
+  - Domain exceptions: `InvalidEvaluationError`, `InvalidEvaluationFindingError`.
+  - Unit and domain-independence tests (100% coverage for `fablit.domain`).
+  - Documentation updates to the Domain Language, Architecture Blueprint, and README.
+
+See [SPEC-007](specifications/platform/SPEC-007-evaluation-domain-foundation.md) for details.
