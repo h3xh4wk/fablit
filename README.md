@@ -2,7 +2,7 @@
 
 Fablit is an open-source educational platform for helping learners build practical skills through deliberate practice, meaningful feedback, and continuous reflection.
 
-This repository implements **SPEC-001 — Bootstrap Platform**, **SPEC-002 — Engineering Toolchain**, **SPEC-003 — Configuration & Logging**, **SPEC-004 — Shared Platform Services**, **SPEC-005 — Assessment Activity Domain Foundation**, **SPEC-006 — Submission Domain Foundation**, and **SPEC-007 — Evaluation Domain Foundation**. It intentionally avoids Skill Labs, Content Packs, learner accounts, authentication, databases, AI services, analytics, and user management.
+This repository implements **SPEC-001 — Bootstrap Platform**, **SPEC-002 — Engineering Toolchain**, **SPEC-003 — Configuration & Logging**, **SPEC-004 — Shared Platform Services**, **SPEC-005 — Assessment Activity Domain Foundation**, **SPEC-006 — Submission Domain Foundation**, **SPEC-007 — Evaluation Domain Foundation**, and **SPEC-008 — Feedback Domain Foundation**. It intentionally avoids Skill Labs, Content Packs, learner accounts, authentication, databases, AI services, analytics, and user management.
 
 ## Requirements
 
@@ -62,17 +62,18 @@ The repository now includes a lightweight shared-platform package under fablit.p
 
 ## Learning domain
 
-SPEC-005, SPEC-006, and SPEC-007 introduce the learning-domain capabilities as in-memory packages under `fablit.domain`, independent of platform infrastructure and persistence:
+SPEC-005, SPEC-006, SPEC-007, and SPEC-008 introduce the learning-domain capabilities as in-memory packages under `fablit.domain`, independent of platform infrastructure and persistence:
 
 - `Assessment` — a structured collection of Assessment Activities with stable identity, metadata (title, description, status), and sequential ordering
 - `AssessmentActivity` — the smallest unit of learner interaction, with stable identity, a controlled activity type, instructions/prompt reference, an explicit position, and status
 - `Submission` — the learner's response to an Assessment Activity, with stable identity, learner and activity references, a generic extensible response, and a Draft → Submitted lifecycle enforced by `submit()`
 - `Evaluation` — the structured interpretation of a Submission, with stable identity, a Submission reference, one or more structured Findings, and a timezone-aware evaluation timestamp; immutable after creation
 - `EvaluationFinding` — one structured observation or judgement about a Submission, with stable identity and meaningful observation text
+- `Feedback` — learner-facing guidance derived from an Evaluation, with stable identity, an Evaluation reference, a general learner-facing content field, and a timezone-aware creation timestamp; immutable after creation and free of scoring, Reflection, generation-mechanism, and persistence concerns
 - Controlled `ActivityType`, `SubmissionStatus`, and assessment status enumerations (multiple choice, written response, observation, reflection; draft, submitted; draft, published)
-- Domain exceptions: `InvalidAssessmentError`, `InvalidActivityError`, `DuplicateActivityPositionError`, `InvalidSubmissionError`, `InvalidSubmissionTransitionError`, `InvalidEvaluationError`, `InvalidEvaluationFindingError`
+- Domain exceptions: `InvalidAssessmentError`, `InvalidActivityError`, `DuplicateActivityPositionError`, `InvalidSubmissionError`, `InvalidSubmissionTransitionError`, `InvalidEvaluationError`, `InvalidEvaluationFindingError`, `InvalidFeedbackError`
 
-No database, feedback, scoring, or delivery behaviour is included; those are deferred to future specifications.
+No database, scoring, Reflection, delivery, or AI feedback-generation behaviour is included; those are deferred to future specifications.
 
 ## Quality checks
 

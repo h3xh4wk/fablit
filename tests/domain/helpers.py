@@ -14,6 +14,7 @@ from fablit.domain import (
     AssessmentStatus,
     Evaluation,
     EvaluationFinding,
+    Feedback,
     Submission,
     SubmissionStatus,
 )
@@ -85,3 +86,14 @@ def make_evaluation(**overrides: Any) -> Evaluation:
     }
     values.update(overrides)
     return Evaluation(**values)
+
+
+def make_feedback(**overrides: Any) -> Feedback:
+    """Build a valid Feedback, overriding any field via kwargs."""
+    values: dict[str, Any] = {
+        "evaluation_id": uuid4(),
+        "content": "Your response shows a clear understanding; keep practising.",
+        "created_at": datetime.now(UTC),
+    }
+    values.update(overrides)
+    return Feedback(**values)
