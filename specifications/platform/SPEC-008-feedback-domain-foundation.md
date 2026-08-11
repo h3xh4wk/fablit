@@ -820,4 +820,3 @@ SPEC-008 contributes to the Fablit North Star:
 It establishes Feedback as learner-facing guidance rather than merely exposing evaluation results or numerical scores.
 
 Feedback provides the bridge from Evaluation toward Reflection and continued improvement, completing the next stage of Fablit's learning cycle.
-
