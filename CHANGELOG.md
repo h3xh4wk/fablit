@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **SPEC-009 — Reflection Domain Foundation**: in-memory `Reflection` domain model under `fablit.domain`.
+  - Stable identity, Feedback identity reference (SPEC-008), a single general learner-authored content field, and a timezone-aware creation timestamp as domain state.
+  - Meaningful-content validation rejecting empty and whitespace-only reflection; immutable after creation; creating Reflection does not modify the associated Feedback.
+  - Confidence scoring, improvement goals, action plans, reflection-generation mechanisms, AI providers, Progress, and persistence are deliberately excluded from the model.
+  - Domain exception: `InvalidReflectionError`.
+  - Unit and domain-independence tests (100% coverage for `fablit.domain`).
+  - Documentation updates to the Domain Language, Architecture Blueprint, and README.
+
+See [SPEC-009](specifications/platform/SPEC-009-reflection-domain-foundation.md) for details.
+
 - **SPEC-008 — Feedback Domain Foundation**: in-memory `Feedback` domain model under `fablit.domain`.
   - Stable identity, Evaluation identity reference (SPEC-007), a single general learner-facing content field, and a timezone-aware creation timestamp as domain state.
   - Meaningful-content validation rejecting empty and whitespace-only guidance; immutable after creation; creating Feedback does not modify the associated Evaluation.

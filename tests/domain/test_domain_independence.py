@@ -1,4 +1,4 @@
-"""Domain independence tests (SPEC-005, SPEC-006, SPEC-007, SPEC-008)."""
+"""Domain independence tests (SPEC-005, SPEC-006, SPEC-007, SPEC-008, SPEC-009)."""
 
 from __future__ import annotations
 
@@ -55,12 +55,12 @@ def test_domain_code_has_no_framework_dependencies() -> None:
         assert f"from {module}" not in source
 
 
-def test_domain_has_no_reflection_implementation() -> None:
+def test_domain_implements_feedback_and_reflection() -> None:
     source = _domain_source_text()
-    # SPEC-008 introduces Feedback but explicitly defers Reflection to a
-    # future specification; the domain must not model it yet.
+    # SPEC-008 introduces Feedback and SPEC-009 introduces Reflection as the
+    # learner's response to that Feedback.
     assert "class Feedback" in source
-    assert "class Reflection" not in source
+    assert "class Reflection" in source
 
 
 def test_same_model_works_for_design_education() -> None:
