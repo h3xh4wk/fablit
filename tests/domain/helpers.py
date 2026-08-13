@@ -15,6 +15,7 @@ from fablit.domain import (
     Evaluation,
     EvaluationFinding,
     Feedback,
+    Reflection,
     Submission,
     SubmissionStatus,
 )
@@ -97,3 +98,14 @@ def make_feedback(**overrides: Any) -> Feedback:
     }
     values.update(overrides)
     return Feedback(**values)
+
+
+def make_reflection(**overrides: Any) -> Reflection:
+    """Build a valid Reflection, overriding any field via kwargs."""
+    values: dict[str, Any] = {
+        "feedback_id": uuid4(),
+        "content": "I noticed I rushed the opening; I will practise pacing next time.",
+        "created_at": datetime.now(UTC),
+    }
+    values.update(overrides)
+    return Reflection(**values)

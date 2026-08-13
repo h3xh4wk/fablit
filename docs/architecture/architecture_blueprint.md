@@ -210,6 +210,8 @@ Reflection encourages learners to evaluate their own work after receiving feedba
 
 Reflection is considered part of the learning process rather than an optional activity.
 
+SPEC-009 implements the Reflection concept as an in-memory learning-domain model (`fablit.domain`), independent of the Platform Core. Reflection references the Feedback by stable identity (SPEC-008), carries a single general learner-authored content field, records a timezone-aware creation timestamp, and is immutable after creation. Confidence scoring, improvement goals, action plans, reflection-generation mechanisms, AI providers, Progress, and persistence are deliberately excluded from the model.
+
 ---
 
 ## Progress

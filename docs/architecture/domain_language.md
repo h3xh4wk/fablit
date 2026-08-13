@@ -1,9 +1,9 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 0.5.0
+**Version:** 0.6.0
 **Status:** Draft
-**Last Updated:** 2026-08-11
+**Last Updated:** 2026-08-13
 
 ---
 
@@ -359,6 +359,63 @@ The following rules are enforced by the SPEC-008 domain model:
 
 ---
 
+## Reflection Domain Model (SPEC-009)
+
+SPEC-009 establishes the in-memory Reflection domain model for the learner's deliberate response to Feedback.
+
+The implementation lives in `fablit.domain` and is intentionally independent of platform infrastructure, persistence, reflection-generation mechanisms, AI providers, scoring, improvement goals, Progress, and examination-specific concepts.
+
+### Relationship
+
+```
+Feedback
+    │
+    │ prompts
+    ▼
+Reflection
+    │
+    │ supports
+    ▼
+Improvement (future specification)
+```
+
+A Reflection references exactly one Feedback by stable identity (SPEC-008). It never duplicates the Feedback. Reflection is the learner's own response to the Feedback they received; it is not another Evaluation and it is not a copy of the Feedback.
+
+### Lifecycle
+
+The Reflection lifecycle is intentionally minimal:
+
+```
+Reflection (immutable record)
+```
+
+A Reflection is created complete and immutable: its Feedback association, content, identity, and creation timestamp cannot be silently modified. If the learner reflects again later, a new Reflection instance is created rather than mutating an existing one, preserving the learner's evolving understanding over time.
+
+### Content Representation
+
+Reflection carries a single, general learner-authored content field. SPEC-009 deliberately avoids a premature hierarchy of reflection fields; separate fields for self-assessment, confidence, learning goals, improvement goals, action plans, next steps, and learning notes may be introduced by future specifications without redesigning the Reflection aggregate.
+
+### Domain Rules Reference
+
+The following rules are enforced by the SPEC-009 domain model:
+
+| Rule | Description |
+|------|-------------|
+| DR-001 | Reflection must have a unique identity. |
+| DR-002 | Reflection must reference exactly one Feedback. |
+| DR-003 | Reflection must contain learner-authored content. |
+| DR-004 | Reflection content must not be empty or whitespace-only. |
+| DR-005 | Reflection must record when it was created. |
+| DR-006 | Reflection is immutable after creation. |
+| DR-007 | Creating Reflection must not modify its Feedback. |
+| DR-008 | Reflection does not require a numerical confidence score. |
+| DR-009 | Reflection does not require a separate improvement goal or action plan. |
+| DR-010 | Reflection must not depend on a specific prompting or generation mechanism. |
+| DR-011 | Reflection must not require persistence infrastructure. |
+| DR-012 | Reflection must not contain examination-specific concepts. |
+
+---
+
 ## Submission
 
 A Submission is the learner's response to an Assessment Activity.
@@ -583,7 +640,7 @@ Progress
 
 The following rules guide domain modelling.
 
-These product-level rules use the `DLR-` prefix to distinguish them from the SPEC-005, SPEC-006, SPEC-007, and SPEC-008 domain rules (`DR-001`–`DR-013`), which are documented in the Assessment Domain Model (SPEC-005), Submission Domain Model (SPEC-006), Evaluation Domain Model (SPEC-007), and Feedback Domain Model (SPEC-008) sections above.
+These product-level rules use the `DLR-` prefix to distinguish them from the SPEC-005, SPEC-006, SPEC-007, SPEC-008, and SPEC-009 domain rules (`DR-001`–`DR-012`), which are documented in the Assessment Domain Model (SPEC-005), Submission Domain Model (SPEC-006), Evaluation Domain Model (SPEC-007), Feedback Domain Model (SPEC-008), and Reflection Domain Model (SPEC-009) sections above.
 
 ## DLR-001
 
