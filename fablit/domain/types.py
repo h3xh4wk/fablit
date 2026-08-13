@@ -95,3 +95,7 @@ class InvalidFeedbackError(DomainError):
 
 class InvalidReflectionError(DomainError):
     """Raised when a Reflection violates a domain rule."""
+
+
+class InvalidSkillError(DomainError):
+    """Raised when a Skill violates a domain rule."""

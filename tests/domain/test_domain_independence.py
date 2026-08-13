@@ -55,12 +55,14 @@ def test_domain_code_has_no_framework_dependencies() -> None:
         assert f"from {module}" not in source
 
 
-def test_domain_implements_feedback_and_reflection() -> None:
+def test_domain_implements_feedback_reflection_and_skill() -> None:
     source = _domain_source_text()
-    # SPEC-008 introduces Feedback and SPEC-009 introduces Reflection as the
-    # learner's response to that Feedback.
+    # SPEC-008 introduces Feedback, SPEC-009 introduces Reflection as the
+    # learner's response to that Feedback, and SPEC-010 introduces Skill as
+    # the measurable, transferable capability being developed.
     assert "class Feedback" in source
     assert "class Reflection" in source
+    assert "class Skill" in source
 
 
 def test_same_model_works_for_design_education() -> None:
