@@ -1,10 +1,10 @@
 # SPEC-009 — Reflection Domain Foundation
 
-**Specification ID:** SPEC-009  
-**Title:** Reflection Domain Foundation  
-**Version:** 0.1.0  
-**Status:** Draft  
-**Priority:** High  
+**Specification ID:** SPEC-009
+**Title:** Reflection Domain Foundation
+**Version:** 0.1.0
+**Status:** Draft
+**Priority:** High
 **Epic:** Learning Platform
 
 ---
