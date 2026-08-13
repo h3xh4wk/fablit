@@ -16,6 +16,7 @@ from fablit.domain import (
     EvaluationFinding,
     Feedback,
     Reflection,
+    Skill,
     Submission,
     SubmissionStatus,
 )
@@ -109,3 +110,13 @@ def make_reflection(**overrides: Any) -> Reflection:
     }
     values.update(overrides)
     return Reflection(**values)
+
+
+def make_skill(**overrides: Any) -> Skill:
+    """Build a valid Skill, overriding any field via kwargs."""
+    values: dict[str, Any] = {
+        "name": "Visual Analysis",
+        "description": "The ability to observe and interpret visual information.",
+    }
+    values.update(overrides)
+    return Skill(**values)

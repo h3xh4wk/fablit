@@ -214,6 +214,16 @@ SPEC-009 implements the Reflection concept as an in-memory learning-domain model
 
 ---
 
+## Skill
+
+Skill represents the measurable, transferable capability being developed through deliberate practice.
+
+Skill is the capability being developed; an Assessment Activity provides a context in which one or more Skills may be practised, and Evaluation determines what was observed about a particular Submission. Evaluation criteria therefore remain outside the Skill model.
+
+SPEC-010 implements the Skill concept as an in-memory learning-domain model (`fablit.domain`), independent of the Platform Core. Skill carries only a stable identity, a human-readable name, and a meaningful description, and is immutable after creation. Evaluation criteria, scoring, Progress, mastery, hierarchy, curriculum and examination structures, AI providers, and persistence are deliberately excluded from the model.
+
+---
+
 ## Progress
 
 Progress records learner development across Skill Labs.

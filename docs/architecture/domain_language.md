@@ -1,7 +1,7 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 0.6.0
+**Version:** 0.7.0
 **Status:** Draft
 **Last Updated:** 2026-08-13
 
@@ -413,6 +413,74 @@ The following rules are enforced by the SPEC-009 domain model:
 | DR-010 | Reflection must not depend on a specific prompting or generation mechanism. |
 | DR-011 | Reflection must not require persistence infrastructure. |
 | DR-012 | Reflection must not contain examination-specific concepts. |
+
+---
+
+## Skill Domain Model (SPEC-010)
+
+SPEC-010 establishes the in-memory Skill domain model for the measurable, transferable capability developed through deliberate practice.
+
+The implementation lives in `fablit.domain` and is intentionally independent of platform infrastructure, persistence, evaluation criteria, Progress, mastery, scoring, hierarchy, curriculum, examination-specific concepts, and AI providers.
+
+### Relationship
+
+```
+Skill
+  ▲
+  │ developed through
+  │
+Assessment Activity
+  │
+  ▼
+Submission
+  │
+  ▼
+Evaluation
+  │
+  ▼
+Finding
+  │
+  ▼
+Feedback
+  │
+  ▼
+Reflection
+```
+
+A Skill defines the capability being developed. An Assessment Activity provides a context in which one or more Skills may be practised; the Skill-to-Activity association mechanism is deliberately deferred to a future specification. Skill does not own Evaluation, Finding, Feedback, or Reflection, and it does not contain evaluation criteria.
+
+### Structure
+
+The initial Skill structure is intentionally minimal:
+
+- identity
+- name
+- description
+
+No learner-specific state, Progress state, mastery, scoring, or hierarchy is required by SPEC-010.
+
+### Domain Rules Reference
+
+The following rules are enforced by the SPEC-010 domain model:
+
+| Rule | Description |
+|------|-------------|
+| DR-001 | A Skill must have a unique stable identity. |
+| DR-002 | A Skill must have a meaningful name. |
+| DR-003 | A Skill must have a meaningful description. |
+| DR-004 | A Skill name must not be empty or whitespace-only. |
+| DR-005 | A Skill description must not be empty or whitespace-only. |
+| DR-006 | A Skill is immutable after creation. |
+| DR-007 | A Skill does not require an Assessment Activity. |
+| DR-008 | A Skill is not owned by a single Assessment Activity. |
+| DR-009 | A Skill does not contain evaluation criteria. |
+| DR-010 | A Skill does not require numerical scoring. |
+| DR-011 | A Skill does not contain Progress state. |
+| DR-012 | A Skill does not require a hierarchy. |
+| DR-013 | A Skill is not examination-specific. |
+| DR-014 | A Skill is not curriculum-specific. |
+| DR-015 | A Skill does not depend on AI or external generation mechanisms. |
+| DR-016 | A Skill remains independent of persistence infrastructure. |
 
 ---
 

@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **SPEC-010 — Skill Domain Foundation**: in-memory `Skill` domain model under `fablit.domain`.
+  - Stable identity, a human-readable name, and a meaningful description as domain state.
+  - Meaningful-content validation rejecting empty and whitespace-only names and descriptions; immutable after creation.
+  - Skill remains independent of any single Assessment Activity, Evaluation criteria, Progress, mastery, scoring, hierarchy, curriculum and examination structures, and AI or external generation mechanisms.
+  - Domain exception: `InvalidSkillError`.
+  - Unit and domain-independence tests (100% coverage for `fablit.domain`).
+  - Documentation updates to the Domain Language, Architecture Blueprint, and README.
+
+See [SPEC-010](specifications/platform/SPEC-010-skill-domain-foundation.md) for details.
+
 - **SPEC-009 — Reflection Domain Foundation**: in-memory `Reflection` domain model under `fablit.domain`.
   - Stable identity, Feedback identity reference (SPEC-008), a single general learner-authored content field, and a timezone-aware creation timestamp as domain state.
   - Meaningful-content validation rejecting empty and whitespace-only reflection; immutable after creation; creating Reflection does not modify the associated Feedback.
