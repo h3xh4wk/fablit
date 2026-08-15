@@ -1,4 +1,4 @@
-"""Domain independence tests (SPEC-005, SPEC-006, SPEC-007, SPEC-008, SPEC-009)."""
+"""Domain independence tests (SPEC-005 through SPEC-011)."""
 
 from __future__ import annotations
 
@@ -63,6 +63,15 @@ def test_domain_implements_feedback_reflection_and_skill() -> None:
     assert "class Feedback" in source
     assert "class Reflection" in source
     assert "class Skill" in source
+
+
+def test_domain_has_no_skill_activity_relationship_entity() -> None:
+    # SPEC-011 models the Skill-Activity association on the Assessment
+    # Activity itself; it must not introduce a dedicated relationship entity.
+    source = _domain_source_text()
+    assert "class SkillAssociation" not in source
+    assert "class SkillActivity" not in source
+    assert "class SkillActivityRelationship" not in source
 
 
 def test_same_model_works_for_design_education() -> None:

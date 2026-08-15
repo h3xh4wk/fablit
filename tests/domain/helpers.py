@@ -29,6 +29,7 @@ def make_activity(**overrides: Any) -> AssessmentActivity:
         "instructions": "Write a short response to the prompt.",
         "position": 0,
         "status": ActivityStatus.ACTIVE,
+        "skill_ids": (),
     }
     values.update(overrides)
     return AssessmentActivity(**values)

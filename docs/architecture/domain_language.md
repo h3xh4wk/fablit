@@ -1,9 +1,9 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 0.7.0
+**Version:** 0.8.0
 **Status:** Draft
-**Last Updated:** 2026-08-13
+**Last Updated:** 2026-08-15
 
 ---
 
@@ -484,6 +484,68 @@ The following rules are enforced by the SPEC-010 domain model:
 
 ---
 
+## Skill–Assessment Activity Association (SPEC-011)
+
+SPEC-011 establishes the many-to-many association between Skill (SPEC-010) and Assessment Activity (SPEC-005).
+
+The implementation lives in `fablit.domain` and is intentionally simple: the Assessment Activity references the Skills it provides an opportunity to practise, by stable identity only (`skill_ids`). No dedicated relationship entity, relationship attributes, Progress, mastery, scoring, evaluation, curriculum, examination, or AI semantics are introduced.
+
+### Relationship
+
+```
+                 Skill
+                   ▲
+                   │
+              many │ many
+                   │
+                   ▼
+          Assessment Activity
+                   │
+                   ▼
+               Submission
+                   │
+                   ▼
+               Evaluation
+                   │
+                   ▼
+                Finding
+                   │
+                   ▼
+                Feedback
+                   │
+                   ▼
+               Reflection
+```
+
+An Assessment Activity provides an opportunity to practise and demonstrate one or more Skills. A Skill may be practised through multiple Assessment Activities. Neither concept owns the other, and neither requires the other to exist. The association establishes the intended learning context only: it does not imply mastery, proficiency, scoring, Progress, or that every Evaluation must evaluate every associated Skill.
+
+### Domain Rules Reference
+
+The following rules are enforced by the SPEC-011 association:
+
+| Rule | Description |
+|------|-------------|
+| DR-001 | A Skill may be associated with zero or more Assessment Activities. |
+| DR-002 | An Assessment Activity may be associated with zero or more Skills. |
+| DR-003 | The relationship is many-to-many. |
+| DR-004 | A Skill remains valid without an Assessment Activity. |
+| DR-005 | An Assessment Activity remains independently meaningful without a Skill association. |
+| DR-006 | A Skill may be associated with multiple Assessment Activities. |
+| DR-007 | An Assessment Activity may be associated with multiple Skills. |
+| DR-008 | The same Skill–Assessment Activity pair cannot occur more than once. |
+| DR-009 | An association must reference valid Skill and Assessment Activity instances. |
+| DR-010 | The relationship does not own either domain object. |
+| DR-011 | The relationship does not contain scoring information. |
+| DR-012 | The relationship does not contain Progress information. |
+| DR-013 | The relationship does not contain mastery information. |
+| DR-014 | The relationship does not contain evaluation criteria. |
+| DR-015 | The relationship does not contain curriculum-specific information. |
+| DR-016 | The relationship does not contain examination-specific information. |
+| DR-017 | The relationship does not depend on AI. |
+| DR-018 | A persistence join structure, if required, shall not automatically become a new domain entity. |
+
+---
+
 ## Submission
 
 A Submission is the learner's response to an Assessment Activity.
@@ -708,7 +770,7 @@ Progress
 
 The following rules guide domain modelling.
 
-These product-level rules use the `DLR-` prefix to distinguish them from the SPEC-005, SPEC-006, SPEC-007, SPEC-008, and SPEC-009 domain rules (`DR-001`–`DR-012`), which are documented in the Assessment Domain Model (SPEC-005), Submission Domain Model (SPEC-006), Evaluation Domain Model (SPEC-007), Feedback Domain Model (SPEC-008), and Reflection Domain Model (SPEC-009) sections above.
+These product-level rules use the `DLR-` prefix to distinguish them from the domain rules (`DR-001`–`DR-018`) documented in the Assessment Domain Model (SPEC-005), Submission Domain Model (SPEC-006), Evaluation Domain Model (SPEC-007), Feedback Domain Model (SPEC-008), Reflection Domain Model (SPEC-009), Skill Domain Model (SPEC-010), and Skill–Assessment Activity Association (SPEC-011) sections above.
 
 ## DLR-001
 

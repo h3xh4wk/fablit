@@ -1,4 +1,4 @@
-"""Assessment Activity domain model (SPEC-005)."""
+"""Assessment Activity domain model (SPEC-005, SPEC-011)."""
 
 from __future__ import annotations
 
@@ -13,9 +13,17 @@ class AssessmentActivity:
     """The smallest meaningful interaction between a learner and the platform.
 
     An Assessment Activity is the unit of learner interaction that will
-    eventually produce a Submission (SPEC-006). This model only establishes
-    the stable identity, controlled type, interaction description, ordering,
-    and status required to define an Assessment.
+    eventually produce a Submission (SPEC-006). This model establishes the
+    stable identity, controlled type, interaction description, ordering, and
+    status required to define an Assessment, and (SPEC-011) the Skills the
+    activity provides an opportunity to practise.
+
+    SPEC-011 associates an activity with zero or more Skills by stable
+    identity only. The association is intentionally simple: it establishes
+    the intended learning context, does not own either domain object, carries
+    no relationship attributes, and introduces no Progress, mastery, scoring,
+    evaluation, curriculum, examination, or AI semantics. Neither a Skill nor
+    an Assessment Activity requires the other to exist.
 
     Attributes:
         activity_type: The controlled activity type.
@@ -25,11 +33,15 @@ class AssessmentActivity:
             Assessment.
         id: The stable, unique domain identity. Generated when omitted.
         status: The availability state of the activity.
+        skill_ids: The stable identities (SPEC-010) of the Skills this
+            activity provides an opportunity to practise. May be empty; each
+            identity must be unique within the collection.
 
     Raises:
         InvalidActivityError: When required domain information is missing or
             invalid (missing/invalid identity, type, status, blank
-            instructions, or an invalid position).
+            instructions, an invalid position, or invalid/duplicate skill
+            references).
     """
 
     activity_type: ActivityType
@@ -37,6 +49,7 @@ class AssessmentActivity:
     position: int
     id: UUID = field(default_factory=uuid4)
     status: ActivityStatus = ActivityStatus.ACTIVE
+    skill_ids: tuple[UUID, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.id, UUID):
@@ -66,4 +79,20 @@ class AssessmentActivity:
             raise InvalidActivityError(
                 "assessment activity position must be non-negative "
                 f"(got {self.position})"
+            )
+        if not isinstance(self.skill_ids, tuple):
+            raise InvalidActivityError(
+                "assessment activity skill references must be provided as a tuple"
+                f" (got {self.skill_ids!r})"
+            )
+        for skill_id in self.skill_ids:
+            if not isinstance(skill_id, UUID):
+                raise InvalidActivityError(
+                    "assessment activity must reference valid skill identities"
+                    f" (got {self.skill_ids!r})"
+                )
+        if len(self.skill_ids) != len(set(self.skill_ids)):
+            raise InvalidActivityError(
+                "assessment activity must not reference the same skill more than once"
+                f" (got {self.skill_ids!r})"
             )
