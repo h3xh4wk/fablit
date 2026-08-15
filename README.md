@@ -2,7 +2,7 @@
 
 Fablit is an open-source educational platform for helping learners build practical skills through deliberate practice, meaningful feedback, and continuous reflection.
 
-This repository implements **SPEC-001 — Bootstrap Platform**, **SPEC-002 — Engineering Toolchain**, **SPEC-003 — Configuration & Logging**, **SPEC-004 — Shared Platform Services**, **SPEC-005 — Assessment Activity Domain Foundation**, **SPEC-006 — Submission Domain Foundation**, **SPEC-007 — Evaluation Domain Foundation**, **SPEC-008 — Feedback Domain Foundation**, **SPEC-009 — Reflection Domain Foundation**, **SPEC-010 — Skill Domain Foundation**, and **SPEC-011 — Skill–Assessment Activity Association**. It intentionally avoids Skill Labs, Content Packs, learner accounts, authentication, databases, AI services, analytics, and user management.
+This repository implements **SPEC-001 — Bootstrap Platform**, **SPEC-002 — Engineering Toolchain**, **SPEC-003 — Configuration & Logging**, **SPEC-004 — Shared Platform Services**, **SPEC-005 — Assessment Activity Domain Foundation**, **SPEC-006 — Submission Domain Foundation**, **SPEC-007 — Evaluation Domain Foundation**, **SPEC-008 — Feedback Domain Foundation**, **SPEC-009 — Reflection Domain Foundation**, **SPEC-010 — Skill Domain Foundation**, **SPEC-011 — Skill–Assessment Activity Association**, and **SPEC-012 — Learner Practice Application Flow**. It intentionally avoids Skill Labs, Content Packs, learner accounts, authentication, databases, AI services, analytics, user management, and recommendation logic.
 
 ## Requirements
 
@@ -32,13 +32,20 @@ Start the FastAPI application with a single command:
 uv run uvicorn app.main:app --reload
 ```
 
-The bootstrap platform exposes:
+The platform exposes:
 
-- `GET /` — returns `Welcome to Fablit`
+- `GET /` — the learner practice dashboard (3–5 available activities)
+- `GET /activities/{activity_id}` — the practice activity page
+- `POST /activities/{activity_id}/submit` — submit a learner response
+- `GET /feedback` — learner feedback derived from the demo evaluation
+- `GET /reflect` and `POST /reflect` — the purposeful reflection prompt and submission
+- `GET /complete` — the completion confirmation
 - `GET /health` — returns `{ "status": "healthy" }`
 - `GET /metrics` — returns in-memory Prometheus-style metrics
 - `GET /docs` — FastAPI Swagger UI
 - `GET /redoc` — FastAPI ReDoc documentation
+
+The learner experience is server-rendered HTML (Jinja2 templates) enhanced with HTMX (vendored under `app/static/`); the core journey works without JavaScript. A deterministic demo evaluator (no AI, no network, no async workers) drives the feedback step, and the journey is preserved in memory for the vertical slice.
 
 ## Configuration and logging
 
@@ -77,6 +84,18 @@ SPEC-005 through SPEC-011 introduce the learning-domain capabilities as in-memor
 
 No database, scoring, Skill hierarchies, Progress, mastery, delivery, or AI feedback-generation behaviour is included; those are deferred to future specifications.
 
+## Application layer and learner practice flow
+
+SPEC-012 introduces the first application layer under `fablit.application`, separate from both the Web/UI layer (`app`) and the learning domain (`fablit.domain`):
+
+- `PracticeApplication` — the use-case facade (UC-001–UC-007): dashboard retrieval, start practice, submit response, demo evaluation, feedback preparation, reflection, and completion
+- View models (`PracticeDashboardView`, `PracticeActivityView`, `FeedbackView`, `ReflectionView`, `CompletionView`) — learner-facing representations that keep presentation concerns out of the domain
+- `DemoEvaluator` — a deterministic, predefined evaluation for the demo activities (no AI provider, no network, no async workers)
+- `LearnerJourneyStore` — a minimal in-memory store preserving the Submission → Evaluation → Feedback → Reflection chain for the vertical slice
+- Demo content: 3–5 practice activities across the Visual Analysis, Written Communication, and Critical Observation Skills, with a stable demo learner context
+
+The vertical slice introduces no authentication, scoring, Progress, mastery, recommendations, or examination-specific logic.
+
 ## Quality checks
 
 Run the automated checks locally:
@@ -95,7 +114,16 @@ You can also run the consolidated developer workflow:
 make check
 ```
 
-Playwright is included in the development toolchain for future browser-level checks. SPEC-001 does not add browser workflows beyond confirming FastAPI documentation routes are available through API tests.
+Playwright is included in the development toolchain for browser-level checks. SPEC-012 adds an opt-in browser journey test (`tests/e2e`) that drives the full learner flow in Chromium; it is skipped unless `RUN_BROWSER_TESTS=1` is set, and the CI workflow runs it in a dedicated browser job (`uv run playwright install --with-deps chromium`).
+
+Run the browser journey tests locally:
+
+```bash
+uv run playwright install chromium
+make e2e
+```
+
+If you have an existing Chromium/Chrome binary instead of a Playwright download, point Playwright at it with `PLAYWRIGHT_EXECUTABLE_PATH` (root containers may also need `PLAYWRIGHT_NO_SANDBOX=1`).
 
 ## PythonAnywhere deployment notes
 

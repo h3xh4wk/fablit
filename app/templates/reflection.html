@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Reflection{% endblock %}
+{% block content %}
+<a href="/">&larr; Back to Dashboard</a>
+<h1>Reflection</h1>
+<p>Activity: {{ view.activity_title }}</p>
+<h2>Your feedback</h2>
+<p>{{ view.context }}</p>
+<h2>Reflection prompt</h2>
+<p>{{ view.prompt }}</p>
+{% if error %}
+<p class="error" role="alert">{{ error }}</p>
+{% endif %}
+<form method="post" action="/reflect">
+  <label for="content">Your reflection</label>
+  <textarea id="content" name="content" rows="6" required>{{ submitted_content or "" }}</textarea>
+  <button type="submit">Save Reflection</button>
+</form>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Feedback{% endblock %}
+{% block content %}
+<a href="/">&larr; Back to Dashboard</a>
+<h1>Feedback</h1>
+<p>Activity: {{ view.activity_title }}</p>
+<h2>What you did well</h2>
+<ul>
+  {% for strength in view.strengths %}
+  <li>{{ strength }}</li>
+  {% endfor %}
+</ul>
+<h2>Where you can improve</h2>
+<ul>
+  {% for improvement in view.improvements %}
+  <li>{{ improvement }}</li>
+  {% endfor %}
+</ul>
+<h2>Try this next</h2>
+<ul>
+  {% for next_step in view.next_steps %}
+  <li>{{ next_step }}</li>
+  {% endfor %}
+</ul>
+<h2>Reflect</h2>
+<p>{{ view.reflection_prompt }}</p>
+<a href="/reflect">Reflect</a>
+{% endblock %}

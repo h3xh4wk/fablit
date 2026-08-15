@@ -1,9 +1,9 @@
 # Fablit Architecture Blueprint
 
 **Document ID:** AB-001
-**Version:** 0.1.0
+**Version:** 0.2.0
 **Status:** Draft
-**Last Updated:** 2026-08-09
+**Last Updated:** 2026-08-15
 
 ---
 
@@ -223,6 +223,29 @@ Skill is the capability being developed; an Assessment Activity provides a conte
 SPEC-010 implements the Skill concept as an in-memory learning-domain model (`fablit.domain`), independent of the Platform Core. Skill carries only a stable identity, a human-readable name, and a meaningful description, and is immutable after creation. Evaluation criteria, scoring, Progress, mastery, hierarchy, curriculum and examination structures, AI providers, and persistence are deliberately excluded from the model.
 
 SPEC-011 connects Skills to Assessment Activities as a simple many-to-many association: an Assessment Activity references the zero or more Skills it provides an opportunity to practise, by stable identity only (`skill_ids`). The association lives on the Assessment Activity — the Activity's learning context — and introduces no dedicated relationship entity, relationship attributes, Progress, mastery, scoring, evaluation, curriculum, examination, or AI semantics. Skill and Assessment Activity remain independently meaningful, preserving the separation between intended Skills and actual Evaluation findings.
+
+---
+
+## Application Layer
+
+The Application Layer orchestrates the existing learning-domain models into learner workflows.
+
+SPEC-012 introduces the first Application Layer (`fablit.application`) as a boundary between the Web/UI and the domain:
+
+```
+USER/BROWSER → WEB/UI (HTMX + server-rendered HTML) → APPLICATION LAYER → DOMAIN → INFRASTRUCTURE
+```
+
+The Application Layer is responsible for:
+
+- learner use cases (dashboard retrieval, start practice, submit response, demo evaluation, feedback preparation, start/submit reflection, completion result);
+- workflow orchestration and application-level journey state;
+- learner-facing view model preparation;
+- domain coordination (creating Submissions, Evaluations, Feedback, and Reflections through the existing domain models).
+
+The Application Layer is deliberately **not** a second domain model: it does not redefine domain invariants and contains no HTML or presentation logic. SPEC-012 also establishes a deterministic demo evaluator and a minimal in-memory journey store so the vertical slice can be demonstrated and tested end to end without AI providers, network services, asynchronous workers, or a persistence layer. The evaluator and store are replaceable without changing learner-facing concepts.
+
+SPEC-012 deliberately introduces no authentication, user registration, Progress, mastery, proficiency, scoring, recommendations, personalization, or examination-specific logic.
 
 ---
 

@@ -1,7 +1,7 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 0.8.0
+**Version:** 0.9.0
 **Status:** Draft
 **Last Updated:** 2026-08-15
 
@@ -543,6 +543,62 @@ The following rules are enforced by the SPEC-011 association:
 | DR-016 | The relationship does not contain examination-specific information. |
 | DR-017 | The relationship does not depend on AI. |
 | DR-018 | A persistence join structure, if required, shall not automatically become a new domain entity. |
+
+---
+
+## Learner Practice Application Flow (SPEC-012)
+
+SPEC-012 establishes the first **Application Layer** in Fablit: the orchestration that connects user interaction to the existing learning-domain models so a learner can complete a meaningful practice → feedback → reflection cycle.
+
+SPEC-012 introduces **no new core domain concept**. It composes the concepts established by SPEC-005 through SPEC-011 (Assessment Activity, Submission, Evaluation, Finding, Feedback, Reflection, Skill) into a learner-facing vertical slice. The implementation lives in `fablit.application` and is deliberately separate from the Web/UI layer (`app`) and the learning domain (`fablit.domain`).
+
+### Relationship
+
+```
+Learner (demo context)
+    │
+    ▼
+Practice Dashboard        UC-001
+    │
+    ▼
+Practice Activity         UC-002
+    │
+    ▼
+Submission                (SPEC-006)
+    │
+    ▼
+Demo Evaluation           UC-004 (deterministic, predefined)
+    │
+    ▼
+Feedback                  (SPEC-008)
+    │
+    ▼
+Reflection                (SPEC-009)
+    │
+    ▼
+Completion Confirmation   UC-007
+```
+
+### Use Cases
+
+| Use Case | Name | Purpose |
+|----------|------|---------|
+| UC-001 | Get Practice Dashboard | Provide the learner with 3–5 available practice activities. |
+| UC-002 | Start Practice Activity | Present an Assessment Activity in a form suitable for practice. |
+| UC-003 | Submit Response | Accept a learner response and create a valid Submission. |
+| UC-004 | Evaluate Demo Submission | Produce a known, deterministic Evaluation with at least one structured Finding. |
+| UC-005 | Present Feedback | Transform the Evaluation into learner-facing strengths, improvements, and next steps. |
+| UC-006 | Start Reflection | Present the purposeful reflection prompt together with feedback context. |
+| UC-007 | Submit Reflection | Create a valid Reflection and return a completion result. |
+
+### Boundaries
+
+- The Application Layer orchestrates domain behaviour and prepares **view models**; it contains no HTML and no presentation logic.
+- The Application Layer never redefines domain invariants; Submission, Evaluation, Finding, Feedback, and Reflection are created through the existing domain models.
+- The demo learner context is a stable identity only; no user-management domain model is introduced (SPEC-012 §27).
+- The demo evaluator is deterministic and predefined; it requires no AI provider, network service, or asynchronous worker, and can be replaced later without changing learner-facing concepts (SPEC-012 §11–12, §40).
+- The vertical slice preserves the learner journey in memory; persistence remains outside the domain model (SPEC-012 §28).
+- No Progress, mastery, proficiency, scoring, recommendations, authentication, or examination-specific logic is introduced (SPEC-012 §6.2).
 
 ---
 
