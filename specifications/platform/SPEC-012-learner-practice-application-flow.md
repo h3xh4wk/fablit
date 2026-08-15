@@ -1,11 +1,11 @@
 ````markdown
 # SPEC-012 — Learner Practice Application Flow
 
-**Specification ID:** SPEC-012  
-**Title:** Learner Practice Application Flow  
-**Version:** 0.1.0  
-**Status:** Draft  
-**Priority:** High  
+**Specification ID:** SPEC-012
+**Title:** Learner Practice Application Flow
+**Version:** 0.1.0
+**Status:** Draft
+**Priority:** High
 **Epic:** First Learner Experience
 
 ---
