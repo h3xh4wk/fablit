@@ -1,8 +1,8 @@
-"""Unit tests for the Assessment Activity domain model (SPEC-005)."""
+"""Unit tests for the Assessment Activity domain model (SPEC-005, SPEC-011)."""
 
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 from uuid import UUID, uuid4
 
 import pytest
@@ -14,7 +14,7 @@ from fablit.domain import (
     InvalidActivityError,
 )
 
-from .helpers import make_activity, make_assessment
+from .helpers import make_activity, make_assessment, make_skill
 
 
 def test_create_activity_with_valid_data() -> None:
@@ -136,3 +136,97 @@ def test_activity_parent_reference_to_assessment() -> None:
 def test_activity_type_validation_message_lists_valid_types() -> None:
     with pytest.raises(InvalidActivityError, match="multiple_choice"):
         make_activity(activity_type="essay")
+
+
+def test_activity_can_be_associated_with_a_single_skill() -> None:
+    skill = make_skill()
+    activity = make_activity(skill_ids=(skill.id,))
+
+    assert activity.skill_ids == (skill.id,)
+
+
+def test_activity_can_be_associated_with_multiple_skills() -> None:
+    first = make_skill()
+    second = make_skill()
+    activity = make_activity(skill_ids=(first.id, second.id))
+
+    assert activity.skill_ids == (first.id, second.id)
+
+
+def test_skill_can_be_associated_with_multiple_activities() -> None:
+    skill = make_skill()
+    first = make_activity(skill_ids=(skill.id,))
+    second = make_activity(skill_ids=(skill.id,))
+
+    assert first.skill_ids == (skill.id,)
+    assert second.skill_ids == (skill.id,)
+
+
+def test_activity_without_skill_association_is_valid() -> None:
+    activity = make_activity()
+
+    assert activity.skill_ids == ()
+
+
+def test_skill_association_is_by_identity_only() -> None:
+    skill = make_skill()
+    activity = make_activity(skill_ids=(skill.id,))
+
+    assert activity.skill_ids == (skill.id,)
+    assert all(isinstance(skill_id, UUID) for skill_id in activity.skill_ids)
+
+
+def test_reject_duplicate_skill_association() -> None:
+    skill = make_skill()
+
+    with pytest.raises(InvalidActivityError, match="same skill"):
+        make_activity(skill_ids=(skill.id, skill.id))
+
+
+def test_reject_activity_with_invalid_skill_reference() -> None:
+    with pytest.raises(InvalidActivityError, match="skill identities"):
+        make_activity(skill_ids=("not-a-uuid",))
+
+
+def test_reject_activity_with_non_uuid_skill_reference() -> None:
+    with pytest.raises(InvalidActivityError, match="skill identities"):
+        make_activity(skill_ids=(42,))
+
+
+def test_reject_activity_with_list_skill_references() -> None:
+    skill = make_skill()
+
+    with pytest.raises(InvalidActivityError, match="tuple"):
+        make_activity(skill_ids=[skill.id])
+
+
+def test_skill_association_does_not_modify_skill_identity() -> None:
+    skill = make_skill()
+    original_id = skill.id
+
+    make_activity(skill_ids=(skill.id,))
+
+    assert skill.id == original_id
+
+
+def test_skill_remains_valid_without_an_activity() -> None:
+    skill = make_skill()
+
+    assert isinstance(skill.id, UUID)
+
+
+def test_activity_skill_references_are_immutable() -> None:
+    activity = make_activity(skill_ids=(uuid4(),))
+
+    with pytest.raises(FrozenInstanceError):
+        activity.skill_ids = ()  # type: ignore[misc]
+
+
+def test_association_change_is_expressed_via_replace() -> None:
+    skill = make_skill()
+    activity = make_activity()
+
+    associated = replace(activity, skill_ids=(skill.id,))
+
+    assert associated.skill_ids == (skill.id,)
+    assert activity.skill_ids == ()

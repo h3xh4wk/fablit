@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **SPEC-011 — Skill–Assessment Activity Association**: in-memory many-to-many association between `Skill` (SPEC-010) and `AssessmentActivity` (SPEC-005) under `fablit.domain`.
+  - `AssessmentActivity` references zero or more Skills by stable identity (`skill_ids`), validated on construction: references must be valid identities and unique within the collection.
+  - Skills and Assessment Activities remain independently valid; the association carries no relationship attributes and introduces no Progress, mastery, scoring, evaluation, curriculum, examination, or AI semantics.
+  - No dedicated relationship domain entity is introduced.
+  - Unit and domain-independence tests (100% coverage for `fablit.domain`).
+  - Documentation updates to the Domain Language, Architecture Blueprint, and README.
+
+See [SPEC-011](specifications/platform/SPEC-011-skill-assessment-activity-association.md) for details.
+
 - **SPEC-010 — Skill Domain Foundation**: in-memory `Skill` domain model under `fablit.domain`.
   - Stable identity, a human-readable name, and a meaningful description as domain state.
   - Meaningful-content validation rejecting empty and whitespace-only names and descriptions; immutable after creation.

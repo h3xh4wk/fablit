@@ -222,6 +222,8 @@ Skill is the capability being developed; an Assessment Activity provides a conte
 
 SPEC-010 implements the Skill concept as an in-memory learning-domain model (`fablit.domain`), independent of the Platform Core. Skill carries only a stable identity, a human-readable name, and a meaningful description, and is immutable after creation. Evaluation criteria, scoring, Progress, mastery, hierarchy, curriculum and examination structures, AI providers, and persistence are deliberately excluded from the model.
 
+SPEC-011 connects Skills to Assessment Activities as a simple many-to-many association: an Assessment Activity references the zero or more Skills it provides an opportunity to practise, by stable identity only (`skill_ids`). The association lives on the Assessment Activity — the Activity's learning context — and introduces no dedicated relationship entity, relationship attributes, Progress, mastery, scoring, evaluation, curriculum, examination, or AI semantics. Skill and Assessment Activity remain independently meaningful, preserving the separation between intended Skills and actual Evaluation findings.
+
 ---
 
 ## Progress
