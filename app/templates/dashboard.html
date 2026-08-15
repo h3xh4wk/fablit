@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Practice Dashboard{% endblock %}
+{% block content %}
+<h1>Practice</h1>
+<p>Choose an activity to start practising.</p>
+<ul class="activities">
+  {% for activity in view.activities %}
+  <li>
+    <h2>{{ activity.title }}</h2>
+    <p>{{ activity.description }}</p>
+    <p>Skill{% if activity.skills|length != 1 %}s{% endif %}: {{ activity.skills|join(", ") }}</p>
+    <a href="/activities/{{ activity.id }}">Start Practice</a>
+  </li>
+  {% endfor %}
+</ul>
+{% endblock %}

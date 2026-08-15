@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **SPEC-012 — Learner Practice Application Flow**: first user-facing vertical slice of Fablit, establishing the first Application Layer (`fablit.application`) between the Web/UI and the existing learning domain.
+  - `PracticeApplication` use-case facade implementing UC-001–UC-007: dashboard retrieval, start practice, submit response, demo evaluation, feedback presentation, reflection, and completion.
+  - Learner-facing view models (`PracticeDashboardView`, `PracticeActivityView`, `FeedbackView`, `ReflectionView`, `CompletionView`) that keep presentation concerns out of domain objects.
+  - Deterministic `DemoEvaluator` producing a known Evaluation with at least one structured Finding per demo activity — no AI provider, network service, or asynchronous worker.
+  - Minimal in-memory `LearnerJourneyStore` preserving the Submission → Evaluation → Feedback → Reflection chain for the vertical slice.
+  - Demo content: 5 practice activities across the Visual Analysis, Written Communication, and Critical Observation Skills, with a stable demo learner context and no fake user-management model.
+  - Server-rendered Jinja2 templates and routes in `app/main.py` (dashboard, practice, submit, feedback, reflection, completion) with HTMX progressive enhancement (vendored under `app/static/`); the core journey works without JavaScript.
+  - Learner-friendly error and validation messages (`Activity not found.`, `Please enter a response before submitting.`); invalid responses never create a Submission.
+  - Application-layer, web/route, and end-to-end learner journey tests; existing domain tests continue to pass.
+  - Opt-in browser-level learner journey test (`tests/e2e`, Playwright) run by a dedicated CI job (`uv run playwright install --with-deps chromium`).
+  - Documentation updates to the Domain Language, Architecture Blueprint, and README.
+
+See [SPEC-012](specifications/platform/SPEC-012-learner-practice-application-flow.md) for details.
+
 - **SPEC-011 — Skill–Assessment Activity Association**: in-memory many-to-many association between `Skill` (SPEC-010) and `AssessmentActivity` (SPEC-005) under `fablit.domain`.
   - `AssessmentActivity` references zero or more Skills by stable identity (`skill_ids`), validated on construction: references must be valid identities and unique within the collection.
   - Skills and Assessment Activities remain independently valid; the association carries no relationship attributes and introduces no Progress, mastery, scoring, evaluation, curriculum, examination, or AI semantics.

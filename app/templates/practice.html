@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{{ view.title }}{% endblock %}
+{% block content %}
+<a href="/">&larr; Back to Dashboard</a>
+<h1>{{ view.title }}</h1>
+<p>{{ view.description }}</p>
+<h2>Skills</h2>
+<ul>
+  {% for skill in view.skills %}
+  <li>{{ skill }}</li>
+  {% endfor %}
+</ul>
+<h2>What am I being asked to do?</h2>
+<p>{{ view.prompt }}</p>
+{% if error %}
+<p class="error" role="alert">{{ error }}</p>
+{% endif %}
+<form method="post" action="/activities/{{ view.id }}/submit">
+  <label for="response">Your response</label>
+  <textarea id="response" name="response" rows="6" required>{{ submitted_response or "" }}</textarea>
+  <button type="submit">Submit Response</button>
+</form>
+{% endblock %}

@@ -1,16 +1,42 @@
-"""FastAPI application entry point for the Fablit bootstrap platform."""
+"""FastAPI application entry point for the Fablit platform (SPEC-012)."""
 
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from uuid import uuid4
+from pathlib import Path
+from typing import Annotated
+from uuid import UUID, uuid4
 
-from fastapi import FastAPI, Request, Response
-from fastapi.responses import PlainTextResponse
+from fastapi import FastAPI, Form, Request
+from fastapi.responses import (
+    HTMLResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+)
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
+from fablit.application import (
+    DEMO_LEARNER_ID,
+    ActivityNotFoundError,
+    CompletionNotFoundError,
+    DemoEvaluator,
+    FeedbackNotFoundError,
+    InvalidPracticeResponseError,
+    InvalidReflectionResponseError,
+    LearnerJourneyStore,
+    PracticeApplication,
+    build_demo_activities,
+    build_demo_findings,
+    build_demo_skills,
+)
 from fablit.config import load_config
 from fablit.logging import init_logging, reset_request_context, set_request_context
 from fablit.platform.metrics import MetricsRegistry
+
+BASE_DIR = Path(__file__).resolve().parent
+templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 config = load_config()
 init_logging(config)
@@ -18,14 +44,30 @@ logger = logging.getLogger("fablit.app")
 metrics_registry = MetricsRegistry()
 
 
+def _build_practice_application() -> PracticeApplication:
+    """Assemble the demo learner application for the first vertical slice."""
+    activities = build_demo_activities()
+    store = LearnerJourneyStore(
+        learner_id=DEMO_LEARNER_ID,
+        activities=activities,
+        skills=build_demo_skills(),
+    )
+    return PracticeApplication(
+        store=store,
+        evaluator=DemoEvaluator(build_demo_findings(activities)),
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Run bootstrap startup and shutdown lifecycle hooks."""
+    """Run startup and shutdown lifecycle hooks."""
     logger.info("application startup", extra={"version": config.version})
     app.state.ready = True
     app.state.config = config
+    app.state.practice = _build_practice_application()
     yield
     app.state.ready = False
+    app.state.practice = None
     logger.info("application shutdown")
 
 
@@ -35,6 +77,8 @@ app = FastAPI(
     version=config.version,
     lifespan=lifespan,
 )
+
+app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 
 @app.middleware("http")
@@ -63,10 +107,127 @@ async def request_logging_middleware(
         reset_request_context(token)
 
 
-@app.get("/", response_class=PlainTextResponse)
-async def homepage() -> str:
-    """Return the bootstrap homepage response."""
-    return "Welcome to Fablit"
+def _practice(request: Request) -> PracticeApplication:
+    """Return the lifespan-initialised practice application."""
+    practice: PracticeApplication | None = request.app.state.practice
+    if practice is None:
+        raise RuntimeError("practice application is not initialised")
+    return practice
+
+
+def _activity_id(value: str) -> UUID:
+    """Parse an activity identity, raising ActivityNotFoundError when invalid."""
+    try:
+        return UUID(value)
+    except ValueError:
+        raise ActivityNotFoundError("Activity not found.") from None
+
+
+def _error_response(request: Request, message: str) -> Response:
+    return templates.TemplateResponse(
+        request,
+        "error.html",
+        {"message": message},
+        status_code=404,
+    )
+
+
+@app.get("/", response_class=HTMLResponse)
+async def dashboard(request: Request) -> Response:
+    """Render the learner practice dashboard (UC-001)."""
+    view = _practice(request).get_dashboard()
+    return templates.TemplateResponse(request, "dashboard.html", {"view": view})
+
+
+@app.get("/activities/{activity_id}", response_class=HTMLResponse)
+async def practice_page(request: Request, activity_id: str) -> Response:
+    """Render the practice activity page (UC-002)."""
+    practice = _practice(request)
+    try:
+        view = practice.start_practice(_activity_id(activity_id))
+    except ActivityNotFoundError:
+        return _error_response(request, "Activity not found.")
+    return templates.TemplateResponse(request, "practice.html", {"view": view})
+
+
+@app.post("/activities/{activity_id}/submit", response_class=HTMLResponse)
+async def submit_response(
+    request: Request,
+    activity_id: str,
+    response: Annotated[str, Form()] = "",
+) -> Response:
+    """Accept a learner response and move to feedback (UC-003/004/005)."""
+    practice = _practice(request)
+    try:
+        activity = _activity_id(activity_id)
+    except ActivityNotFoundError:
+        return _error_response(request, "Activity not found.")
+    try:
+        practice.submit_response(activity, response)
+    except ActivityNotFoundError:
+        return _error_response(request, "Activity not found.")
+    except InvalidPracticeResponseError as exc:
+        view = practice.start_practice(activity)
+        return templates.TemplateResponse(
+            request,
+            "practice.html",
+            {"view": view, "error": str(exc), "submitted_response": response},
+        )
+    return RedirectResponse("/feedback", status_code=303)
+
+
+@app.get("/feedback", response_class=HTMLResponse)
+async def feedback_page(request: Request) -> Response:
+    """Render the learner feedback page (UC-005)."""
+    practice = _practice(request)
+    try:
+        view = practice.get_feedback()
+    except FeedbackNotFoundError:
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse(request, "feedback.html", {"view": view})
+
+
+@app.get("/reflect", response_class=HTMLResponse)
+async def reflection_page(request: Request) -> Response:
+    """Render the purposeful reflection prompt (UC-006)."""
+    practice = _practice(request)
+    try:
+        view = practice.get_reflection()
+    except FeedbackNotFoundError:
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse(request, "reflection.html", {"view": view})
+
+
+@app.post("/reflect", response_class=HTMLResponse)
+async def submit_reflection(
+    request: Request,
+    content: Annotated[str, Form()] = "",
+) -> Response:
+    """Save the learner's Reflection and show completion (UC-007)."""
+    practice = _practice(request)
+    try:
+        practice.submit_reflection(content)
+    except FeedbackNotFoundError:
+        return RedirectResponse("/", status_code=303)
+    except InvalidReflectionResponseError as exc:
+        view = practice.get_reflection()
+        return templates.TemplateResponse(
+            request,
+            "reflection.html",
+            {"view": view, "error": str(exc), "submitted_content": content},
+        )
+    return RedirectResponse("/complete", status_code=303)
+
+
+@app.get("/complete", response_class=HTMLResponse)
+async def completion_page(request: Request) -> Response:
+    """Render the completion confirmation."""
+    practice = _practice(request)
+    try:
+        view = practice.get_completion()
+    except CompletionNotFoundError:
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse(request, "complete.html", {"view": view})
 
 
 @app.get("/health")

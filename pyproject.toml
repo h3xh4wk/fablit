@@ -17,6 +17,8 @@ dependencies = [
     "pydantic>=2.8.0",
     "pydantic-settings>=0.13.0",
     "PyYAML>=6.0",
+    "jinja2>=3.1.0",
+    "python-multipart>=0.0.9",
 ]
 
 [dependency-groups]
@@ -43,6 +45,9 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["app*", "fablit*"]
 exclude = ["tests*", "docs*", "specifications*"]
+
+[tool.setuptools.package-data]
+app = ["templates/*.html", "static/*.js"]
 
 [tool.ruff]
 line-length = 88

@@ -5,12 +5,12 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 
-def test_homepage_returns_welcome_message() -> None:
+def test_homepage_renders_the_practice_dashboard() -> None:
     with TestClient(app) as client:
         response = client.get("/")
 
     assert response.status_code == 200
-    assert response.text == "Welcome to Fablit"
+    assert "Start Practice" in response.text
 
 
 def test_health_returns_healthy_status() -> None:
