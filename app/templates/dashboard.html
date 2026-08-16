@@ -1,16 +1,20 @@
 {% extends "base.html" %}
-{% block title %}Practice Dashboard{% endblock %}
+{% block title %}Explore{% endblock %}
 {% block content %}
-<h1>Practice</h1>
-<p>Choose an activity to start practising.</p>
-<ul class="activities">
-  {% for activity in view.activities %}
-  <li>
-    <h2>{{ activity.title }}</h2>
-    <p>{{ activity.description }}</p>
-    <p>Skill{% if activity.skills|length != 1 %}s{% endif %}: {{ activity.skills|join(", ") }}</p>
-    <a href="/activities/{{ activity.id }}">Start Practice</a>
-  </li>
-  {% endfor %}
-</ul>
+<section class="dashboard">
+  <h1 class="display">What would you like to explore?</h1>
+  <p class="lede">A few things to try. Pick what catches your interest — there's no rush.</p>
+  <ul class="card-grid">
+    {% for activity in view.activities %}
+    <li class="card">
+      <h2 class="card__title">{{ activity.title }}</h2>
+      <p class="card__invitation">{{ activity.description }}</p>
+      <div class="card__footer">
+        <p class="card__skill">{{ activity.skills|join(", ") }}</p>
+        <a class="card__action" href="/activities/{{ activity.id }}">Try it <span aria-hidden="true">→</span></a>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
 {% endblock %}

@@ -102,20 +102,26 @@ def _launch_options() -> dict[str, Any]:
 
 
 def _run_journey(page: Page, base_url: str) -> None:
-    """Walk the SPEC-012 §33 learner journey in the browser."""
+    """Walk the SPEC-012 §33 learner journey in the browser (SPEC-013 presentation)."""
     page.goto(base_url)
-    expect(page.get_by_role("heading", name="Practice", exact=True)).to_be_visible()
-    expect(page.get_by_role("link", name="Start Practice").first).to_be_visible()
+    expect(
+        page.get_by_role("heading", name="What would you like to explore?", exact=True)
+    ).to_be_visible()
+    expect(page.get_by_role("link", name="Try it").first).to_be_visible()
 
-    page.get_by_role("link", name="Start Practice").first.click()
-    expect(page.get_by_text("What am I being asked to do?")).to_be_visible()
+    page.get_by_role("link", name="Try it").first.click()
+    expect(page.get_by_label("Your response")).to_be_visible()
+    # The practice page is visually quieter than the dashboard (SPEC-013 §14).
+    expect(page.get_by_role("link", name="Try it")).to_have_count(0)
 
     page.get_by_label("Your response").fill(
         "The composition uses strong diagonal lines to guide the eye."
     )
-    page.get_by_role("button", name="Submit Response").click()
-    expect(page.get_by_role("heading", name="Feedback", exact=True)).to_be_visible()
-    expect(page.get_by_text("What you did well")).to_be_visible()
+    page.get_by_role("button", name="Submit response").click()
+    expect(
+        page.get_by_role("heading", name="A little feedback", exact=True)
+    ).to_be_visible()
+    expect(page.get_by_text("What you noticed")).to_be_visible()
     expect(page.get_by_text("Try this next")).to_be_visible()
 
     page.get_by_role("link", name="Reflect").click()
@@ -128,13 +134,15 @@ def _run_journey(page: Page, base_url: str) -> None:
     page.get_by_label("Your reflection").fill(
         "I will explain how two elements interact next time."
     )
-    page.get_by_role("button", name="Save Reflection").click()
+    page.get_by_role("button", name="Save reflection").click()
     expect(
-        page.get_by_role("heading", name="Reflection saved ✓", exact=True)
+        page.get_by_role("heading", name="That's one done.", exact=True)
     ).to_be_visible()
 
-    page.get_by_role("link", name="Back to Dashboard").click()
-    expect(page.get_by_role("heading", name="Practice", exact=True)).to_be_visible()
+    page.get_by_role("link", name="Back to practice").click()
+    expect(
+        page.get_by_role("heading", name="What would you like to explore?", exact=True)
+    ).to_be_visible()
 
 
 def test_learner_journey_in_browser() -> None:
@@ -142,5 +150,36 @@ def test_learner_journey_in_browser() -> None:
         browser: Browser = playwright.chromium.launch(**_launch_options())
         try:
             _run_journey(browser.new_page(), base_url)
+        finally:
+            browser.close()
+
+
+def test_learner_journey_on_mobile_viewport() -> None:
+    """The full journey remains coherent on a mobile-sized viewport (SPEC-013 §25)."""
+    with _running_server() as base_url, sync_playwright() as playwright:
+        browser: Browser = playwright.chromium.launch(**_launch_options())
+        try:
+            page = browser.new_page(viewport={"width": 390, "height": 844})
+            _run_journey(page, base_url)
+        finally:
+            browser.close()
+
+
+def test_keyboard_navigation_reaches_core_actions() -> None:
+    """Tab order reaches the core actions with visible focus (SPEC-013 §27)."""
+    with _running_server() as base_url, sync_playwright() as playwright:
+        browser: Browser = playwright.chromium.launch(**_launch_options())
+        try:
+            page = browser.new_page()
+            page.goto(base_url)
+
+            page.keyboard.press("Tab")
+            expect(page.get_by_role("link", name="Skip to content")).to_be_focused()
+
+            page.keyboard.press("Tab")
+            expect(page.get_by_role("link", name="Fablit")).to_be_focused()
+
+            page.keyboard.press("Tab")
+            expect(page.get_by_role("link", name="Try it").first).to_be_focused()
         finally:
             browser.close()

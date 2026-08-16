@@ -1,9 +1,9 @@
 # Fablit Architecture Blueprint
 
 **Document ID:** AB-001
-**Version:** 0.2.0
+**Version:** 0.3.0
 **Status:** Draft
-**Last Updated:** 2026-08-15
+**Last Updated:** 2026-08-16
 
 ---
 
@@ -246,6 +246,37 @@ The Application Layer is responsible for:
 The Application Layer is deliberately **not** a second domain model: it does not redefine domain invariants and contains no HTML or presentation logic. SPEC-012 also establishes a deterministic demo evaluator and a minimal in-memory journey store so the vertical slice can be demonstrated and tested end to end without AI providers, network services, asynchronous workers, or a persistence layer. The evaluator and store are replaceable without changing learner-facing concepts.
 
 SPEC-012 deliberately introduces no authentication, user registration, Progress, mastery, proficiency, scoring, recommendations, personalization, or examination-specific logic.
+
+## Learner Experience and Visual Foundation
+
+SPEC-013 establishes the first coherent learner experience and visual foundation around the existing architecture. It is a presentation-layer change: the domain models and the SPEC-012 Application Layer remain unchanged, and all work lives in the Web/UI layer (Jinja2 templates, a centralized stylesheet, and small reusable presentation components).
+
+The learner-facing experience presents the underlying structure (Skills → Activities → Evaluation → Feedback → Reflection) as an invitation to learn:
+
+```
+Dashboard (invitation to explore)
+    ↓
+Practice (quiet, prompt-forward)
+    ↓
+Feedback (conversational Findings)
+    ↓
+Reflection (natural continuation)
+    ↓
+Completion (quiet acknowledgement)
+    ↓
+Back to the dashboard
+```
+
+SPEC-013 introduces:
+
+- a small design-system foundation (page container, typography hierarchy, buttons, links, cards, forms, field errors, feedback sections, completion messages) in `app/static/css/fablit.css`;
+- centralized design tokens (typography, spacing, colours, border radius, shadows, transitions, container widths) as CSS custom properties;
+- a warm-neutral + restrained-accent colour direction that communicates focus, invitation, and completion — never correct/incorrect or performance;
+- responsive behaviour for mobile, tablet, and desktop, with mobile-first card stacking;
+- accessibility as part of the experience: semantic HTML, a single-h1 document hierarchy, labelled form controls, a skip link, visible focus states, and reduced-motion support;
+- conversational, score-free presentation of structured Findings, and a quiet, non-gamified completion state.
+
+The frontend architecture remains server-rendered HTML + HTMX progressive enhancement + small reusable visual components. SPEC-013 introduces no React/Vue/Angular/SPA, no scoring or gamification, no Progress domain, no authentication, no recommendation engine, no AI evaluation dependency, and no examination-specific logic.
 
 ---
 

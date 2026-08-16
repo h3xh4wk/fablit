@@ -1,0 +1,431 @@
+/* ==========================================================================
+   Fablit — Learner Experience stylesheet (SPEC-013)
+
+   A small, reusable design-system foundation built on centralized design
+   tokens. The direction is calm, personal, spacious and editorial: a warm
+   neutral foundation with a restrained Fablit accent. Colour communicates
+   focus, invitation and interaction — never correct/incorrect or
+   performance. See SPEC-013 §28–29.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Design tokens (§29) — centralized visual values.
+   -------------------------------------------------------------------------- */
+:root {
+  /* Typography */
+  --font-display: Georgia, "Iowan Old Style", "Times New Roman", serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+
+  --text-display: clamp(2rem, 1.5rem + 2vw, 2.75rem);
+  --text-title: 1.5rem;
+  --text-heading: 1.125rem;
+  --text-body: 1.0625rem;
+  --text-small: 0.875rem;
+
+  --leading-tight: 1.25;
+  --leading-body: 1.65;
+
+  /* Spacing */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-8: 3rem;
+  --space-10: 4rem;
+  --space-12: 6rem;
+
+  /* Colours — warm neutral foundation + restrained Fablit accent (§9) */
+  --color-bg: #f8f4ee;
+  --color-surface: #fffdf9;
+  --color-ink: #2b2620;
+  --color-ink-muted: #6e6559;
+  --color-accent: #a85f3c;
+  --color-accent-hover: #8f4f2e;
+  --color-accent-soft: #f0e2d8;
+  --color-focus: #8c4a2a;
+  --color-error: #9c3a28;
+  --color-error-soft: #fbe9e4;
+  --color-rule: #e5dccf;
+
+  /* Border radius */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(43, 38, 32, 0.06);
+  --shadow-md: 0 4px 14px rgba(43, 38, 32, 0.08);
+
+  /* Transitions — short and subtle (§22–23) */
+  --transition-fast: 120ms ease;
+  --transition-base: 180ms ease;
+
+  /* Container widths */
+  --container-wide: 62rem;
+  --container-narrow: 40rem;
+}
+
+/* --------------------------------------------------------------------------
+   Base
+   -------------------------------------------------------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  color: var(--color-ink);
+  background-color: var(--color-bg);
+}
+
+h1,
+h2,
+h3,
+p,
+ul,
+ol,
+figure {
+  margin: 0;
+}
+
+ul,
+ol {
+  padding-left: 0;
+}
+
+/* Visible focus states for keyboard navigation (§27) */
+:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* --------------------------------------------------------------------------
+   Layout primitives (§28)
+   -------------------------------------------------------------------------- */
+
+/* Skip link — first tab stop, revealed on focus (§27) */
+.skip-link {
+  position: absolute;
+  top: 0;
+  left: var(--space-4);
+  z-index: 10;
+  padding: var(--space-2) var(--space-4);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  background: var(--color-ink);
+  color: var(--color-surface);
+  font-weight: 600;
+  text-decoration: none;
+  transform: translateY(-120%);
+  transition: transform var(--transition-fast);
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
+}
+
+.site-header {
+  max-width: var(--container-wide);
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-5) 0;
+}
+
+.site-header__brand {
+  font-family: var(--font-display);
+  font-size: var(--text-title);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--color-ink);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+.site-header__brand:hover {
+  color: var(--color-accent-hover);
+}
+
+.page {
+  max-width: var(--container-wide);
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-5) var(--space-12);
+}
+
+/* --------------------------------------------------------------------------
+   Typography hierarchy (§8)
+   -------------------------------------------------------------------------- */
+.display {
+  font-family: var(--font-display);
+  font-size: var(--text-display);
+  font-weight: 700;
+  line-height: var(--leading-tight);
+  margin-bottom: var(--space-5);
+}
+
+.lede {
+  max-width: 34em;
+  color: var(--color-ink-muted);
+  margin-bottom: var(--space-8);
+}
+
+/* --------------------------------------------------------------------------
+   Cards (§12, §28)
+   -------------------------------------------------------------------------- */
+.card-grid {
+  list-style: none;
+  display: grid;
+  gap: var(--space-5);
+  grid-template-columns: 1fr;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  background: var(--color-surface);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition-base), transform var(--transition-base);
+}
+
+.card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.card__title {
+  font-family: var(--font-display);
+  font-size: var(--text-title);
+  font-weight: 700;
+  line-height: var(--leading-tight);
+}
+
+.card__invitation {
+  color: var(--color-ink-muted);
+}
+
+.card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-top: auto;
+  padding-top: var(--space-3);
+}
+
+.card__skill {
+  font-size: var(--text-small);
+  color: var(--color-accent-hover);
+  background: var(--color-accent-soft);
+  border-radius: 999px;
+  padding: var(--space-1) var(--space-3);
+}
+
+.card__action {
+  font-weight: 600;
+  color: var(--color-accent);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color var(--transition-fast);
+}
+
+.card__action:hover {
+  color: var(--color-accent-hover);
+  text-decoration: underline;
+}
+
+/* --------------------------------------------------------------------------
+   Buttons and links (§28)
+   -------------------------------------------------------------------------- */
+.button {
+  display: inline-block;
+  padding: var(--space-3) var(--space-5);
+  font: inherit;
+  font-weight: 600;
+  color: var(--color-surface);
+  background: var(--color-accent);
+  border: 0;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background var(--transition-fast);
+}
+
+.button:hover {
+  background: var(--color-accent-hover);
+}
+
+.subnav {
+  margin-bottom: var(--space-6);
+}
+
+.subnav a {
+  color: var(--color-ink-muted);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+.subnav a:hover {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
+/* --------------------------------------------------------------------------
+   Forms (§16, §28)
+   -------------------------------------------------------------------------- */
+.form-label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
+
+.form-control {
+  width: 100%;
+  font: inherit;
+  color: var(--color-ink);
+  background: var(--color-surface);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  min-height: 3rem;
+  resize: vertical;
+  transition: border-color var(--transition-fast);
+}
+
+.form-control:focus-visible {
+  border-color: var(--color-focus);
+}
+
+.form-actions {
+  margin-top: var(--space-4);
+}
+
+.field-error {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  margin: var(--space-4) 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-error-soft);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-md);
+  color: var(--color-error);
+}
+
+.field-error::before {
+  content: "⚠";
+  flex-shrink: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Practice experience (§14–16) — visually quieter than the dashboard
+   -------------------------------------------------------------------------- */
+.practice,
+.feedback,
+.reflection,
+.completion {
+  max-width: var(--container-narrow);
+  margin: 0 auto;
+}
+
+.practice__prompt,
+.reflection__prompt {
+  font-family: var(--font-display);
+  font-size: clamp(1.375rem, 1.15rem + 1vw, 1.75rem);
+  font-weight: 600;
+  line-height: var(--leading-tight);
+  margin: var(--space-5) 0 var(--space-3);
+}
+
+.practice__skill {
+  font-size: var(--text-small);
+  color: var(--color-ink-muted);
+  margin-bottom: var(--space-6);
+}
+
+/* --------------------------------------------------------------------------
+   Feedback experience (§17–19)
+   -------------------------------------------------------------------------- */
+.feedback__activity {
+  color: var(--color-ink-muted);
+  margin-bottom: var(--space-6);
+}
+
+.feedback-section {
+  margin: var(--space-6) 0;
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--color-rule);
+}
+
+.feedback-section h2 {
+  font-size: var(--text-heading);
+  font-weight: 700;
+  margin-bottom: var(--space-3);
+}
+
+.feedback-section ul {
+  list-style: none;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.feedback-section li::before {
+  content: "—";
+  color: var(--color-accent);
+  margin-right: var(--space-2);
+}
+
+/* --------------------------------------------------------------------------
+   Completion experience (§21) — quiet acknowledgement, no victory
+   -------------------------------------------------------------------------- */
+.completion__note {
+  font-family: var(--font-display);
+  font-size: var(--text-title);
+  line-height: var(--leading-tight);
+  margin: var(--space-2) 0 var(--space-4);
+}
+
+.completion__detail {
+  color: var(--color-ink-muted);
+  margin-bottom: var(--space-6);
+}
+
+/* --------------------------------------------------------------------------
+   Responsive behaviour (§25–26): mobile → tablet → desktop
+   -------------------------------------------------------------------------- */
+@media (min-width: 40rem) {
+  .card-grid {
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  }
+
+  .site-header,
+  .page {
+    padding-left: var(--space-8);
+    padding-right: var(--space-8);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Reduced motion (§27)
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

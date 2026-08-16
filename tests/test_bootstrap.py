@@ -10,7 +10,8 @@ def test_homepage_renders_the_practice_dashboard() -> None:
         response = client.get("/")
 
     assert response.status_code == 200
-    assert "Start Practice" in response.text
+    assert "What would you like to explore?" in response.text
+    assert "Try it" in response.text
 
 
 def test_health_returns_healthy_status() -> None:

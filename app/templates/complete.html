@@ -1,7 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Completed{% endblock %}
+{% block title %}Done{% endblock %}
 {% block content %}
-<h1>Reflection saved ✓</h1>
-<p>{{ view.message }}</p>
-<a href="/">Back to Dashboard</a>
+<article class="completion">
+  <h1 class="display">That's one done.</h1>
+  <p class="completion__note">You tried something, thought about it, and came away with something new.</p>
+  <p class="completion__detail">{{ view.message }}</p>
+  <p class="form-actions">
+    <a class="button" href="/">Back to practice <span aria-hidden="true">→</span></a>
+  </p>
+</article>
 {% endblock %}

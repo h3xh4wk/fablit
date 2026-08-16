@@ -1,4 +1,10 @@
-"""Web/route tests for the learner practice flow (SPEC-012)."""
+"""Web/route tests for the learner experience (SPEC-012 journey, SPEC-013 presentation).
+
+SPEC-013 preserves the SPEC-012 end-to-end journey while adding SPEC-013
+presentation coverage: dashboard and activity-card rendering, responsive
+layout, accessible form controls, conversational feedback, quiet completion,
+and keyboard-navigation support.
+"""
 
 from __future__ import annotations
 
@@ -14,13 +20,28 @@ def _activity_hrefs(dashboard_html: str) -> list[str]:
     return re.findall(r'href="(/activities/[0-9a-f-]+)"', dashboard_html)
 
 
+def _submit_first_activity(client: TestClient) -> None:
+    """Submit a valid response to the first dashboard activity."""
+    dashboard = client.get("/")
+    href = _activity_hrefs(dashboard.text)[0]
+    client.post(href + "/submit", data={"response": "A thoughtful analysis."})
+
+
+def _visible_text(html: str) -> str:
+    """Strip tags so only visible text remains (hrefs carry ids legitimately)."""
+    return re.sub(r"<[^>]+>", " ", html)
+
+
+# --- Dashboard (SPEC-013 §11–13) --------------------------------------------
+
+
 def test_dashboard_renders_three_to_five_activities() -> None:
     with TestClient(app) as client:
         response = client.get("/")
 
     assert response.status_code == 200
     assert 3 <= len(_activity_hrefs(response.text)) <= 5
-    assert "Start Practice" in response.text
+    assert "Try it" in response.text
 
 
 def test_dashboard_displays_skill_names() -> None:
@@ -31,17 +52,59 @@ def test_dashboard_displays_skill_names() -> None:
     assert "Written Communication" in response.text
 
 
-def test_practice_page_shows_prompt_skills_and_response_field() -> None:
+def test_activity_cards_show_invitation_hierarchy() -> None:
+    """Cards present title → invitation → relevant Skill → action (SPEC-013 §12)."""
+    with TestClient(app) as client:
+        response = client.get("/")
+
+    html = response.text
+    assert "What would you like to explore?" in html
+    assert "Visual Analysis — Composition" in html
+    assert "Analyse the composition of this photograph." in html
+    assert "Try it" in html
+    assert len(_activity_hrefs(html)) >= 3
+
+
+def test_activity_cards_expose_no_internal_identifiers() -> None:
+    """No internal identifiers or technical metadata in visible card text (§12)."""
+    with TestClient(app) as client:
+        response = client.get("/")
+
+    visible = _visible_text(response.text)
+    assert re.search(r"\bposition\b", visible.lower()) is None
+    assert re.search(r"\bactivity[_-]?id\b", visible.lower()) is None
+    for activity_id in re.findall(r"/activities/([0-9a-f-]+)", response.text):
+        assert activity_id not in visible
+
+
+# --- Practice (SPEC-013 §14–16) ----------------------------------------------
+
+
+def test_practice_page_emphasises_prompt_with_accessible_response_field() -> None:
     with TestClient(app) as client:
         dashboard = client.get("/")
         href = _activity_hrefs(dashboard.text)[0]
         response = client.get(href)
 
     assert response.status_code == 200
-    assert "What am I being asked to do?" in response.text
+    assert "Visual Analysis — Composition" in response.text
+    assert "Look at the photograph provided" in response.text
     assert "Visual Analysis" in response.text
     assert 'name="response"' in response.text
-    assert "Submit Response" in response.text
+    assert 'id="response"' in response.text
+    assert 'for="response"' in response.text
+    assert "Submit response" in response.text
+
+
+def test_practice_page_is_quieter_than_the_dashboard() -> None:
+    """The practice page carries no activity cards and no dashboard actions."""
+    with TestClient(app) as client:
+        dashboard = client.get("/")
+        href = _activity_hrefs(dashboard.text)[0]
+        response = client.get(href)
+
+    assert _activity_hrefs(response.text) == []
+    assert "Try it" not in response.text
 
 
 def test_submit_response_redirects_to_feedback() -> None:
@@ -72,25 +135,41 @@ def test_invalid_response_shows_validation_message() -> None:
     assert "Please enter a response before submitting." in response.text
 
 
-def test_feedback_page_shows_structured_feedback() -> None:
+# --- Feedback (SPEC-013 §17–19) ----------------------------------------------
+
+
+def test_feedback_presents_conversational_sections() -> None:
     with TestClient(app) as client:
-        dashboard = client.get("/")
-        href = _activity_hrefs(dashboard.text)[0]
-        client.post(href + "/submit", data={"response": "A thoughtful analysis."})
+        _submit_first_activity(client)
         response = client.get("/feedback")
 
     assert response.status_code == 200
-    assert "What you did well" in response.text
-    assert "Where you can improve" in response.text
+    assert "A little feedback" in response.text
+    assert "What you noticed" in response.text
+    assert "What to think about" in response.text
     assert "Try this next" in response.text
+    assert "Reflect" in response.text
     assert "You identified the dominant visual elements" in response.text
 
 
-def test_reflection_page_shows_prompt_and_context() -> None:
+def test_feedback_avoids_score_and_grade_language() -> None:
+    """Learner-facing feedback never uses score/grade/pass/fail language (§18, §34)."""
     with TestClient(app) as client:
-        dashboard = client.get("/")
-        href = _activity_hrefs(dashboard.text)[0]
-        client.post(href + "/submit", data={"response": "A thoughtful analysis."})
+        _submit_first_activity(client)
+        response = client.get("/feedback")
+
+    lowered = response.text.lower()
+    forbidden = ("score", "grade", "penalty", "passed", "failed", "incorrect", "%")
+    for word in forbidden:
+        assert word not in lowered
+
+
+# --- Reflection (SPEC-013 §20) -----------------------------------------------
+
+
+def test_reflection_page_shows_purposeful_prompt_and_accessible_field() -> None:
+    with TestClient(app) as client:
+        _submit_first_activity(client)
         response = client.get("/reflect")
 
     assert response.status_code == 200
@@ -98,15 +177,15 @@ def test_reflection_page_shows_prompt_and_context() -> None:
         "What will you try differently the next time you practise this skill?"
         in response.text
     )
-    assert "Your feedback" in response.text
+    assert 'id="content"' in response.text
+    assert 'for="content"' in response.text
     assert 'name="content"' in response.text
+    assert "Save reflection" in response.text
 
 
 def test_submit_reflection_redirects_to_completion() -> None:
     with TestClient(app) as client:
-        dashboard = client.get("/")
-        href = _activity_hrefs(dashboard.text)[0]
-        client.post(href + "/submit", data={"response": "A thoughtful analysis."})
+        _submit_first_activity(client)
         response = client.post(
             "/reflect",
             data={"content": "I will compare two elements."},
@@ -119,9 +198,7 @@ def test_submit_reflection_redirects_to_completion() -> None:
 
 def test_empty_reflection_shows_validation_message() -> None:
     with TestClient(app) as client:
-        dashboard = client.get("/")
-        href = _activity_hrefs(dashboard.text)[0]
-        client.post(href + "/submit", data={"response": "A thoughtful analysis."})
+        _submit_first_activity(client)
         response = client.post(
             "/reflect",
             data={"content": ""},
@@ -132,18 +209,23 @@ def test_empty_reflection_shows_validation_message() -> None:
     assert "Please enter a reflection before saving." in response.text
 
 
-def test_completion_page_confirms_completion_and_navigates_home() -> None:
+# --- Completion (SPEC-013 §21) -----------------------------------------------
+
+
+def test_completion_is_quiet_and_offers_route_back_to_practice() -> None:
     with TestClient(app) as client:
-        dashboard = client.get("/")
-        href = _activity_hrefs(dashboard.text)[0]
-        client.post(href + "/submit", data={"response": "A thoughtful analysis."})
+        _submit_first_activity(client)
         client.post("/reflect", data={"content": "I will compare two elements."})
         response = client.get("/complete")
 
     assert response.status_code == 200
-    assert "Reflection saved" in response.text
+    assert "That's one done." in response.text
     assert "You have completed this practice." in response.text
+    assert "Back to practice" in response.text
     assert 'href="/"' in response.text
+
+
+# --- Journey guards -----------------------------------------------------------
 
 
 def test_unknown_activity_returns_friendly_not_found() -> None:
@@ -174,7 +256,7 @@ def test_completion_page_without_journey_redirects_to_dashboard() -> None:
 
 
 def test_full_learner_journey_end_to_end() -> None:
-    """Walk the complete SPEC-012 §33 learner journey over HTTP."""
+    """Walk the complete SPEC-012 §33 learner journey over HTTP (SPEC-013 §40)."""
     with TestClient(app) as client:
         dashboard = client.get("/")
         assert dashboard.status_code == 200
@@ -182,13 +264,13 @@ def test_full_learner_journey_end_to_end() -> None:
 
         practice = client.get(href)
         assert practice.status_code == 200
-        assert "What am I being asked to do?" in practice.text
+        assert "Look at the photograph provided" in practice.text
 
         submitted = client.post(
             href + "/submit",
             data={"response": "The composition is dominated by the central subject."},
         )
-        assert "What you did well" in submitted.text
+        assert "A little feedback" in submitted.text
 
         feedback = client.get("/feedback")
         assert "Try this next" in feedback.text
@@ -200,10 +282,64 @@ def test_full_learner_journey_end_to_end() -> None:
             "/reflect",
             data={"content": "I will explain how the elements interact."},
         )
-        assert "Reflection saved" in saved.text
+        assert "That's one done." in saved.text
 
         complete = client.get("/complete")
         assert "You have completed this practice." in complete.text
 
         back_home = client.get("/")
-        assert "Start Practice" in back_home.text
+        assert "Try it" in back_home.text
+
+
+# --- Responsive behaviour (SPEC-013 §25–26) -----------------------------------
+
+
+def test_responsive_layout_has_viewport_meta_and_css_breakpoints() -> None:
+    with TestClient(app) as client:
+        dashboard = client.get("/")
+        css = client.get("/static/css/fablit.css")
+
+    assert 'name="viewport"' in dashboard.text
+    assert css.status_code == 200
+    assert "@media" in css.text
+    assert "grid-template-columns" in css.text
+    assert "repeat(auto-fit" in css.text
+
+
+def test_design_tokens_are_centralized_in_css() -> None:
+    """Visual values live in centralized tokens (SPEC-013 §29)."""
+    with TestClient(app) as client:
+        css = client.get("/static/css/fablit.css")
+
+    for token in ("--font-", "--space-", "--color-", "--radius-", "--container-"):
+        assert token in css.text
+
+
+# --- Accessibility (SPEC-013 §27) ---------------------------------------------
+
+
+def test_each_page_has_a_single_h1_document_hierarchy() -> None:
+    with TestClient(app) as client:
+        dashboard = client.get("/")
+        href = _activity_hrefs(dashboard.text)[0]
+        practice = client.get(href)
+        _submit_first_activity(client)
+        feedback = client.get("/feedback")
+        reflection = client.get("/reflect")
+        client.post("/reflect", data={"content": "I will compare two elements."})
+        completion = client.get("/complete")
+
+    for page in (dashboard, practice, feedback, reflection, completion):
+        assert len(re.findall(r"<h1", page.text)) == 1
+
+
+def test_keyboard_navigation_support_is_defined() -> None:
+    """Skip link, keyboard reachability, and visible focus styles are present (§27)."""
+    with TestClient(app) as client:
+        dashboard = client.get("/")
+        css = client.get("/static/css/fablit.css")
+
+    assert "Skip to content" in dashboard.text
+    assert 'href="#main"' in dashboard.text
+    assert ":focus-visible" in css.text
+    assert "prefers-reduced-motion" in css.text

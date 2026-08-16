@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block title %}{{ message }}{% endblock %}
 {% block content %}
-<h1>{{ message }}</h1>
-<a href="/">Back to Dashboard</a>
+<section class="completion">
+  <h1 class="display">{{ message }}</h1>
+  <p class="form-actions">
+    <a class="button" href="/">Back to practice</a>
+  </p>
+</section>
 {% endblock %}
