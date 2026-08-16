@@ -2,7 +2,7 @@
 
 Fablit is an open-source educational platform for helping learners build practical skills through deliberate practice, meaningful feedback, and continuous reflection.
 
-This repository implements **SPEC-001 — Bootstrap Platform**, **SPEC-002 — Engineering Toolchain**, **SPEC-003 — Configuration & Logging**, **SPEC-004 — Shared Platform Services**, **SPEC-005 — Assessment Activity Domain Foundation**, **SPEC-006 — Submission Domain Foundation**, **SPEC-007 — Evaluation Domain Foundation**, **SPEC-008 — Feedback Domain Foundation**, **SPEC-009 — Reflection Domain Foundation**, **SPEC-010 — Skill Domain Foundation**, **SPEC-011 — Skill–Assessment Activity Association**, and **SPEC-012 — Learner Practice Application Flow**. It intentionally avoids Skill Labs, Content Packs, learner accounts, authentication, databases, AI services, analytics, user management, and recommendation logic.
+This repository implements **SPEC-001 — Bootstrap Platform**, **SPEC-002 — Engineering Toolchain**, **SPEC-003 — Configuration & Logging**, **SPEC-004 — Shared Platform Services**, **SPEC-005 — Assessment Activity Domain Foundation**, **SPEC-006 — Submission Domain Foundation**, **SPEC-007 — Evaluation Domain Foundation**, **SPEC-008 — Feedback Domain Foundation**, **SPEC-009 — Reflection Domain Foundation**, **SPEC-010 — Skill Domain Foundation**, **SPEC-011 — Skill–Assessment Activity Association**, **SPEC-012 — Learner Practice Application Flow**, and **SPEC-013 — Learner Experience & Visual Foundation**. It intentionally avoids Skill Labs, Content Packs, learner accounts, authentication, databases, AI services, analytics, user management, recommendation logic, scoring, gamification, and Progress tracking.
 
 ## Requirements
 
@@ -46,6 +46,8 @@ The platform exposes:
 - `GET /redoc` — FastAPI ReDoc documentation
 
 The learner experience is server-rendered HTML (Jinja2 templates) enhanced with HTMX (vendored under `app/static/`); the core journey works without JavaScript. A deterministic demo evaluator (no AI, no network, no async workers) drives the feedback step, and the journey is preserved in memory for the vertical slice.
+
+SPEC-013 wraps that journey in a calm, personal learner experience: the dashboard reads as an invitation to explore, the practice page is quiet and prompt-forward, structured Findings are presented conversationally (no scores), reflection flows naturally from feedback, and completion is a quiet acknowledgement with a clear route back to practice. Visual consistency comes from a small design-system foundation and centralized design tokens in `app/static/css/fablit.css` (typography, spacing, colours, border radius, shadows, transitions, container widths), with responsive layouts for mobile, tablet, and desktop, and accessibility built in (skip link, labelled fields, visible focus states, reduced-motion support).
 
 ## Configuration and logging
 
@@ -94,7 +96,7 @@ SPEC-012 introduces the first application layer under `fablit.application`, sepa
 - `LearnerJourneyStore` — a minimal in-memory store preserving the Submission → Evaluation → Feedback → Reflection chain for the vertical slice
 - Demo content: 3–5 practice activities across the Visual Analysis, Written Communication, and Critical Observation Skills, with a stable demo learner context
 
-The vertical slice introduces no authentication, scoring, Progress, mastery, recommendations, or examination-specific logic.
+The vertical slice introduces no authentication, scoring, Progress, mastery, recommendations, gamification, or examination-specific logic.
 
 ## Quality checks
 

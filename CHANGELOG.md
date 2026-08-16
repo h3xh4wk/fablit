@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **SPEC-013 — Learner Experience & Visual Foundation**: first coherent learner experience and visual foundation around the SPEC-012 journey, implemented entirely in the Web/UI layer — the domain models and the SPEC-012 Application Layer are unchanged.
+  - Dashboard redesigned as an invitation to learn: activity cards present title → invitation → relevant Skill → action (`Try it`), with no internal identifiers or technical metadata visible.
+  - Practice page is visually quieter than the dashboard, with the prompt strongly emphasized and a comfortable, clearly labelled response area; existing validation behaviour retained.
+  - Feedback presented conversationally (`A little feedback` / `What you noticed` / `What to think about` / `Try this next` / `Reflect`), translating structured Findings into learner-friendly language with no score/grade/pass/fail terminology.
+  - Reflection reads as a natural continuation of feedback with the purposeful SPEC-012 prompt retained.
+  - Completion is a quiet acknowledgement (`That's one done.`) with a clear route back to practice — no victory, defeat, ranking, or score.
+  - Minimum design-system foundation and centralized design tokens (typography, spacing, colours, border radius, shadows, transitions, container widths) in `app/static/css/fablit.css`.
+  - Responsive behaviour for mobile, tablet, and desktop (mobile-first card stacking); accessibility improvements including a skip link, labelled form controls, single-h1 document hierarchy, visible focus states, and reduced-motion support.
+  - Core journey preserved end to end and still usable without JavaScript; HTMX remains progressive enhancement.
+  - Web/route, bootstrap, and opt-in browser tests updated and extended (mobile viewport journey, keyboard navigation); all domain and application tests continue to pass.
+  - Documentation updates to the Architecture Blueprint and README.
+
+See [SPEC-013](specifications/platform/SPEC-013-learner-experience-and-visual-foundation.md) for details.
+
 - **SPEC-012 — Learner Practice Application Flow**: first user-facing vertical slice of Fablit, establishing the first Application Layer (`fablit.application`) between the Web/UI and the existing learning domain.
   - `PracticeApplication` use-case facade implementing UC-001–UC-007: dashboard retrieval, start practice, submit response, demo evaluation, feedback presentation, reflection, and completion.
   - Learner-facing view models (`PracticeDashboardView`, `PracticeActivityView`, `FeedbackView`, `ReflectionView`, `CompletionView`) that keep presentation concerns out of domain objects.

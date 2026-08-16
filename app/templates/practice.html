@@ -1,23 +1,22 @@
 {% extends "base.html" %}
 {% block title %}{{ view.title }}{% endblock %}
 {% block content %}
-<a href="/">&larr; Back to Dashboard</a>
-<h1>{{ view.title }}</h1>
-<p>{{ view.description }}</p>
-<h2>Skills</h2>
-<ul>
-  {% for skill in view.skills %}
-  <li>{{ skill }}</li>
-  {% endfor %}
-</ul>
-<h2>What am I being asked to do?</h2>
-<p>{{ view.prompt }}</p>
-{% if error %}
-<p class="error" role="alert">{{ error }}</p>
-{% endif %}
-<form method="post" action="/activities/{{ view.id }}/submit">
-  <label for="response">Your response</label>
-  <textarea id="response" name="response" rows="6" required>{{ submitted_response or "" }}</textarea>
-  <button type="submit">Submit Response</button>
-</form>
+<article class="practice">
+  <nav class="subnav" aria-label="Back to the activity list">
+    <a href="/"><span aria-hidden="true">←</span> All activities</a>
+  </nav>
+  <h1 class="practice__title">{{ view.title }}</h1>
+  <p class="practice__prompt">{{ view.prompt }}</p>
+  <p class="practice__skill">Practising: {{ view.skills|join(", ") }}</p>
+  {% if error %}
+  <p class="field-error" role="alert">{{ error }}</p>
+  {% endif %}
+  <form method="post" action="/activities/{{ view.id }}/submit">
+    <label class="form-label" for="response">Your response</label>
+    <textarea id="response" name="response" class="form-control" rows="8" required>{{ submitted_response or "" }}</textarea>
+    <p class="form-actions">
+      <button type="submit" class="button">Submit response</button>
+    </p>
+  </form>
+</article>
 {% endblock %}

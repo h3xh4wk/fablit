@@ -1,5 +1,13 @@
 # Static assets
 
+## css/fablit.css
+
+The Fablit learner-experience stylesheet (SPEC-013). Contains the centralized
+design tokens (typography, spacing, colours, border radius, shadows,
+transitions, container widths) and the small design-system primitives (page
+container, type hierarchy, buttons, links, cards, forms, field errors,
+feedback sections, completion messages). Served from `app/templates/base.html`.
+
 ## htmx.min.js
 
 Vendored for offline, deterministic development and tests (SPEC-012 §25).

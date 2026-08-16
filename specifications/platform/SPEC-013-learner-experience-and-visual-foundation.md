@@ -1,11 +1,11 @@
 ````markdown
 # SPEC-013 — Learner Experience & Visual Foundation
 
-**Specification ID:** SPEC-013  
-**Title:** Learner Experience & Visual Foundation  
-**Version:** 0.1.0  
-**Status:** Draft  
-**Priority:** High  
+**Specification ID:** SPEC-013
+**Title:** Learner Experience & Visual Foundation
+**Version:** 0.1.0
+**Status:** Draft
+**Priority:** High
 **Epic:** First Learner Experience
 
 ---
