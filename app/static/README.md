@@ -8,6 +8,12 @@ transitions, container widths) and the small design-system primitives (page
 container, type hierarchy, buttons, links, cards, forms, field errors,
 feedback sections, completion messages). Served from `app/templates/base.html`.
 
+## favicon.svg
+
+The Fablit brand mark for the browser tab (an "F" on the design-system accent
+colour). Declared in `app/templates/base.html` so browsers stop requesting a
+non-existent `/favicon.ico`.
+
 ## htmx.min.js
 
 Vendored for offline, deterministic development and tests (SPEC-012 §25).

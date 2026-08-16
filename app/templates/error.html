@@ -3,6 +3,9 @@
 {% block content %}
 <section class="completion">
   <h1 class="display">{{ message }}</h1>
+  {% if description %}
+  <p class="completion__detail">{{ description }}</p>
+  {% endif %}
   <p class="form-actions">
     <a class="button" href="/">Back to practice</a>
   </p>

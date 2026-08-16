@@ -2,7 +2,7 @@
 
 Fablit is an open-source educational platform for helping learners build practical skills through deliberate practice, meaningful feedback, and continuous reflection.
 
-This repository implements **SPEC-001 — Bootstrap Platform**, **SPEC-002 — Engineering Toolchain**, **SPEC-003 — Configuration & Logging**, **SPEC-004 — Shared Platform Services**, **SPEC-005 — Assessment Activity Domain Foundation**, **SPEC-006 — Submission Domain Foundation**, **SPEC-007 — Evaluation Domain Foundation**, **SPEC-008 — Feedback Domain Foundation**, **SPEC-009 — Reflection Domain Foundation**, **SPEC-010 — Skill Domain Foundation**, **SPEC-011 — Skill–Assessment Activity Association**, **SPEC-012 — Learner Practice Application Flow**, and **SPEC-013 — Learner Experience & Visual Foundation**. It intentionally avoids Skill Labs, Content Packs, learner accounts, authentication, databases, AI services, analytics, user management, recommendation logic, scoring, gamification, and Progress tracking.
+This repository implements **SPEC-001 — Bootstrap Platform**, **SPEC-002 — Engineering Toolchain**, **SPEC-003 — Configuration & Logging**, **SPEC-004 — Shared Platform Services**, **SPEC-005 — Assessment Activity Domain Foundation**, **SPEC-006 — Submission Domain Foundation**, **SPEC-007 — Evaluation Domain Foundation**, **SPEC-008 — Feedback Domain Foundation**, **SPEC-009 — Reflection Domain Foundation**, **SPEC-010 — Skill Domain Foundation**, **SPEC-011 — Skill–Assessment Activity Association**, **SPEC-012 — Learner Practice Application Flow**, **SPEC-013 — Learner Experience & Visual Foundation**, and **SPEC-014 — Learner Pilot Deployment**. It intentionally avoids Skill Labs, Content Packs, learner accounts, authentication, databases, AI services, analytics, user management, recommendation logic, scoring, gamification, and Progress tracking; production readiness (backups, monitoring, security hardening, scalability, and a full security assessment) is deliberately deferred to a separate assessment.
 
 ## Requirements
 
@@ -42,10 +42,16 @@ The platform exposes:
 - `GET /complete` — the completion confirmation
 - `GET /health` — returns `{ "status": "healthy" }`
 - `GET /metrics` — returns in-memory Prometheus-style metrics
-- `GET /docs` — FastAPI Swagger UI
-- `GET /redoc` — FastAPI ReDoc documentation
+- `GET /docs` — FastAPI Swagger UI (development and testing environments only)
+- `GET /redoc` — FastAPI ReDoc documentation (development and testing environments only)
 
 The learner experience is server-rendered HTML (Jinja2 templates) enhanced with HTMX (vendored under `app/static/`); the core journey works without JavaScript. A deterministic demo evaluator (no AI, no network, no async workers) drives the feedback step, and the journey is preserved in memory for the vertical slice.
+
+## Pilot deployment (SPEC-014)
+
+SPEC-014 makes the current learner experience pilot-ready by placing an operational boundary around it — no new learning capability and no new domain concept. The pilot environment is driven entirely by environment-variable configuration, exposes no development interfaces or internals to learners (API documentation is disabled in `production`, unhandled errors render a learner-friendly page), and keeps the existing in-memory persistence, which is acceptable for the pilot and documented as such.
+
+See [docs/engineering/deployment.md](docs/engineering/deployment.md) for the full deployment guide (target, runtime, environment variables, startup, persistence behaviour, health check, logs, restart, rollback, and known limitations), and [docs/pilot/](docs/pilot/README.md) for learner instructions and the lightweight feedback-recording mechanism.
 
 SPEC-013 wraps that journey in a calm, personal learner experience: the dashboard reads as an invitation to explore, the practice page is quiet and prompt-forward, structured Findings are presented conversationally (no scores), reflection flows naturally from feedback, and completion is a quiet acknowledgement with a clear route back to practice. Visual consistency comes from a small design-system foundation and centralized design tokens in `app/static/css/fablit.css` (typography, spacing, colours, border radius, shadows, transitions, container widths), with responsive layouts for mobile, tablet, and desktop, and accessibility built in (skip link, labelled fields, visible focus states, reduced-motion support).
 
@@ -127,12 +133,6 @@ make e2e
 
 If you have an existing Chromium/Chrome binary instead of a Playwright download, point Playwright at it with `PLAYWRIGHT_EXECUTABLE_PATH` (root containers may also need `PLAYWRIGHT_NO_SANDBOX=1`).
 
-## PythonAnywhere deployment notes
+## PythonAnywhere deployment
 
-The ASGI application object is available at:
-
-```text
-app.main:app
-```
-
-PythonAnywhere deployments should install dependencies with uv and point the web app configuration at the `app.main:app` ASGI application.
+The ASGI application object is available at `app.main:app`. The SPEC-014 pilot runs on PythonAnywhere (see [ADR-008](docs/adr/ADR-008-pythonanywhere-deployment.md)); follow [docs/engineering/deployment.md](docs/engineering/deployment.md) for the complete, reproducible deployment process.
