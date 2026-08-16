@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **SPEC-014 — Learner Pilot Deployment**: operational boundary around the existing SPEC-013 learner experience so a small group of real learners can use Fablit safely and reliably — no new learning capability and no new domain concept.
+  - `create_app(config)` application factory so environment-specific safety settings can be applied and tested; the module-level `app` remains available as `app.main:app`.
+  - Learner-facing error handling: unhandled errors now render a simple error page (`Something went wrong.`) with no stack traces, file paths, environment variables, or framework debugging pages; the full exception is logged server-side for investigation.
+  - Development-only interfaces (Swagger UI, ReDoc, OpenAPI schema) are disabled in the `production` environment; `FABLIT_DEBUG` now drives FastAPI debug mode.
+  - Deployment guide (`docs/engineering/deployment.md`) covering the PythonAnywhere target, required runtime, environment variables, build/install, startup command, persistence behaviour, health check, log access, restart procedure, rollback, safety boundary, verification, and known pilot limitations.
+  - Pilot operations docs (`docs/pilot/`): learner instructions (the single-line invitation), a lightweight structured feedback-recording template, and the evidence-driven loop.
+  - Persistence explicitly verified as acceptable for the pilot: the in-memory `LearnerJourneyStore` is documented (what/where/how long/restart behaviour); no persistence upgrade introduced.
+  - Web/route tests for the deployment boundary (`tests/web/test_deployment.py`); all existing automated suites continue to pass.
+
+See [SPEC-014](specifications/platform/SPEC-014-learner-pilot-deployment.md) for details.
+
 - **SPEC-013 — Learner Experience & Visual Foundation**: first coherent learner experience and visual foundation around the SPEC-012 journey, implemented entirely in the Web/UI layer — the domain models and the SPEC-012 Application Layer are unchanged.
   - Dashboard redesigned as an invitation to learn: activity cards present title → invitation → relevant Skill → action (`Try it`), with no internal identifiers or technical metadata visible.
   - Practice page is visually quieter than the dashboard, with the prompt strongly emphasized and a comfortable, clearly labelled response area; existing validation behaviour retained.

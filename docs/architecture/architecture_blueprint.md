@@ -1,7 +1,7 @@
 # Fablit Architecture Blueprint
 
 **Document ID:** AB-001
-**Version:** 0.3.0
+**Version:** 0.4.0
 **Status:** Draft
 **Last Updated:** 2026-08-16
 
@@ -277,6 +277,44 @@ SPEC-013 introduces:
 - conversational, score-free presentation of structured Findings, and a quiet, non-gamified completion state.
 
 The frontend architecture remains server-rendered HTML + HTMX progressive enhancement + small reusable visual components. SPEC-013 introduces no React/Vue/Angular/SPA, no scoring or gamification, no Progress domain, no authentication, no recommendation engine, no AI evaluation dependency, and no examination-specific logic.
+
+---
+
+## Learner Pilot Deployment
+
+SPEC-014 introduces no new domain capability. It establishes an operational boundary around the existing system so the current learner experience can be placed in front of a small group of real learners (approximately 5–10) safely and reliably:
+
+```
+                    Real Learner
+                         │
+                         ▼
+                   Public HTTPS
+                         │
+                         ▼
+                  Fablit Web/UI
+                         │
+                         ▼
+                   Application
+                         │
+                         ▼
+                      Domain
+                         │
+                         ▼
+                   Persistence
+```
+
+Implemented in SPEC-014:
+
+- a dedicated pilot environment (PythonAnywhere, per ADR-008) separate from local development, reproducible from the repository, with a stable HTTPS URL and managed TLS;
+- environment-variable configuration with nothing environment-specific hard-coded and no committed secrets;
+- a documented, deterministic startup mechanism (`app.main:app` served by uvicorn) that does not require a developer to start a local process after restart;
+- explicit persistence verification: the current in-process `LearnerJourneyStore` (SPEC-012) is acceptable for the pilot, with restart behaviour documented and no upgrade introduced;
+- a learner-facing error page with no stack traces, internal paths, environment variables, credentials, or framework debugging pages; full details are written to server logs only;
+- a safety boundary that disables development-only interfaces (API documentation) and debug output in the production environment and exposes no admin endpoints, dev tools, or secrets;
+- basic application logs, a simple health check (`GET /health` → `200 OK`), a Git-based rollback path, and deployment/browser/mobile/accessibility verification against the real public URL;
+- pilot operations tooling: minimal learner instructions and a lightweight structured feedback-recording mechanism feeding the evidence-driven loop (Deploy → Observe → Collect feedback → Identify patterns → Form findings → Discuss implications → Define next specification).
+
+SPEC-014 is deliberately **pilot-ready, not production-ready**: authentication, authorization, data privacy, backups, monitoring, security hardening, scalability, formal analytics, content management, and operational support remain future work.
 
 ---
 
