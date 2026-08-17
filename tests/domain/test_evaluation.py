@@ -183,6 +183,42 @@ def test_findings_are_referenceable_by_identity_without_position() -> None:
     assert by_identity.observation == "A specific observation."
 
 
+def test_finding_can_carry_evidence() -> None:
+    finding = make_finding(evidence="contrast")
+
+    assert finding.evidence == "contrast"
+
+
+def test_finding_without_evidence_is_valid() -> None:
+    finding = make_finding()
+
+    assert finding.evidence is None
+
+
+def test_reject_finding_with_blank_evidence() -> None:
+    with pytest.raises(InvalidEvaluationFindingError, match="evidence"):
+        make_finding(evidence="   ")
+
+
+def test_reject_finding_with_empty_evidence() -> None:
+    with pytest.raises(InvalidEvaluationFindingError, match="evidence"):
+        make_finding(evidence="")
+
+
+def test_reject_finding_with_non_string_evidence() -> None:
+    with pytest.raises(InvalidEvaluationFindingError, match="evidence"):
+        make_finding(evidence=42)
+
+
+def test_finding_evidence_survives_replace() -> None:
+    finding = make_finding()
+
+    grounded = replace(finding, evidence="negative space")
+
+    assert grounded.evidence == "negative space"
+    assert finding.evidence is None
+
+
 def test_reject_finding_without_identity() -> None:
     with pytest.raises(InvalidEvaluationFindingError, match="identity"):
         make_finding(id=None)

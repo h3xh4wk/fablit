@@ -21,10 +21,17 @@ def _activity_hrefs(dashboard_html: str) -> list[str]:
 
 
 def _submit_first_activity(client: TestClient) -> None:
-    """Submit a valid response to the first dashboard activity."""
+    """Submit a response to the first dashboard activity (the composition activity)."""
     dashboard = client.get("/")
     href = _activity_hrefs(dashboard.text)[0]
-    client.post(href + "/submit", data={"response": "A thoughtful analysis."})
+    client.post(
+        href + "/submit",
+        data={
+            "response": (
+                "The contrast between the subject and the dark background stands out."
+            )
+        },
+    )
 
 
 def _visible_text(html: str) -> str:
@@ -96,6 +103,44 @@ def test_practice_page_emphasises_prompt_with_accessible_response_field() -> Non
     assert "Submit response" in response.text
 
 
+# --- Visual stimulus presentation (SPEC-015 §24–26) ---------------------------
+
+
+def test_practice_page_displays_the_visual_stimulus() -> None:
+    """The resolved image is presented before the observation prompt (§24)."""
+    with TestClient(app) as client:
+        dashboard = client.get("/")
+        href = _activity_hrefs(dashboard.text)[0]
+        response = client.get(href)
+
+    assert response.status_code == 200
+    assert 'src="/static/images/stimulus-composition.svg"' in response.text
+    assert "Fablit demo stimulus" in response.text
+    assert "Source" in response.text
+
+
+def test_practice_page_stimulus_has_meaningful_alt_text() -> None:
+    """The image carries meaningful alternative text (§26)."""
+    with TestClient(app) as client:
+        dashboard = client.get("/")
+        href = _activity_hrefs(dashboard.text)[0]
+        response = client.get(href)
+
+    assert 'alt="A photograph-style composition for visual analysis."' in response.text
+
+
+def test_non_stimulus_activity_practice_page_has_no_image() -> None:
+    """Activities that do not depend on a stimulus present no image (§6)."""
+    with TestClient(app) as client:
+        dashboard = client.get("/")
+        href = _activity_hrefs(dashboard.text)[1]
+        response = client.get(href)
+
+    assert response.status_code == 200
+    assert "Written Communication" in response.text
+    assert "<img" not in response.text
+
+
 def test_practice_page_is_quieter_than_the_dashboard() -> None:
     """The practice page carries no activity cards and no dashboard actions."""
     with TestClient(app) as client:
@@ -149,7 +194,58 @@ def test_feedback_presents_conversational_sections() -> None:
     assert "What to think about" in response.text
     assert "Try this next" in response.text
     assert "Reflect" in response.text
-    assert "You identified the dominant visual elements" in response.text
+    assert "You noticed the contrast in the image" in response.text
+
+
+def test_feedback_is_response_aware() -> None:
+    """Feedback reflects what the learner wrote, not predefined text (§35, §61)."""
+    with TestClient(app) as client:
+        dashboard = client.get("/")
+        href = _activity_hrefs(dashboard.text)[0]
+        client.post(
+            href + "/submit",
+            data={
+                "response": (
+                    "The model stands out because she is surrounded "
+                    "by a lot of empty space."
+                )
+            },
+        )
+        response = client.get("/feedback")
+
+    assert response.status_code == 200
+    assert "empty space" in response.text
+
+
+def test_different_responses_produce_different_feedback() -> None:
+    """Different learner responses result in different findings (SPEC-015 §69)."""
+    with TestClient(app) as client:
+        dashboard = client.get("/")
+        href = _activity_hrefs(dashboard.text)[0]
+        client.post(
+            href + "/submit",
+            data={
+                "response": (
+                    "The contrast between the subject and the dark "
+                    "background stands out."
+                )
+            },
+        )
+        contrast_feedback = client.get("/feedback").text
+
+        client.post(
+            href + "/submit",
+            data={
+                "response": (
+                    "The leading lines carry my eye from the foreground to the model."
+                )
+            },
+        )
+        lines_feedback = client.get("/feedback").text
+
+    assert "You noticed the contrast in the image" in contrast_feedback
+    assert "You noticed the contrast in the image" not in lines_feedback
+    assert "lines" in lines_feedback
 
 
 def test_feedback_avoids_score_and_grade_language() -> None:

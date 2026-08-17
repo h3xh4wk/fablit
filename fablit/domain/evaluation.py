@@ -1,4 +1,4 @@
-"""Evaluation domain model (SPEC-007)."""
+"""Evaluation domain model (SPEC-007, SPEC-015)."""
 
 from __future__ import annotations
 
@@ -19,22 +19,29 @@ class EvaluationFinding:
     It is deliberately not a score.
 
     The initial structure is intentionally small and extensible: a stable
-    identity plus the meaningful observation text. Future specifications may
-    refine the Finding structure (for example adding evidence, criteria
-    references, or categories) without redesigning the Evaluation aggregate.
+    identity, the meaningful observation text, and (SPEC-015 §31) an optional
+    piece of evidence explaining why the Finding was produced — a response
+    excerpt, a matched concept, or another evaluator-supported reference.
+    The evidence grounds the Finding in the learner's actual response so
+    evaluation is response-aware rather than predefined (§29–30).
 
     Attributes:
         observation: The meaningful observation or judgement about the
             learner's work. Must be non-empty.
         id: The stable, unique domain identity. Generated when omitted.
+        evidence: Optional evidence supporting the Finding (a response
+            excerpt or matched concept). Must be a non-blank string when
+            present; ``None`` when the Finding carries no evidence.
 
     Raises:
-        InvalidEvaluationFindingError: When the identity is invalid or the
-            observation is empty/blank.
+        InvalidEvaluationFindingError: When the identity is invalid, the
+            observation is empty/blank, or the evidence is present but
+            empty/whitespace-only.
     """
 
     observation: str
     id: UUID = field(default_factory=uuid4)
+    evidence: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.id, UUID):
@@ -45,6 +52,13 @@ class EvaluationFinding:
             raise InvalidEvaluationFindingError(
                 "an evaluation finding must contain a meaningful observation"
                 f" (got {self.observation!r})"
+            )
+        if self.evidence is not None and (
+            not isinstance(self.evidence, str) or not self.evidence.strip()
+        ):
+            raise InvalidEvaluationFindingError(
+                "evaluation finding evidence must be a non-blank string when present"
+                f" (got {self.evidence!r})"
             )
 
 

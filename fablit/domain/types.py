@@ -99,3 +99,11 @@ class InvalidReflectionError(DomainError):
 
 class InvalidSkillError(DomainError):
     """Raised when a Skill violates a domain rule."""
+
+
+class InvalidStimulusContextError(DomainError):
+    """Raised when an activity's stimulus context violates a domain rule."""
+
+
+class InvalidStimulusError(DomainError):
+    """Raised when a Stimulus Instance violates a domain rule."""

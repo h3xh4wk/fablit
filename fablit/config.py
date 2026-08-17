@@ -19,6 +19,7 @@ except ModuleNotFoundError:  # pragma: no cover
 
 SUPPORTED_ENVIRONMENTS = {"development", "testing", "production"}
 SUPPORTED_LOG_FORMATS = {"json", "text"}
+SUPPORTED_STIMULUS_PROVIDERS = {"builtin", "wikimedia"}
 
 
 class ConfigError(RuntimeError):
@@ -37,6 +38,13 @@ class AppConfig(BaseSettings):
     debug: bool = Field(False, description="Enable debug mode.")
     log_level: str = Field("INFO", description="Logging level.")
     log_format: str = Field("json", description="Structured log output format.")
+    stimulus_provider: str = Field(
+        "builtin",
+        description=(
+            "Visual stimulus provider: 'builtin' (deterministic bundled stimuli) "
+            "or 'wikimedia' (approved external source with safe fallback)."
+        ),
+    )
     config_file: Path | None = Field(None, description="Path to optional config file.")
     version: str = Field("0.1.0", description="Application version.")
 
@@ -63,6 +71,16 @@ class AppConfig(BaseSettings):
             allowed = ", ".join(sorted(SUPPORTED_LOG_FORMATS))
             raise ValueError(
                 f"Unsupported log format '{value}'. Must be one of: {allowed}."
+            )
+        return normalized
+
+    @field_validator("stimulus_provider", mode="before")
+    def normalize_stimulus_provider(cls, value: str) -> str:
+        normalized = value.lower()
+        if normalized not in SUPPORTED_STIMULUS_PROVIDERS:
+            allowed = ", ".join(sorted(SUPPORTED_STIMULUS_PROVIDERS))
+            raise ValueError(
+                f"Unsupported stimulus provider '{value}'. Must be one of: {allowed}."
             )
         return normalized
 
@@ -102,6 +120,7 @@ def _resolve_environment_overrides() -> dict[str, Any]:
         "debug": "FABLIT_DEBUG",
         "log_level": "FABLIT_LOG_LEVEL",
         "log_format": "FABLIT_LOG_FORMAT",
+        "stimulus_provider": "FABLIT_STIMULUS_PROVIDER",
         "version": "FABLIT_VERSION",
     }
     resolved: dict[str, Any] = {}

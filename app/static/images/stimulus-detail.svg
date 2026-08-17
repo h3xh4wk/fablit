@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-labelledby="title">
+  <title id="title">Fablit detail stimulus</title>
+  <defs>
+    <radialGradient id="drop" cx="0.35" cy="0.3" r="0.9">
+      <stop offset="0" stop-color="#fffdf9"/>
+      <stop offset="1" stop-color="#b7a68f"/>
+    </radialGradient>
+    <linearGradient id="wash" x1="0" y1="0" x2="1" y2="0.4">
+      <stop offset="0" stop-color="#e8dccb"/>
+      <stop offset="1" stop-color="#cbb9a2"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#wash)"/>
+  <!-- fine surface grain -->
+  <g stroke="#a89379" stroke-opacity="0.5" stroke-width="1.5">
+    <line x1="0" y1="80" x2="800" y2="66"/>
+    <line x1="0" y1="150" x2="800" y2="138"/>
+    <line x1="0" y1="230" x2="800" y2="220"/>
+    <line x1="0" y1="320" x2="800" y2="330"/>
+    <line x1="0" y1="410" x2="800" y2="402"/>
+    <line x1="0" y1="500" x2="800" y2="492"/>
+  </g>
+  <!-- a fine curved scratch -->
+  <path d="M120 470 Q 300 520 520 430" fill="none" stroke="#8a7460" stroke-width="2"/>
+  <!-- two dewdrop-like highlights -->
+  <ellipse cx="330" cy="300" rx="95" ry="70" fill="url(#drop)" stroke="#8a7460" stroke-width="2"/>
+  <ellipse cx="330" cy="285" rx="46" ry="18" fill="#fffdf9" fill-opacity="0.85"/>
+  <ellipse cx="620" cy="150" rx="60" ry="44" fill="url(#drop)" stroke="#8a7460" stroke-width="2"/>
+  <ellipse cx="620" cy="140" rx="28" ry="11" fill="#fffdf9" fill-opacity="0.85"/>
+</svg>

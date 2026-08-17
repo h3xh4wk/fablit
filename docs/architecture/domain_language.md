@@ -1,9 +1,9 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 0.9.0
+**Version:** 1.0.0
 **Status:** Draft
-**Last Updated:** 2026-08-15
+**Last Updated:** 2026-08-17
 
 ---
 
@@ -298,7 +298,9 @@ The following rules are enforced by the SPEC-007 domain model:
 
 ### Finding Structure
 
-A Finding is deliberately not a score. Each Finding carries a meaningful observation or judgement about the learner's work and a stable identity. The initial structure is intentionally small and extensible; richer Finding dimensions (evidence, criteria references, categories) may be introduced by future specifications without redesigning the Evaluation aggregate.
+A Finding is deliberately not a score. Each Finding carries a meaningful observation or judgement about the learner's work and a stable identity. The initial structure is intentionally small and extensible; richer Finding dimensions (criteria references, categories) may be introduced by future specifications without redesigning the Evaluation aggregate.
+
+SPEC-015 adds one optional dimension: **evidence** — a response excerpt or matched concept that grounds the Finding in the learner's actual response (response-aware evaluation). Evidence must be a non-blank string when present, and is deliberately optional so predefined Findings remain valid.
 
 ---
 
@@ -543,6 +545,74 @@ The following rules are enforced by the SPEC-011 association:
 | DR-016 | The relationship does not contain examination-specific information. |
 | DR-017 | The relationship does not depend on AI. |
 | DR-018 | A persistence join structure, if required, shall not automatically become a new domain entity. |
+
+---
+
+## Stimulus Context & Stimulus Instance (SPEC-015)
+
+SPEC-015 establishes that **the image is part of the learner's activity instance**, not merely an attachment to an activity. It introduces two domain concepts: the contextual visual stimulus requirements an activity may define, and the resolved stimulus that was actually shown to a learner.
+
+The implementation lives in `fablit.domain` and is intentionally independent of HTTP, FastAPI, any specific image provider, browser rendering, provider-specific APIs, and external network calls (SPEC-015 §39).
+
+### Relationship
+
+```
+Assessment Activity
+    │
+    │ defines (optional)
+    ▼
+ActivityStimulusContext
+    │   (learning focus, stimulus context, retrieval query)
+    │
+    │ resolves (application boundary)
+    ▼
+Stimulus Instance
+    │
+    ├── Provider
+    ├── Asset ID
+    ├── Image URL       ← what was displayed
+    ├── Source URL      ← where it came from
+    ├── Creator
+    ├── License
+    ├── Attribution
+    └── Retrieved At
+```
+
+Within a learner's activity instance, the stimulus sits alongside the response and the evaluation:
+
+```
+Assessment Activity
+    │
+    └── Activity Instance
+            ├── Stimulus Instance
+            ├── Learner Response (Submission)
+            └── Evaluation
+                    └── Findings (each may carry evidence)
+```
+
+An Assessment Activity references a stimulus context by value (an `ActivityStimulusContext`). A Stimulus Instance references its Assessment Activity by stable identity only and never duplicates the activity definition. The activity instance is preserved by the application layer: the same resolved stimulus is reused while a learner works on an instance, and a new stimulus may be resolved when a new instance starts (SPEC-015 §19). A completed activity stays associated with the original stimulus; the system never silently replaces it (§18, §48).
+
+### Domain Rules Reference
+
+The following rules are enforced by the SPEC-015 domain models:
+
+| Rule | Description |
+|------|-------------|
+| DR-001 | A Stimulus Instance must have a unique identity. |
+| DR-002 | A Stimulus Instance must reference an Assessment Activity by identity. |
+| DR-003 | An activity's stimulus context must define a meaningful learning focus. |
+| DR-004 | An activity's stimulus context must define a meaningful stimulus context. |
+| DR-005 | An activity's stimulus context must define a meaningful retrieval query. |
+| DR-006 | A Stimulus Instance must record the provider that supplied it. |
+| DR-007 | A Stimulus Instance must preserve a direct image URL (what was displayed). |
+| DR-008 | A Stimulus Instance must preserve a source page URL (where it came from). |
+| DR-009 | A Stimulus Instance must record when it was retrieved (timezone-aware). |
+| DR-010 | A Stimulus Instance is immutable after creation. |
+| DR-011 | Optional metadata (asset, creator, license, attribution, alt text) must be non-blank when present. |
+| DR-012 | A Stimulus Instance must not depend on a specific image provider, HTTP, FastAPI, or external network calls. |
+| DR-013 | An Evaluation Finding may carry optional evidence grounding it in the learner's response (SPEC-015 §31). |
+| DR-014 | An Evaluation Finding's evidence must be a non-blank string when present. |
+| DR-015 | A Stimulus Instance must not contain examination-specific concepts. |
 
 ---
 
@@ -826,7 +896,7 @@ Progress
 
 The following rules guide domain modelling.
 
-These product-level rules use the `DLR-` prefix to distinguish them from the domain rules (`DR-001`–`DR-018`) documented in the Assessment Domain Model (SPEC-005), Submission Domain Model (SPEC-006), Evaluation Domain Model (SPEC-007), Feedback Domain Model (SPEC-008), Reflection Domain Model (SPEC-009), Skill Domain Model (SPEC-010), and Skill–Assessment Activity Association (SPEC-011) sections above.
+These product-level rules use the `DLR-` prefix to distinguish them from the domain rules (`DR-001`–`DR-018`) documented in the Assessment Domain Model (SPEC-005), Submission Domain Model (SPEC-006), Evaluation Domain Model (SPEC-007), Feedback Domain Model (SPEC-008), Reflection Domain Model (SPEC-009), Skill Domain Model (SPEC-010), Skill–Assessment Activity Association (SPEC-011), and Stimulus Context & Stimulus Instance (SPEC-015) sections above.
 
 ## DLR-001
 

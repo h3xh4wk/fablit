@@ -355,6 +355,39 @@ ol {
   margin-bottom: var(--space-6);
 }
 
+/* Visual stimulus presentation (§25–26) */
+.stimulus {
+  margin: var(--space-6) 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.stimulus__image {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  background: var(--color-surface);
+}
+
+.stimulus__attribution {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: var(--text-small);
+  color: var(--color-ink-muted);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-rule);
+}
+
+.stimulus__source {
+  color: var(--color-accent);
+  white-space: nowrap;
+}
+
 /* --------------------------------------------------------------------------
    Feedback experience (§17–19)
    -------------------------------------------------------------------------- */

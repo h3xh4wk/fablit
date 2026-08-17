@@ -65,6 +65,17 @@ def test_domain_implements_feedback_reflection_and_skill() -> None:
     assert "class Skill" in source
 
 
+def test_domain_implements_stimulus_models() -> None:
+    source = _domain_source_text()
+    # SPEC-015 introduces the stimulus context an activity may define and the
+    # resolved Stimulus Instance that is part of the learner's activity
+    # instance (SPEC-015 §6, §15–16).
+    assert "class ActivityStimulusContext" in source
+    assert "class StimulusInstance" in source
+    assert "class InvalidStimulusError" in source
+    assert "class InvalidStimulusContextError" in source
+
+
 def test_domain_has_no_skill_activity_relationship_entity() -> None:
     # SPEC-011 models the Skill-Activity association on the Assessment
     # Activity itself; it must not introduce a dedicated relationship entity.

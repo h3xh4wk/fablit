@@ -7,6 +7,10 @@ check: install
 	uv run mypy
 	uv run pytest --cov=app --cov-fail-under=80
 
+# Browser tests are skipped locally by default; they run in the CI browser
+# job. This target is only for environments where Playwright/Chromium is
+# genuinely available — constrained local environments (no browser download,
+# no display, sandbox restrictions) should leave the tests skipped instead.
 e2e: install
 	uv run playwright install chromium
 	RUN_BROWSER_TESTS=1 uv run pytest tests/e2e -v

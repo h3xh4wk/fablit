@@ -29,14 +29,16 @@ from fablit.application import (
     ActivityNotFoundError,
     CompletionNotFoundError,
     DemoEvaluator,
+    EvaluationFailedError,
     FeedbackNotFoundError,
     InvalidPracticeResponseError,
     InvalidReflectionResponseError,
     LearnerJourneyStore,
     PracticeApplication,
     build_demo_activities,
-    build_demo_findings,
+    build_demo_activity_map,
     build_demo_skills,
+    build_stimulus_provider,
 )
 from fablit.config import AppConfig, load_config
 from fablit.logging import init_logging, reset_request_context, set_request_context
@@ -52,7 +54,12 @@ metrics_registry = MetricsRegistry()
 
 
 def _build_practice_application() -> PracticeApplication:
-    """Assemble the demo learner application for the first vertical slice."""
+    """Assemble the demo learner application for the first vertical slice.
+
+    SPEC-015: stimulus resolution goes through the provider abstraction so
+    external image retrieval is isolated and replaceable, and the demo
+    evaluator is wired to the seeded activity content.
+    """
     activities = build_demo_activities()
     store = LearnerJourneyStore(
         learner_id=DEMO_LEARNER_ID,
@@ -61,7 +68,10 @@ def _build_practice_application() -> PracticeApplication:
     )
     return PracticeApplication(
         store=store,
-        evaluator=DemoEvaluator(build_demo_findings(activities)),
+        evaluator=DemoEvaluator(build_demo_activity_map(activities)),
+        stimulus_provider=build_stimulus_provider(
+            activities, provider_name=config.stimulus_provider
+        ),
     )
 
 
@@ -209,6 +219,15 @@ def create_app(config: AppConfig) -> FastAPI:
         except ActivityNotFoundError:
             return _error_response(request, "Activity not found.")
         except InvalidPracticeResponseError as exc:
+            view = practice.start_practice(activity)
+            return templates.TemplateResponse(
+                request,
+                "practice.html",
+                {"view": view, "error": str(exc), "submitted_response": response},
+            )
+        except EvaluationFailedError as exc:
+            # SPEC-015 §64: preserve the learner's response and show a safe
+            # message instead of an internal failure.
             view = practice.start_practice(activity)
             return templates.TemplateResponse(
                 request,

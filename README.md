@@ -2,7 +2,7 @@
 
 Fablit is an open-source educational platform for helping learners build practical skills through deliberate practice, meaningful feedback, and continuous reflection.
 
-This repository implements **SPEC-001 — Bootstrap Platform**, **SPEC-002 — Engineering Toolchain**, **SPEC-003 — Configuration & Logging**, **SPEC-004 — Shared Platform Services**, **SPEC-005 — Assessment Activity Domain Foundation**, **SPEC-006 — Submission Domain Foundation**, **SPEC-007 — Evaluation Domain Foundation**, **SPEC-008 — Feedback Domain Foundation**, **SPEC-009 — Reflection Domain Foundation**, **SPEC-010 — Skill Domain Foundation**, **SPEC-011 — Skill–Assessment Activity Association**, **SPEC-012 — Learner Practice Application Flow**, **SPEC-013 — Learner Experience & Visual Foundation**, and **SPEC-014 — Learner Pilot Deployment**. It intentionally avoids Skill Labs, Content Packs, learner accounts, authentication, databases, AI services, analytics, user management, recommendation logic, scoring, gamification, and Progress tracking; production readiness (backups, monitoring, security hardening, scalability, and a full security assessment) is deliberately deferred to a separate assessment.
+This repository implements **SPEC-001 — Bootstrap Platform**, **SPEC-002 — Engineering Toolchain**, **SPEC-003 — Configuration & Logging**, **SPEC-004 — Shared Platform Services**, **SPEC-005 — Assessment Activity Domain Foundation**, **SPEC-006 — Submission Domain Foundation**, **SPEC-007 — Evaluation Domain Foundation**, **SPEC-008 — Feedback Domain Foundation**, **SPEC-009 — Reflection Domain Foundation**, **SPEC-010 — Skill Domain Foundation**, **SPEC-011 — Skill–Assessment Activity Association**, **SPEC-012 — Learner Practice Application Flow**, **SPEC-013 — Learner Experience & Visual Foundation**, **SPEC-014 — Learner Pilot Deployment**, and **SPEC-015 — Contextual Visual Stimulus & Response-Aware Evaluation**. It intentionally avoids Skill Labs, Content Packs, learner accounts, authentication, databases, AI services, analytics, user management, recommendation logic, scoring, gamification, Progress tracking, and a live external image dependency by default; production readiness (backups, monitoring, security hardening, scalability, and a full security assessment) is deliberately deferred to a separate assessment.
 
 ## Requirements
 
@@ -68,6 +68,7 @@ Key settings include:
 - `FABLIT_DEBUG`
 - `FABLIT_LOG_LEVEL`
 - `FABLIT_LOG_FORMAT`
+- `FABLIT_STIMULUS_PROVIDER` — `builtin` (default; deterministic bundled images, no network) or `wikimedia` (approved external source with a safe built-in fallback)
 
 The application initializes structured logging during startup and attaches service and environment context to every log record.
 
@@ -87,6 +88,9 @@ SPEC-005 through SPEC-011 introduce the learning-domain capabilities as in-memor
 - `Feedback` — learner-facing guidance derived from an Evaluation, with stable identity, an Evaluation reference, a general learner-facing content field, and a timezone-aware creation timestamp; immutable after creation and free of scoring, Reflection, generation-mechanism, and persistence concerns
 - `Reflection` — the learner's deliberate response to Feedback, with stable identity, a Feedback reference, a general learner-authored content field, and a timezone-aware creation timestamp; immutable after creation and free of confidence scoring, improvement goals, action plans, generation-mechanism, and persistence concerns
 - `Skill` — the measurable, transferable learner capability being developed, with stable identity, a meaningful name and description, and immutability after creation; independent of any single Assessment Activity, Evaluation criteria, Progress, mastery, scoring, hierarchy, curriculum, examination, and AI concerns, and reusable across any number of Assessment Activities (SPEC-011)
+- `ActivityStimulusContext` (SPEC-015) — the contextual visual stimulus requirements an activity may define (learning focus, stimulus context, retrieval query), used to identify an appropriate image for the learner
+- `StimulusInstance` (SPEC-015) — the resolved visual stimulus shown to a learner as part of an activity instance, retaining provider, asset ID, direct image URL, source page URL, creator, license, attribution, alternative text, and a timezone-aware retrieval timestamp; immutable after creation, independent of any specific image provider, HTTP, or network calls
+- `EvaluationFinding.evidence` (SPEC-015) — an optional non-blank response excerpt or matched concept that grounds a Finding in the learner's actual response (response-aware evaluation)
 - Controlled `ActivityType`, `SubmissionStatus`, and assessment status enumerations (multiple choice, written response, observation, reflection; draft, submitted; draft, published)
 - Domain exceptions: `InvalidAssessmentError`, `InvalidActivityError`, `DuplicateActivityPositionError`, `InvalidSubmissionError`, `InvalidSubmissionTransitionError`, `InvalidEvaluationError`, `InvalidEvaluationFindingError`, `InvalidFeedbackError`, `InvalidReflectionError`, `InvalidSkillError`
 
@@ -96,11 +100,12 @@ No database, scoring, Skill hierarchies, Progress, mastery, delivery, or AI feed
 
 SPEC-012 introduces the first application layer under `fablit.application`, separate from both the Web/UI layer (`app`) and the learning domain (`fablit.domain`):
 
-- `PracticeApplication` — the use-case facade (UC-001–UC-007): dashboard retrieval, start practice, submit response, demo evaluation, feedback preparation, reflection, and completion
-- View models (`PracticeDashboardView`, `PracticeActivityView`, `FeedbackView`, `ReflectionView`, `CompletionView`) — learner-facing representations that keep presentation concerns out of the domain
-- `DemoEvaluator` — a deterministic, predefined evaluation for the demo activities (no AI provider, no network, no async workers)
-- `LearnerJourneyStore` — a minimal in-memory store preserving the Submission → Evaluation → Feedback → Reflection chain for the vertical slice
-- Demo content: 3–5 practice activities across the Visual Analysis, Written Communication, and Critical Observation Skills, with a stable demo learner context
+- `PracticeApplication` — the use-case facade (UC-001–UC-007): dashboard retrieval, start practice, submit response, response-aware demo evaluation, feedback preparation, reflection, and completion
+- View models (`PracticeDashboardView`, `PracticeActivityView`, `FeedbackView`, `ReflectionView`, `CompletionView`, `StimulusView`) — learner-facing representations that keep presentation concerns out of the domain
+- `DemoEvaluator` — a deterministic, response-aware evaluator (no AI provider, no network, no async workers): for stimulus activities it grounds Findings in the learner's actual response by matching known concepts, so different responses produce different Findings (SPEC-015 §69); empty and very short responses are handled without fabricating positive Findings (§62–63)
+- `StimulusProvider` abstraction (SPEC-015) — external image retrieval isolated behind an application-level boundary: a deterministic built-in provider serving bundled images (the default), a `WikimediaCommonsProvider` for the approved external source, and a resilient composition that falls back to the built-in stimulus when external retrieval fails (§21–22)
+- `LearnerJourneyStore` — a minimal in-memory store preserving the Stimulus → Submission → Evaluation → Feedback → Reflection chain for the vertical slice; a completed activity retains the exact stimulus that was shown (§18, §48)
+- Demo content: 3–5 practice activities across the Visual Analysis, Written Communication, and Critical Observation Skills, with a stable demo learner context; three image-dependent activities present a bundled visual stimulus, and "Visual Analysis — Composition" is the SPEC-015 reference activity (§56–58)
 
 The vertical slice introduces no authentication, scoring, Progress, mastery, recommendations, gamification, or examination-specific logic.
 
@@ -122,9 +127,9 @@ You can also run the consolidated developer workflow:
 make check
 ```
 
-Playwright is included in the development toolchain for browser-level checks. SPEC-012 adds an opt-in browser journey test (`tests/e2e`) that drives the full learner flow in Chromium; it is skipped unless `RUN_BROWSER_TESTS=1` is set, and the CI workflow runs it in a dedicated browser job (`uv run playwright install --with-deps chromium`).
+Playwright is included in the development toolchain for browser-level checks. The browser journey test (`tests/e2e`) drives the full learner flow — including the SPEC-015 visual stimulus and response-aware feedback — in Chromium, but it is **skipped in the local environment by default**: it only runs when `RUN_BROWSER_TESTS=1` is set, and the CI workflow runs it in a dedicated browser job (`uv run playwright install --with-deps chromium`). Normal local runs (`make check`, `pytest`) stay green without any browser installed.
 
-Run the browser journey tests locally:
+Because many local environments have constraints (no Playwright browser download, no display, or sandbox restrictions — root containers in particular), browser tests are not supported locally: keep them skipped and let the CI browser job cover them. Only opt in locally when a compatible browser is genuinely available:
 
 ```bash
 uv run playwright install chromium
