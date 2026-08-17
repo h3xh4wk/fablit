@@ -14,8 +14,8 @@ A real learner should be able to complete the full journey without developer
 assistance (§47):
 
 ```text
-Open Fablit → Explore activities → Choose an activity → Practise
-→ Receive feedback → Reflect → Complete → Continue exploring
+Open Fablit → Explore activities → Choose an activity → See the image
+and practise → Receive feedback → Reflect → Complete → Continue exploring
 ```
 
 ## How to run the pilot

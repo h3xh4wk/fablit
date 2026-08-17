@@ -69,6 +69,13 @@ Key settings include:
 - `FABLIT_LOG_LEVEL`
 - `FABLIT_LOG_FORMAT`
 - `FABLIT_STIMULUS_PROVIDER` — `builtin` (default; deterministic bundled images, no network) or `wikimedia` (approved external source with a safe built-in fallback)
+- `FABLIT_STIMULUS_FALLBACK_IMAGES` — optional JSON object mapping activity title to a custom fallback image URL, overriding the bundled images without code changes (e.g. `{"Visual Analysis — Composition": "/static/images/my-image.svg"}`)
+- `FABLIT_WIKIMEDIA_ENDPOINT` — Wikimedia Commons API endpoint (default `https://commons.wikimedia.org/w/api.php`)
+- `FABLIT_WIKIMEDIA_TIMEOUT` — retrieval timeout in seconds (default `10.0`)
+- `FABLIT_WIKIMEDIA_WIDTH` — requested thumbnail width (default `1200`)
+- `FABLIT_WIKIMEDIA_LIMIT` — candidate images searched (default `5`)
+
+The `FABLIT_WIKIMEDIA_*` settings only take effect with `FABLIT_STIMULUS_PROVIDER=wikimedia`.
 
 The application initializes structured logging during startup and attaches service and environment context to every log record.
 
