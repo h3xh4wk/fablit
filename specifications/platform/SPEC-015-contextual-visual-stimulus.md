@@ -19,11 +19,11 @@ Here is the complete specification:
 ````markdown
 # SPEC-015 — Contextual Visual Stimulus & Response-Aware Evaluation
 
-**Specification ID:** SPEC-015  
-**Title:** Contextual Visual Stimulus & Response-Aware Evaluation  
-**Version:** 0.1.0  
-**Status:** Draft  
-**Priority:** High  
+**Specification ID:** SPEC-015
+**Title:** Contextual Visual Stimulus & Response-Aware Evaluation
+**Version:** 0.1.0
+**Status:** Draft
+**Priority:** High
 **Epic:** Learner Validation
 
 ---
