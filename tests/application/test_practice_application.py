@@ -1,4 +1,4 @@
-"""Application-layer tests for the learner practice flow (SPEC-012)."""
+"""Application-layer tests for the learner practice flow (SPEC-012, SPEC-015)."""
 
 from __future__ import annotations
 
@@ -17,6 +17,8 @@ from fablit.application import (
     CompletionNotFoundError,
     CompletionView,
     DemoEvaluator,
+    EvaluationFailedError,
+    Evaluator,
     FeedbackNotFoundError,
     FeedbackView,
     InvalidPracticeResponseError,
@@ -26,11 +28,20 @@ from fablit.application import (
     PracticeApplication,
     PracticeDashboardView,
     ReflectionView,
+    StimulusProvider,
+    StimulusView,
     build_demo_activities,
-    build_demo_findings,
+    build_demo_activity_map,
     build_demo_skills,
+    build_stimulus_provider,
 )
-from fablit.domain import SubmissionStatus
+from fablit.domain import (
+    AssessmentActivity,
+    Evaluation,
+    StimulusInstance,
+    Submission,
+    SubmissionStatus,
+)
 
 APPLICATION_SOURCE = list(Path(fablit.application.__file__).parent.glob("*.py"))
 
@@ -43,9 +54,25 @@ def _fixed_clock() -> datetime:
     return datetime(2026, 8, 15, 12, 0, tzinfo=UTC)
 
 
+class RaisingEvaluator:
+    """An evaluator that always fails, to exercise SPEC-015 §64."""
+
+    def evaluate(
+        self,
+        submission: Submission,
+        *,
+        activity: AssessmentActivity,
+        stimulus: StimulusInstance | None = None,
+        evaluated_at: datetime | None = None,
+    ) -> Evaluation:
+        raise RuntimeError("evaluator failure")
+
+
 def make_application(
     *,
     clock: Callable[[], datetime] | None = None,
+    stimulus_provider: StimulusProvider | None = None,
+    evaluator: Evaluator | None = None,
 ) -> tuple[PracticeApplication, LearnerJourneyStore]:
     """Build a practice application together with its in-memory store."""
     activities = build_demo_activities()
@@ -56,7 +83,9 @@ def make_application(
     )
     application = PracticeApplication(
         store=store,
-        evaluator=DemoEvaluator(build_demo_findings(activities)),
+        evaluator=evaluator or DemoEvaluator(build_demo_activity_map(activities)),
+        stimulus_provider=stimulus_provider
+        or build_stimulus_provider(activities, provider_name="builtin"),
         clock=clock,
     )
     return application, store
@@ -64,6 +93,15 @@ def make_application(
 
 def first_activity_id(application: PracticeApplication) -> UUID:
     return application.get_dashboard().activities[0].id
+
+
+def second_activity_id(application: PracticeApplication) -> UUID:
+    return application.get_dashboard().activities[1].id
+
+
+def third_activity_id(application: PracticeApplication) -> UUID:
+    """The Observation — Detail Spotting activity, which also has a stimulus."""
+    return application.get_dashboard().activities[2].id
 
 
 def test_dashboard_lists_three_to_five_activities() -> None:
@@ -105,6 +143,62 @@ def test_start_practice_unknown_activity_raises() -> None:
         application.start_practice(uuid4())
 
 
+# --- SPEC-015 stimulus resolution (UC-002) -----------------------------------
+
+
+def test_start_practice_resolves_stimulus_for_stimulus_activity() -> None:
+    application, store = make_application()
+
+    view = application.start_practice(first_activity_id(application))
+
+    assert isinstance(view.stimulus, StimulusView)
+    assert view.stimulus.image_url.startswith("/static/images/")
+    assert view.stimulus.alt_text
+    assert view.stimulus.attribution
+    assert view.stimulus.source_url
+    assert len(store.recorded_stimuli()) == 1
+
+
+def test_start_practice_has_no_stimulus_without_stimulus_context() -> None:
+    application, _ = make_application()
+
+    view = application.start_practice(second_activity_id(application))
+
+    assert view.stimulus is None
+
+
+def test_start_practice_reuses_the_resolved_stimulus() -> None:
+    """The same resolved stimulus is reused while working on an instance (§19)."""
+    application, store = make_application()
+    activity_id = first_activity_id(application)
+
+    first = application.start_practice(activity_id)
+    second = application.start_practice(activity_id)
+
+    assert first.stimulus is not None
+    assert second.stimulus is not None
+    assert first.stimulus.image_url == second.stimulus.image_url
+    assert len(store.recorded_stimuli()) == 1
+
+
+def test_start_practice_resolves_new_stimulus_for_a_new_instance() -> None:
+    """A new stimulus may be resolved when starting a new activity instance (§19)."""
+    application, store = make_application()
+    activity_id = first_activity_id(application)
+
+    application.start_practice(activity_id)
+    application.start_practice(third_activity_id(application))
+    again = application.start_practice(activity_id)
+
+    assert again.stimulus is not None
+    stimuli_for_activity = [
+        stimulus
+        for stimulus in store.recorded_stimuli()
+        if stimulus.activity_id == activity_id
+    ]
+    assert len(stimuli_for_activity) == 2
+
+
 def test_submit_response_creates_journey_records() -> None:
     application, store = make_application(clock=_fixed_clock)
 
@@ -137,7 +231,9 @@ def test_submission_references_activity_and_learner_by_identity() -> None:
 def test_submit_response_prepares_structured_feedback_view() -> None:
     application, _ = make_application()
 
-    view = application.submit_response(first_activity_id(application), "A response.")
+    view = application.submit_response(
+        first_activity_id(application), "A thoughtful analysis of the composition."
+    )
 
     assert view.strengths
     assert view.improvements
@@ -176,6 +272,61 @@ def test_submit_response_unknown_activity_raises() -> None:
 
     with pytest.raises(ActivityNotFoundError):
         application.submit_response(uuid4(), "A response.")
+
+    assert store.recorded_submissions() == ()
+
+
+# --- SPEC-015 response-aware evaluation and feedback (UC-003/004/005) --------
+
+
+def test_submit_response_grounds_feedback_in_the_response() -> None:
+    """Feedback reflects what the learner wrote; it is not predefined (§33, §35)."""
+    application, _ = make_application()
+
+    view = application.submit_response(
+        first_activity_id(application),
+        "The contrast between the subject and the dark background stands out.",
+    )
+
+    assert any("contrast" in strength for strength in view.strengths)
+
+
+def test_different_responses_produce_different_feedback() -> None:
+    """Acceptance criterion: different responses produce different findings (§69)."""
+    application, _ = make_application()
+
+    contrast = application.submit_response(
+        first_activity_id(application),
+        "The contrast between the subject and the background is strong.",
+    )
+    negative_space = application.submit_response(
+        first_activity_id(application),
+        "The model stands out because she is surrounded by a lot of empty space.",
+    )
+
+    assert contrast.strengths != negative_space.strengths
+    assert any("contrast" in strength for strength in contrast.strengths)
+    assert any("space" in strength for strength in negative_space.strengths)
+
+
+def test_submit_response_handles_short_response_gracefully() -> None:
+    """Very short responses are handled without a fabricated positive (§63)."""
+    application, _ = make_application()
+
+    view = application.submit_response(first_activity_id(application), "A figure.")
+
+    assert view.strengths
+    assert any("stand out" in strength for strength in view.strengths)
+
+
+def test_submit_response_evaluation_failure_is_learner_safe() -> None:
+    """An evaluation failure must not lose the response (SPEC-015 §64)."""
+    application, store = make_application(evaluator=RaisingEvaluator())
+    activity_id = first_activity_id(application)
+
+    application.start_practice(activity_id)
+    with pytest.raises(EvaluationFailedError):
+        application.submit_response(activity_id, "A considered response.")
 
     assert store.recorded_submissions() == ()
 
@@ -251,12 +402,42 @@ def test_get_completion_requires_a_saved_reflection() -> None:
     assert "completed this practice" in application.get_completion().message
 
 
+# --- SPEC-015 historical integrity (§18, §48, §68) ----------------------------
+
+
+def test_completed_activity_retains_its_stimulus() -> None:
+    """The original stimulus metadata remains associated after completion (§68)."""
+    application, store = make_application()
+    activity_id = first_activity_id(application)
+
+    view = application.start_practice(activity_id)
+    assert view.stimulus is not None
+    original_image_url = view.stimulus.image_url
+
+    application.submit_response(activity_id, "The contrast is striking.")
+    application.submit_reflection("I will look for balance next time.")
+    assert "completed this practice" in application.get_completion().message
+
+    retained = [
+        stimulus
+        for stimulus in store.recorded_stimuli()
+        if stimulus.activity_id == activity_id
+    ]
+    assert len(retained) == 1
+    assert retained[0].image_url == original_image_url
+    assert retained[0].provider == "fablit"
+    assert retained[0].attribution is not None
+
+
 def test_journey_records_use_timezone_aware_timestamps() -> None:
     application, store = make_application()
 
+    application.start_practice(first_activity_id(application))
     application.submit_response(first_activity_id(application), "A response.")
     application.submit_reflection("Next time I will slow down.")
 
+    for stimulus in store.recorded_stimuli():
+        assert stimulus.retrieved_at.tzinfo is not None
     for submission in store.recorded_submissions():
         assert submission.submitted_at is not None
         assert submission.submitted_at.tzinfo is not None

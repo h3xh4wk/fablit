@@ -66,3 +66,30 @@ def test_app_config_defaults_are_frozen() -> None:
 
     with pytest.raises(ValidationError):
         config.service_name = "changed"
+
+
+def test_stimulus_provider_defaults_to_builtin() -> None:
+    config = AppConfig.model_validate({})
+
+    assert config.stimulus_provider == "builtin"
+
+
+def test_stimulus_provider_accepts_wikimedia() -> None:
+    config = AppConfig.model_validate({"stimulus_provider": "wikimedia"})
+
+    assert config.stimulus_provider == "wikimedia"
+
+
+def test_stimulus_provider_is_normalised_to_lowercase() -> None:
+    config = AppConfig.model_validate({"stimulus_provider": "WIKIMEDIA"})
+
+    assert config.stimulus_provider == "wikimedia"
+
+
+def test_unsupported_stimulus_provider_raises_validation_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FABLIT_STIMULUS_PROVIDER", "unsplash")
+
+    with pytest.raises(ConfigValidationError, match="stimulus provider"):
+        load_config()

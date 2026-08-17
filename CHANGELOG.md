@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **SPEC-015 — Contextual Visual Stimulus & Response-Aware Evaluation**: the visual stimulus becomes part of the learner's activity instance, and evaluation responds to what the learner actually wrote.
+  - Domain: `ActivityStimulusContext` (learning focus, stimulus context, retrieval query) on `AssessmentActivity`, and `StimulusInstance` (provider, asset ID, image URL, source URL, creator, license, attribution, alt text, timezone-aware retrieval timestamp) — both immutable and free of HTTP/provider/network dependencies; `EvaluationFinding` gains an optional `evidence` field grounding a Finding in the learner's response.
+  - Application: `StimulusProvider` abstraction (§9) with a deterministic built-in provider (bundled images, the default), a `WikimediaCommonsProvider` for the approved external source (§8, §10), and a `ResilientStimulusProvider` that falls back to the built-in stimulus when external retrieval fails (§21–22); `DemoEvaluator` is now response-aware — matched concepts produce response-specific Findings with evidence, and empty/very short responses are handled without fabricating positives (§62–63, §69).
+  - Web/UI: the resolved image is presented on the practice page before the observation prompt with meaningful alt text and a compact source/attribution treatment (§24–26); responsive, non-overflowing presentation in `app/static/css/fablit.css`.
+  - Reference activity: "Visual Analysis — Composition" (plus the Observation and Colour & Mood activities) now displays a bundled visual stimulus and produces response-aware feedback (§56–58).
+  - Historical integrity: the journey store retains the stimulus with the activity instance and never silently replaces it (§18, §48); the same stimulus is reused within an instance, a new one is resolved for a new instance (§19).
+  - Configuration: `FABLIT_STIMULUS_PROVIDER` (`builtin` default / `wikimedia`) drives provider selection; the default experience and tests never depend on a live external provider (§67).
+  - Tests: domain unit tests (100% `fablit.domain` coverage), provider tests with an injectable fetch, response-specific acceptance tests, historical-reference tests, web/route tests, and an updated browser journey that verifies the learner sees the image and receives response-aware feedback (§66–71).
+  - Documentation updates to the Domain Language, Architecture Blueprint, and README.
+
+See [SPEC-015](specifications/platform/SPEC-015-contextual-visual-stimulus.md) for details.
+
 - **SPEC-014 — Learner Pilot Deployment**: operational boundary around the existing SPEC-013 learner experience so a small group of real learners can use Fablit safely and reliably — no new learning capability and no new domain concept.
   - `create_app(config)` application factory so environment-specific safety settings can be applied and tested; the module-level `app` remains available as `app.main:app`.
   - Learner-facing error handling: unhandled errors now render a simple error page (`Something went wrong.`) with no stack traces, file paths, environment variables, or framework debugging pages; the full exception is logged server-side for investigation.

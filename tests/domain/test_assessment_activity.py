@@ -14,7 +14,7 @@ from fablit.domain import (
     InvalidActivityError,
 )
 
-from .helpers import make_activity, make_assessment, make_skill
+from .helpers import make_activity, make_assessment, make_skill, make_stimulus_context
 
 
 def test_create_activity_with_valid_data() -> None:
@@ -230,3 +230,39 @@ def test_association_change_is_expressed_via_replace() -> None:
 
     assert associated.skill_ids == (skill.id,)
     assert activity.skill_ids == ()
+
+
+# ---------------------------------------------------------------------------
+# Stimulus context (SPEC-015 §6)
+# ---------------------------------------------------------------------------
+
+
+def test_activity_without_stimulus_context_is_valid() -> None:
+    activity = make_activity()
+
+    assert activity.stimulus_context is None
+
+
+def test_activity_can_define_stimulus_context() -> None:
+    context = make_stimulus_context()
+
+    activity = make_activity(stimulus_context=context)
+
+    assert activity.stimulus_context == context
+    assert activity.stimulus_context is not None
+    assert activity.stimulus_context.retrieval_query == "fashion editorial composition"
+
+
+def test_reject_activity_with_invalid_stimulus_context() -> None:
+    with pytest.raises(InvalidActivityError, match="stimulus context"):
+        make_activity(stimulus_context="composition")
+
+
+def test_stimulus_context_change_is_expressed_via_replace() -> None:
+    activity = make_activity()
+    context = make_stimulus_context()
+
+    extended = replace(activity, stimulus_context=context)
+
+    assert extended.stimulus_context == context
+    assert activity.stimulus_context is None

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-labelledby="title">
+  <title id="title">Fablit colour and mood stimulus</title>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e8935a"/>
+      <stop offset="0.5" stop-color="#d96f7d"/>
+      <stop offset="1" stop-color="#7d4a6b"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#sky)"/>
+  <!-- a bright warm sun -->
+  <circle cx="400" cy="320" r="92" fill="#ffe9c9"/>
+  <circle cx="400" cy="320" r="120" fill="#ffe9c9" fill-opacity="0.35"/>
+  <!-- cool dark hills in the foreground -->
+  <path d="M0 430 Q 200 360 400 430 T 800 430 L 800 600 L 0 600 Z" fill="#3a3128"/>
+  <path d="M0 500 Q 260 440 520 500 T 800 480 L 800 600 L 0 600 Z" fill="#2b2620"/>
+  <!-- a thin warm reflection on the nearer hill -->
+  <path d="M0 500 Q 260 440 520 500 T 800 480" fill="none" stroke="#e8935a" stroke-opacity="0.6" stroke-width="3"/>
+</svg>

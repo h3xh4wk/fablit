@@ -1,9 +1,9 @@
 # Fablit Architecture Blueprint
 
 **Document ID:** AB-001
-**Version:** 0.4.0
+**Version:** 0.5.0
 **Status:** Draft
-**Last Updated:** 2026-08-16
+**Last Updated:** 2026-08-17
 
 ---
 
@@ -184,6 +184,8 @@ Evaluation produces Feedback.
 
 SPEC-007 implements the Evaluation concept as an in-memory learning-domain model (`fablit.domain`), independent of the Platform Core. Evaluations reference the Submission by stable identity (SPEC-006), contain one or more structured Findings with stable identities, record a timezone-aware evaluation timestamp, and are immutable after creation. Scoring, Feedback, evaluation mechanisms, AI providers, and persistence are deliberately excluded from the model.
 
+SPEC-015 extends Findings so they can be **response-aware**: an optional `evidence` field (a response excerpt or matched concept) grounds each Finding in the learner's actual response, so evaluation responds to what the learner wrote rather than returning predefined feedback.
+
 ---
 
 ## Feedback
@@ -315,6 +317,43 @@ Implemented in SPEC-014:
 - pilot operations tooling: minimal learner instructions and a lightweight structured feedback-recording mechanism feeding the evidence-driven loop (Deploy → Observe → Collect feedback → Identify patterns → Form findings → Discuss implications → Define next specification).
 
 SPEC-014 is deliberately **pilot-ready, not production-ready**: authentication, authorization, data privacy, backups, monitoring, security hardening, scalability, formal analytics, content management, and operational support remain future work.
+
+---
+
+## Contextual Visual Stimulus & Response-Aware Evaluation
+
+SPEC-015 makes the visual stimulus part of the learner's activity instance rather than an attachment to an activity, and makes evaluation respond to the learner's actual response. It establishes the learning loop Activity → Contextual stimulus → Learner observes → Learner responds → Response-aware evaluation → Structured Finding → Personalized feedback → Reflection → Completion.
+
+```
+Assessment Activity
+    │
+    ├───────────────┐
+    │               │
+    ▼               ▼
+Stimulus       Learner Response
+    │               │
+    └───────┬───────┘
+            ▼
+        Evaluation
+            │
+            ▼
+         Findings
+            │
+            ▼
+         Feedback
+```
+
+Implemented in SPEC-015:
+
+- **Domain:** an Assessment Activity may define an `ActivityStimulusContext` (learning focus, stimulus context, retrieval query — §6), and a `StimulusInstance` represents the resolved stimulus shown to a learner, retaining provider, asset ID, image URL, source page URL, creator, license, attribution, and a timezone-aware retrieval timestamp (§15–17). Findings gain an optional `evidence` field grounding them in the learner's response (§29–31). The domain stays free of HTTP, FastAPI, provider-specific APIs, and external network calls (§39).
+- **Stimulus provider abstraction (§9, §40–41):** external image retrieval is isolated behind an application-level `StimulusProvider`; provider-specific fields are translated into Fablit's internal stimulus representation (§49). One approved external source (Wikimedia Commons) is implemented as a replaceable provider, and a deterministic built-in provider serves bundled images, so the default experience — and the automated tests — never depend on a live external service (§42–43, §67).
+- **Safe failure handling (§21–23, §45, §50):** a resilient provider composition falls back to a known, learner-safe stimulus when external retrieval fails; the learner never sees a blank activity, stack traces, credentials, or internal exception details. Network timeouts, unavailable providers, invalid responses, and missing metadata are all handled (§50).
+- **Response-aware evaluation (§27–31, §60):** the evaluator contract receives the activity, the stimulus, and the learner's response and produces at least one structured Finding grounded in the response; different responses produce different Findings (§69). Empty and very short responses are handled explicitly without fabricating positive Findings (§62–63).
+- **Learner presentation (§24–26):** the resolved image is presented before the observation prompt with a compact source/attribution treatment, meaningful alternative text, and responsive, non-overflowing layout; feedback remains score-free and is derived from the Findings (§33–35).
+- **Historical integrity (§18, §48, §68):** a completed activity stays associated with the exact stimulus that was shown; the same resolved stimulus is reused while the learner works on an activity instance, and a new stimulus may be resolved for a new instance (§19).
+- **Reference activity (§56–58):** the existing "Visual Analysis — Composition" activity is upgraded to the reference implementation of the stimulus + response-aware evaluation flow, with three of the five demo activities now presenting bundled visual stimuli.
+- **No new persistence dependency (§46):** the in-memory journey store retains stimulus metadata and evaluation results for the activity instance, so no production database is introduced.
+- **No scoring or gamification (§4, §37):** SPEC-015 deliberately introduces no points, grades, rankings, or AI evaluation platform; the evaluator is the smallest viable response-aware implementation, and future rule-based, AI-assisted, or hybrid evaluators can implement the same contract (§28, §60).
 
 ---
 

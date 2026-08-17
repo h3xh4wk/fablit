@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from fablit.domain import (
     ActivityStatus,
+    ActivityStimulusContext,
     ActivityType,
     Assessment,
     AssessmentActivity,
@@ -17,6 +18,7 @@ from fablit.domain import (
     Feedback,
     Reflection,
     Skill,
+    StimulusInstance,
     Submission,
     SubmissionStatus,
 )
@@ -121,3 +123,27 @@ def make_skill(**overrides: Any) -> Skill:
     }
     values.update(overrides)
     return Skill(**values)
+
+
+def make_stimulus_context(**overrides: Any) -> ActivityStimulusContext:
+    """Build a valid ActivityStimulusContext, overriding any field via kwargs."""
+    values: dict[str, Any] = {
+        "learning_focus": "Composition",
+        "stimulus_context": "Fashion editorial photography",
+        "retrieval_query": "fashion editorial composition",
+    }
+    values.update(overrides)
+    return ActivityStimulusContext(**values)
+
+
+def make_stimulus(**overrides: Any) -> StimulusInstance:
+    """Build a valid StimulusInstance, overriding any field via kwargs."""
+    values: dict[str, Any] = {
+        "activity_id": uuid4(),
+        "provider": "wikimedia_commons",
+        "image_url": "https://example.com/images/example.jpg",
+        "source_url": "https://example.com/file/Example.jpg",
+        "retrieved_at": datetime.now(UTC),
+    }
+    values.update(overrides)
+    return StimulusInstance(**values)

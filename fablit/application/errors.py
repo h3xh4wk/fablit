@@ -29,3 +29,11 @@ class InvalidReflectionResponseError(ApplicationError):
 
 class JourneyStateError(ApplicationError):
     """Raised when an internal journey record is missing (programming error)."""
+
+
+class StimulusRetrievalError(ApplicationError):
+    """Raised when the stimulus provider cannot supply a stimulus (SPEC-015 §21)."""
+
+
+class EvaluationFailedError(ApplicationError):
+    """Raised when the evaluator cannot evaluate a submitted response (SPEC-015 §64)."""

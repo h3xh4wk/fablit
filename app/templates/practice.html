@@ -8,6 +8,17 @@
   <h1 class="practice__title">{{ view.title }}</h1>
   <p class="practice__prompt">{{ view.prompt }}</p>
   <p class="practice__skill">Practising: {{ view.skills|join(", ") }}</p>
+  {% if view.stimulus %}
+  <figure class="stimulus">
+    <img class="stimulus__image" src="{{ view.stimulus.image_url }}" alt="{{ view.stimulus.alt_text }}">
+    {% if view.stimulus.attribution %}
+    <figcaption class="stimulus__attribution">
+      {{ view.stimulus.attribution }}
+      {% if view.stimulus.source_url %}<a class="stimulus__source" href="{{ view.stimulus.source_url }}">Source</a>{% endif %}
+    </figcaption>
+    {% endif %}
+  </figure>
+  {% endif %}
   {% if error %}
   <p class="field-error" role="alert">{{ error }}</p>
   {% endif %}

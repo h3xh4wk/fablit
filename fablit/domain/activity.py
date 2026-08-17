@@ -1,10 +1,11 @@
-"""Assessment Activity domain model (SPEC-005, SPEC-011)."""
+"""Assessment Activity domain model (SPEC-005, SPEC-011, SPEC-015)."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from uuid import UUID, uuid4
 
+from .stimulus import ActivityStimulusContext
 from .types import ActivityStatus, ActivityType, InvalidActivityError
 
 
@@ -25,6 +26,11 @@ class AssessmentActivity:
     evaluation, curriculum, examination, or AI semantics. Neither a Skill nor
     an Assessment Activity requires the other to exist.
 
+    SPEC-015 allows an activity to define the contextual visual stimulus
+    requirements needed to identify an appropriate image for the learner
+    (learning focus, stimulus context, retrieval query). Activities that do
+    not depend on a visual stimulus simply leave ``stimulus_context`` unset.
+
     Attributes:
         activity_type: The controlled activity type.
         instructions: The instructions or prompt reference describing the
@@ -36,12 +42,15 @@ class AssessmentActivity:
         skill_ids: The stable identities (SPEC-010) of the Skills this
             activity provides an opportunity to practise. May be empty; each
             identity must be unique within the collection.
+        stimulus_context: The contextual visual stimulus requirements this
+            activity defines (SPEC-015 §6). ``None`` when the activity does
+            not depend on a visual stimulus.
 
     Raises:
         InvalidActivityError: When required domain information is missing or
             invalid (missing/invalid identity, type, status, blank
-            instructions, an invalid position, or invalid/duplicate skill
-            references).
+            instructions, an invalid position, invalid/duplicate skill
+            references, or an invalid stimulus context).
     """
 
     activity_type: ActivityType
@@ -50,6 +59,7 @@ class AssessmentActivity:
     id: UUID = field(default_factory=uuid4)
     status: ActivityStatus = ActivityStatus.ACTIVE
     skill_ids: tuple[UUID, ...] = ()
+    stimulus_context: ActivityStimulusContext | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.id, UUID):
@@ -95,4 +105,12 @@ class AssessmentActivity:
             raise InvalidActivityError(
                 "assessment activity must not reference the same skill more than once"
                 f" (got {self.skill_ids!r})"
+            )
+        if self.stimulus_context is not None and not isinstance(
+            self.stimulus_context, ActivityStimulusContext
+        ):
+            raise InvalidActivityError(
+                "assessment activity stimulus context must be an "
+                "ActivityStimulusContext instance"
+                f" (got {self.stimulus_context!r})"
             )

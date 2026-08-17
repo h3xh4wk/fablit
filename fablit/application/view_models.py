@@ -1,9 +1,10 @@
-"""Learner-facing view models for the practice flow (SPEC-012).
+"""Learner-facing view models for the practice flow (SPEC-012, SPEC-015).
 
 View models are the Application Layer's representations of domain state for
 the Web/UI layer (SPEC-012 §26). They carry data only — no HTML, no
 presentation formatting — so presentation concerns never leak into domain
-objects.
+objects. SPEC-015 adds the stimulus view model used to present the resolved
+image to the learner (§24–26).
 """
 
 from __future__ import annotations
@@ -30,6 +31,16 @@ class PracticeDashboardView:
 
 
 @dataclass(frozen=True)
+class StimulusView:
+    """A resolved visual stimulus prepared for presentation (SPEC-015 §24–26)."""
+
+    image_url: str
+    alt_text: str
+    attribution: str | None
+    source_url: str
+
+
+@dataclass(frozen=True)
 class PracticeActivityView:
     """An activity prepared for learner practice (UC-002)."""
 
@@ -38,6 +49,7 @@ class PracticeActivityView:
     description: str
     skills: tuple[str, ...]
     prompt: str
+    stimulus: StimulusView | None = None
 
 
 @dataclass(frozen=True)

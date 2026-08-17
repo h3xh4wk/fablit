@@ -15,6 +15,7 @@ from fablit.application import (
     build_demo_activities,
     build_demo_skills,
 )
+from tests.domain.helpers import make_stimulus
 
 
 def make_store() -> LearnerJourneyStore:
@@ -72,3 +73,65 @@ def test_list_activities_returns_deterministic_order() -> None:
 
     assert positions == sorted(positions)
     assert len(positions) == 5
+
+
+# --- Stimulus records (SPEC-015 §16, §18, §19) --------------------------------
+
+
+def test_no_current_stimulus_before_resolution() -> None:
+    store = make_store()
+    activity_id = store.list_activities()[0].activity.id
+
+    assert store.current_stimulus(activity_id) is None
+    assert store.recorded_stimuli() == ()
+
+
+def test_set_and_retrieve_current_stimulus() -> None:
+    store = make_store()
+    activity_id = store.list_activities()[0].activity.id
+    stimulus = make_stimulus(activity_id=activity_id)
+
+    store.set_current_stimulus(stimulus)
+
+    assert store.current_stimulus(activity_id) == stimulus
+    assert store.recorded_stimuli() == (stimulus,)
+
+
+def test_current_stimulus_is_scoped_to_its_activity() -> None:
+    store = make_store()
+    first, second = store.list_activities()[:2]
+    stimulus = make_stimulus(activity_id=first.activity.id)
+    store.set_current_stimulus(stimulus)
+
+    assert store.current_stimulus(first.activity.id) == stimulus
+    assert store.current_stimulus(second.activity.id) is None
+
+
+def test_setting_a_new_stimulus_replaces_the_current_one() -> None:
+    store = make_store()
+    activity_id = store.list_activities()[0].activity.id
+    first = make_stimulus(activity_id=activity_id)
+    second = make_stimulus(activity_id=activity_id)
+
+    store.set_current_stimulus(first)
+    store.set_current_stimulus(second)
+
+    assert store.current_stimulus(activity_id) == second
+    # Both remain recorded so the historical stimulus is never lost (§18).
+    assert len(store.recorded_stimuli()) == 2
+
+
+def test_save_and_get_stimulus_by_identity() -> None:
+    store = make_store()
+    stimulus = make_stimulus()
+
+    store.save_stimulus(stimulus)
+
+    assert store.get_stimulus(stimulus.id) == stimulus
+
+
+def test_missing_stimulus_raises_journey_error() -> None:
+    store = make_store()
+
+    with pytest.raises(JourneyStateError):
+        store.get_stimulus(uuid4())
