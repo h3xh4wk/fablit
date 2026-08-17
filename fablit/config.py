@@ -45,6 +45,33 @@ class AppConfig(BaseSettings):
             "or 'wikimedia' (approved external source with safe fallback)."
         ),
     )
+    stimulus_fallback_images: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Optional JSON object mapping activity title to a custom fallback image "
+            "URL, overriding the bundled images without code changes."
+        ),
+    )
+    wikimedia_endpoint: str = Field(
+        "https://commons.wikimedia.org/w/api.php",
+        description="Wikimedia Commons API endpoint used by the wikimedia provider.",
+    )
+    wikimedia_timeout: float = Field(
+        10.0,
+        ge=0.1,
+        description="Timeout in seconds for Wikimedia Commons retrieval.",
+    )
+    wikimedia_width: int = Field(
+        1200,
+        ge=1,
+        description="Thumbnail width requested from Wikimedia Commons.",
+    )
+    wikimedia_limit: int = Field(
+        5,
+        ge=1,
+        le=50,
+        description="Number of candidate images searched on Wikimedia Commons.",
+    )
     config_file: Path | None = Field(None, description="Path to optional config file.")
     version: str = Field("0.1.0", description="Application version.")
 
@@ -52,6 +79,9 @@ class AppConfig(BaseSettings):
         "env_prefix": "FABLIT_",
         "frozen": True,
         "extra": "forbid",
+        # Complex fields (e.g. the fallback-image map) are parsed by dedicated
+        # field validators, not auto-decoded from env by pydantic-settings.
+        "enable_decoding": False,
     }
 
     @field_validator("environment", mode="before")
@@ -83,6 +113,29 @@ class AppConfig(BaseSettings):
                 f"Unsupported stimulus provider '{value}'. Must be one of: {allowed}."
             )
         return normalized
+
+    @field_validator("stimulus_fallback_images", mode="before")
+    def parse_stimulus_fallback_images(cls, value: object) -> dict[str, str]:
+        """Accept the fallback-image map as a JSON string (env var) or a dict."""
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    "stimulus_fallback_images must be a valid JSON object "
+                    f"mapping activity title to image URL: {exc}"
+                ) from exc
+            if not isinstance(parsed, dict):
+                raise ValueError(
+                    "stimulus_fallback_images must be a JSON object mapping "
+                    "activity title to image URL"
+                )
+            return {
+                str(key): str(item)
+                for key, item in parsed.items()
+                if isinstance(key, str) and isinstance(item, str)
+            }
+        return value  # type: ignore[return-value]
 
 
 def _load_config_file(path: Path) -> dict[str, Any]:
@@ -121,6 +174,11 @@ def _resolve_environment_overrides() -> dict[str, Any]:
         "log_level": "FABLIT_LOG_LEVEL",
         "log_format": "FABLIT_LOG_FORMAT",
         "stimulus_provider": "FABLIT_STIMULUS_PROVIDER",
+        "stimulus_fallback_images": "FABLIT_STIMULUS_FALLBACK_IMAGES",
+        "wikimedia_endpoint": "FABLIT_WIKIMEDIA_ENDPOINT",
+        "wikimedia_timeout": "FABLIT_WIKIMEDIA_TIMEOUT",
+        "wikimedia_width": "FABLIT_WIKIMEDIA_WIDTH",
+        "wikimedia_limit": "FABLIT_WIKIMEDIA_LIMIT",
         "version": "FABLIT_VERSION",
     }
     resolved: dict[str, Any] = {}

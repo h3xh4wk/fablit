@@ -93,3 +93,77 @@ def test_unsupported_stimulus_provider_raises_validation_error(
 
     with pytest.raises(ConfigValidationError, match="stimulus provider"):
         load_config()
+
+
+def test_stimulus_fallback_images_default_to_empty() -> None:
+    config = AppConfig.model_validate({})
+
+    assert config.stimulus_fallback_images == {}
+
+
+def test_stimulus_fallback_images_parse_from_json_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "FABLIT_STIMULUS_FALLBACK_IMAGES",
+        json.dumps({"Visual Analysis — Composition": "/static/images/custom.svg"}),
+    )
+
+    config = load_config()
+
+    assert config.stimulus_fallback_images == {
+        "Visual Analysis — Composition": "/static/images/custom.svg"
+    }
+
+
+def test_stimulus_fallback_images_accept_direct_dict() -> None:
+    config = AppConfig.model_validate(
+        {"stimulus_fallback_images": {"Visual Analysis — Composition": "/x.svg"}}
+    )
+
+    assert config.stimulus_fallback_images == {
+        "Visual Analysis — Composition": "/x.svg"
+    }
+
+
+def test_invalid_stimulus_fallback_images_raise_validation_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FABLIT_STIMULUS_FALLBACK_IMAGES", "not-json")
+
+    with pytest.raises(ConfigValidationError, match="stimulus_fallback_images"):
+        load_config()
+
+
+def test_wikimedia_knobs_default_to_sane_values() -> None:
+    config = AppConfig.model_validate({})
+
+    assert config.wikimedia_endpoint == "https://commons.wikimedia.org/w/api.php"
+    assert config.wikimedia_timeout == 10.0
+    assert config.wikimedia_width == 1200
+    assert config.wikimedia_limit == 5
+
+
+def test_wikimedia_knobs_read_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FABLIT_WIKIMEDIA_ENDPOINT", "https://example.test/api.php")
+    monkeypatch.setenv("FABLIT_WIKIMEDIA_TIMEOUT", "2.5")
+    monkeypatch.setenv("FABLIT_WIKIMEDIA_WIDTH", "640")
+    monkeypatch.setenv("FABLIT_WIKIMEDIA_LIMIT", "3")
+
+    config = load_config()
+
+    assert config.wikimedia_endpoint == "https://example.test/api.php"
+    assert config.wikimedia_timeout == 2.5
+    assert config.wikimedia_width == 640
+    assert config.wikimedia_limit == 3
+
+
+def test_invalid_wikimedia_limit_raises_validation_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FABLIT_WIKIMEDIA_LIMIT", "0")
+
+    with pytest.raises(ConfigValidationError):
+        load_config()

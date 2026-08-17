@@ -19,7 +19,7 @@ import urllib.request
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Protocol, TypedDict
 from uuid import UUID
 
 from fablit.domain import AssessmentActivity, StimulusInstance
@@ -64,6 +64,16 @@ class FallbackDefinition:
     license: str | None = None
     attribution: str | None = None
     alt_text: str | None = None
+
+
+class _WikimediaOptions(TypedDict, total=False):
+    """Keyword arguments forwarded to :class:`WikimediaCommonsProvider`."""
+
+    endpoint: str
+    timeout: float
+    width: int
+    limit: int
+    fetch: Callable[[str], str]
 
 
 class FallbackStimulusProvider:
@@ -117,23 +127,40 @@ class WikimediaCommonsProvider:
     invalid responses, and missing metadata all raise
     :class:`StimulusRetrievalError` so the application can fall back safely
     (§21, §50). ``fetch`` is injectable for deterministic tests (§42–43).
+
+    Wikimedia policy requires a descriptive User-Agent, so the default fetch
+    always sends one; the search is restricted to bitmap images
+    (``filetype:bitmap``) and responses are filtered to image mime types so
+    documents (for example PDFs) never become a learner's visual stimulus
+    (§13).
     """
 
     def __init__(
         self,
         *,
         fetch: Callable[[str], str] | None = None,
+        endpoint: str = "https://commons.wikimedia.org/w/api.php",
         timeout: float = 10.0,
         width: int = 1200,
         limit: int = 5,
+        user_agent: str = (
+            "FablitPilot/0.1 (https://github.com/h3xh4wk/fablit; learner "
+            "practice demo; pilot@example.invalid)"
+        ),
     ) -> None:
         self._fetch = fetch or self._default_fetch
+        self._endpoint = endpoint
         self._timeout = timeout
         self._width = width
         self._limit = limit
+        self._user_agent = user_agent
 
     def _default_fetch(self, url: str) -> str:
-        with urllib.request.urlopen(url, timeout=self._timeout) as response:
+        request = urllib.request.Request(
+            url,
+            headers={"User-Agent": self._user_agent},
+        )
+        with urllib.request.urlopen(request, timeout=self._timeout) as response:
             payload: bytes = response.read()
             return payload.decode("utf-8")
 
@@ -146,12 +173,13 @@ class WikimediaCommonsProvider:
         context = activity.stimulus_context
         if context is None:
             raise StimulusRetrievalError("activity does not define a stimulus context")
-        query = urllib.parse.quote(context.retrieval_query)
+        search = f"filetype:bitmap {context.retrieval_query}"
+        query = urllib.parse.quote(search)
         url = (
-            "https://commons.wikimedia.org/w/api.php?action=query&format=json"
+            f"{self._endpoint}?action=query&format=json"
             "&formatversion=2&generator=search"
             f"&gsrsearch={query}&gsrnamespace=6&gsrlimit={self._limit}"
-            "&prop=imageinfo&iiprop=url%7Cextmetadata"
+            "&prop=imageinfo&iiprop=url%7Cextmetadata%7Cmime"
             f"&iiurlwidth={self._width}"
         )
         try:
@@ -179,6 +207,11 @@ class WikimediaCommonsProvider:
         for page in pages:
             image_info = (page.get("imageinfo") or [None])[0]
             if image_info is None:
+                continue
+            # Only raster images are a suitable visual stimulus; documents
+            # (for example PDFs) in the File namespace must be skipped.
+            mime = image_info.get("mime") or ""
+            if not mime.startswith("image/"):
                 continue
             image_url = image_info.get("thumburl") or image_info.get("url")
             source_url = image_info.get("descriptionurl")
@@ -245,20 +278,26 @@ class ResilientStimulusProvider:
 
 def build_fallback_stimuli(
     activities: tuple[DemoActivity, ...],
+    *,
+    image_overrides: Mapping[str, str] | None = None,
 ) -> dict[UUID, FallbackDefinition]:
     """Build a deterministic fallback stimulus per stimulus-dependent activity.
 
     Each fallback points at a bundled Fablit image (served from
     ``/static/images/``) so it is always available, satisfies the activity's
     learning purpose, and carries stable source/attribution metadata (§22).
+
+    ``image_overrides`` maps an activity title to a custom image URL, letting
+    a deployment supply its own fallback images without code changes.
     """
+    overrides = dict(image_overrides or {})
     fallbacks: dict[UUID, FallbackDefinition] = {}
     for item in activities:
         if item.stimulus_context is None or item.fallback_image is None:
             continue
         fallbacks[item.activity.id] = FallbackDefinition(
             asset_id=f"fablit-{item.activity.id}",
-            image_url=item.fallback_image,
+            image_url=overrides.get(item.title, item.fallback_image),
             source_url=FABLIT_SOURCE_URL,
             creator="Fablit",
             license="MIT",
@@ -272,6 +311,12 @@ def build_stimulus_provider(
     activities: tuple[DemoActivity, ...],
     *,
     provider_name: str = "builtin",
+    fallback_image_overrides: Mapping[str, str] | None = None,
+    wikimedia_endpoint: str | None = None,
+    wikimedia_timeout: float | None = None,
+    wikimedia_width: int | None = None,
+    wikimedia_limit: int | None = None,
+    wikimedia_fetch: Callable[[str], str] | None = None,
 ) -> StimulusProvider:
     """Assemble the application's stimulus provider for the given provider name.
 
@@ -279,10 +324,29 @@ def build_stimulus_provider(
     the pilot experience and the automated tests offline and reproducible.
     ``wikimedia`` enables the approved external source, composed with the
     built-in deterministic fallback for safe failure handling (§21–22).
+
+    ``fallback_image_overrides`` maps an activity title to a custom image URL
+    used for that activity's fallback stimulus. The ``wikimedia_*`` arguments
+    tune the Wikimedia Commons provider (endpoint, timeout, width, candidate
+    limit); ``None`` keeps the provider's built-in defaults. ``wikimedia_fetch``
+    injects the HTTP fetch callable for deterministic tests (§42–43).
     """
-    fallback = FallbackStimulusProvider(build_fallback_stimuli(activities))
+    fallback = FallbackStimulusProvider(
+        build_fallback_stimuli(activities, image_overrides=fallback_image_overrides)
+    )
     if provider_name == "wikimedia":
-        return ResilientStimulusProvider(WikimediaCommonsProvider(), fallback)
+        kwargs: _WikimediaOptions = {}
+        if wikimedia_endpoint is not None:
+            kwargs["endpoint"] = wikimedia_endpoint
+        if wikimedia_timeout is not None:
+            kwargs["timeout"] = wikimedia_timeout
+        if wikimedia_width is not None:
+            kwargs["width"] = wikimedia_width
+        if wikimedia_limit is not None:
+            kwargs["limit"] = wikimedia_limit
+        if wikimedia_fetch is not None:
+            kwargs["fetch"] = wikimedia_fetch
+        return ResilientStimulusProvider(WikimediaCommonsProvider(**kwargs), fallback)
     return fallback
 
 

@@ -70,7 +70,13 @@ def _build_practice_application() -> PracticeApplication:
         store=store,
         evaluator=DemoEvaluator(build_demo_activity_map(activities)),
         stimulus_provider=build_stimulus_provider(
-            activities, provider_name=config.stimulus_provider
+            activities,
+            provider_name=config.stimulus_provider,
+            fallback_image_overrides=config.stimulus_fallback_images,
+            wikimedia_endpoint=config.wikimedia_endpoint,
+            wikimedia_timeout=config.wikimedia_timeout,
+            wikimedia_width=config.wikimedia_width,
+            wikimedia_limit=config.wikimedia_limit,
         ),
     )
 

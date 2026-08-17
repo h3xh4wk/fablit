@@ -55,10 +55,26 @@ committed to the repository (§12–13).
 | `FABLIT_PORT` | `8000` | Default port (uvicorn `--uds` overrides this on PythonAnywhere) |
 | `FABLIT_SERVICE_NAME` | `fablit` | Service name in log records |
 | `FABLIT_VERSION` | current release | Version recorded in logs at startup |
+| `FABLIT_STIMULUS_PROVIDER` | `builtin` (default) | Visual stimulus source: `builtin` serves deterministic bundled images with no network; `wikimedia` retrieves images from the approved external source (see below) |
 
-**Secrets:** the pilot has no secrets to configure — there is no database, no
-API key, and no external service. If any are ever needed, they must be set
-through the provider's environment mechanism and never committed (§13).
+Optional stimulus settings (only needed when `FABLIT_STIMULUS_PROVIDER=wikimedia`
+or when overriding the bundled fallback images):
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `FABLIT_STIMULUS_FALLBACK_IMAGES` | (none) | JSON object mapping activity title to a custom fallback image URL, overriding the bundled images without code changes |
+| `FABLIT_WIKIMEDIA_ENDPOINT` | `https://commons.wikimedia.org/w/api.php` | Wikimedia Commons API endpoint |
+| `FABLIT_WIKIMEDIA_TIMEOUT` | `10.0` | Retrieval timeout in seconds |
+| `FABLIT_WIKIMEDIA_WIDTH` | `1200` | Requested thumbnail width |
+| `FABLIT_WIKIMEDIA_LIMIT` | `5` | Candidate images searched |
+
+**Secrets:** the pilot has no secrets to configure — there is no database and
+no API key. The default `builtin` stimulus provider also needs no external
+service; switching to `FABLIT_STIMULUS_PROVIDER=wikimedia` adds an outbound
+dependency on the Wikimedia Commons API, which must be reachable from the
+host and falls back to the bundled images when retrieval fails (§21–22 of
+SPEC-015). If any secrets are ever needed, they must be set through the
+provider's environment mechanism and never committed (§13).
 
 ## 4. Build / install process
 
@@ -209,8 +225,9 @@ Before inviting learners, verify the pilot through the **actual public URL**
 
 1. `GET /health` returns `200 OK`.
 2. Complete the full journey in a real browser:
-   Dashboard → choose an activity → submit a response → receive feedback →
-   reflect → completion → back to practice.
+   Dashboard → choose an activity → **see the visual stimulus** → submit a
+   response → receive response-aware feedback → reflect → completion → back
+   to practice.
 3. Repeat the journey at a mobile-sized viewport (≈390 px wide).
 4. Check accessibility behaviour: keyboard navigation, visible focus, labelled
    controls, single-h1 hierarchy, skip link, and readable contrast.
@@ -240,9 +257,10 @@ opt-in Playwright journey in `tests/e2e` (`RUN_BROWSER_TESTS=1`).
 
 - [ ] `FABLIT_ENV=production` is set on the host
 - [ ] `FABLIT_DEBUG=false`, `FABLIT_LOG_LEVEL=INFO`, `FABLIT_LOG_FORMAT=json`
+- [ ] `FABLIT_STIMULUS_PROVIDER` left at the default `builtin` (or set deliberately)
 - [ ] `/docs`, `/redoc`, `/openapi.json` return 404 on the public URL
 - [ ] `GET /health` returns `200 OK` on the public URL
-- [ ] Full learner journey verified in a real browser against the public URL
+- [ ] Full learner journey verified in a real browser against the public URL (visual stimulus visible, response-aware feedback shown)
 - [ ] Mobile viewport and accessibility checks pass against the public URL
 - [ ] Learner instructions shared with participants
   ([learner-instructions.md](../pilot/learner-instructions.md))

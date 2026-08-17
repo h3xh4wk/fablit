@@ -48,6 +48,7 @@ VALID_PAYLOAD = json.dumps(
                                 "https://commons.wikimedia.org/wiki/"
                                 "File:Example_fashion_editorial.jpg"
                             ),
+                            "mime": "image/jpeg",
                             "extmetadata": {
                                 "Artist": {
                                     "value": (
@@ -134,6 +135,77 @@ def test_wikimedia_provider_is_composed_with_fallback() -> None:
     assert isinstance(provider, ResilientStimulusProvider)
 
 
+def test_fallback_image_overrides_replace_bundled_images_by_title() -> None:
+    activities = build_demo_activities()
+    overrides = {
+        "Visual Analysis — Composition": "/static/images/custom-composition.svg"
+    }
+
+    provider = build_stimulus_provider(
+        activities,
+        provider_name="builtin",
+        fallback_image_overrides=overrides,
+    )
+
+    composition = next(
+        item for item in activities if item.title == "Visual Analysis — Composition"
+    )
+    stimulus = provider.resolve(composition.activity)
+    assert stimulus.image_url == "/static/images/custom-composition.svg"
+
+    # Unlisted activities keep their bundled image.
+    other = next(
+        item for item in activities if item.title == "Observation — Detail Spotting"
+    )
+    assert provider.resolve(other.activity).image_url == other.fallback_image
+
+
+def test_wikimedia_knobs_reach_the_provider() -> None:
+    seen: list[str] = []
+
+    def capture(url: str) -> str:
+        seen.append(url)
+        return VALID_PAYLOAD
+
+    activities = build_demo_activities()
+    provider = build_stimulus_provider(
+        activities,
+        provider_name="wikimedia",
+        wikimedia_endpoint="https://example.test/api.php",
+        wikimedia_width=640,
+        wikimedia_limit=3,
+        wikimedia_fetch=capture,
+    )
+    activity = next(
+        item for item in activities if item.stimulus_context is not None
+    ).activity
+
+    stimulus = provider.resolve(activity)
+
+    assert stimulus.provider == "wikimedia_commons"
+    assert seen
+    assert seen[0].startswith("https://example.test/api.php?")
+    assert "iiurlwidth=640" in seen[0]
+    assert "gsrlimit=3" in seen[0]
+
+
+def test_wikimedia_endpoint_is_configurable_directly() -> None:
+    seen: list[str] = []
+
+    def capture(url: str) -> str:
+        seen.append(url)
+        return VALID_PAYLOAD
+
+    provider = WikimediaCommonsProvider(
+        fetch=capture, endpoint="https://example.test/custom.php"
+    )
+
+    provider.resolve(make_stimulus_activity())
+
+    assert seen
+    assert seen[0].startswith("https://example.test/custom.php?")
+
+
 # ---------------------------------------------------------------------------
 # Fallback provider (SPEC-015 §22)
 # ---------------------------------------------------------------------------
@@ -215,9 +287,96 @@ def test_wikimedia_provider_uses_contextual_query() -> None:
     provider.resolve(activity)
 
     assert seen
-    assert "fashion%20editorial%20composition" in seen[0]
+    # The retrieval query is derived from the activity's stimulus context and
+    # restricted to bitmap images (SPEC-015 §11–13).
     parsed = urlparse(seen[0])
     assert parsed.hostname == "commons.wikimedia.org"
+    assert "fashion%20editorial%20composition" in seen[0]
+    assert "filetype%3Abitmap" in seen[0]
+    assert "mime" in seen[0]
+
+
+def test_wikimedia_provider_default_fetch_sends_a_user_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Wikimedia policy requires a descriptive User-Agent; it must be sent."""
+    import urllib.request
+
+    captured: dict[str, object] = {}
+
+    class FakeResponse:
+        def __enter__(self) -> FakeResponse:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return VALID_PAYLOAD.encode("utf-8")
+
+    def fake_urlopen(request: object, timeout: float = 0.0) -> FakeResponse:
+        captured["request"] = request
+        captured["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    provider = WikimediaCommonsProvider()
+    activity = make_stimulus_activity()
+
+    provider.resolve(activity)
+
+    request = captured["request"]
+    assert isinstance(request, urllib.request.Request)
+    # urllib normalises header names, so match case-insensitively.
+    user_agent = next(
+        (
+            value
+            for key, value in request.headers.items()
+            if key.lower() == "user-agent"
+        ),
+        "",
+    )
+    assert "FablitPilot" in user_agent
+    assert captured["timeout"] == 10.0
+
+
+def test_wikimedia_provider_skips_non_image_documents() -> None:
+    """Documents (e.g. PDFs) must never become a learner's visual stimulus."""
+    payload = json.dumps(
+        {
+            "query": {
+                "pages": [
+                    {
+                        "title": "File:Document.pdf",
+                        "imageinfo": [
+                            {
+                                "thumburl": "https://example.com/doc.pdf",
+                                "descriptionurl": "https://example.com/doc",
+                                "mime": "application/pdf",
+                            }
+                        ],
+                    },
+                    {
+                        "title": "File:Photo.jpg",
+                        "imageinfo": [
+                            {
+                                "thumburl": "https://example.com/photo.jpg",
+                                "descriptionurl": "https://example.com/photo",
+                                "mime": "image/jpeg",
+                            }
+                        ],
+                    },
+                ]
+            }
+        }
+    )
+    provider = WikimediaCommonsProvider(fetch=lambda url: payload)
+    activity = make_stimulus_activity()
+
+    stimulus = provider.resolve(activity)
+
+    assert stimulus.asset_id == "File:Photo.jpg"
+    assert stimulus.image_url == "https://example.com/photo.jpg"
 
 
 def test_wikimedia_provider_handles_network_failure() -> None:
@@ -245,7 +404,10 @@ def test_wikimedia_provider_skips_pages_without_usable_image() -> None:
             "query": {
                 "pages": [
                     {"title": "File:NoImage.jpg", "imageinfo": []},
-                    {"title": "File:MissingUrl.jpg", "imageinfo": [{"url": "x"}]},
+                    {
+                        "title": "File:MissingUrl.jpg",
+                        "imageinfo": [{"url": "x", "mime": "image/jpeg"}],
+                    },
                 ]
             }
         }
@@ -276,6 +438,7 @@ def test_wikimedia_provider_omits_attribution_when_not_required() -> None:
                             {
                                 "thumburl": "https://example.com/plain.jpg",
                                 "descriptionurl": "https://example.com/plain",
+                                "mime": "image/jpeg",
                                 "extmetadata": {
                                     "Artist": {"value": "Jane Doe"},
                                     "AttributionRequired": {"value": "false"},
