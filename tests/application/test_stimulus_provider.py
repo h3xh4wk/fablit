@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 import pytest
@@ -215,7 +216,8 @@ def test_wikimedia_provider_uses_contextual_query() -> None:
 
     assert seen
     assert "fashion%20editorial%20composition" in seen[0]
-    assert "commons.wikimedia.org" in seen[0]
+    parsed = urlparse(seen[0])
+    assert parsed.hostname == "commons.wikimedia.org"
 
 
 def test_wikimedia_provider_handles_network_failure() -> None:
