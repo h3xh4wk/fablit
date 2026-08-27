@@ -135,3 +135,32 @@ def test_missing_stimulus_raises_journey_error() -> None:
 
     with pytest.raises(JourneyStateError):
         store.get_stimulus(uuid4())
+
+
+def test_activity_stimuli_returns_only_stimuli_for_that_activity() -> None:
+    """SPEC-015 §53: developers can trace which stimulus was shown for any activity."""
+    store = make_store()
+    activities = store.list_activities()
+    first = activities[0]
+    second = activities[1]
+    stimulus_a = make_stimulus(activity_id=first.activity.id)
+    stimulus_b = make_stimulus(activity_id=first.activity.id)
+    stimulus_c = make_stimulus(activity_id=second.activity.id)
+
+    store.set_current_stimulus(stimulus_a)
+    store.set_current_stimulus(stimulus_b)
+    store.set_current_stimulus(stimulus_c)
+
+    first_stimuli = store.activity_stimuli(first.activity.id)
+    second_stimuli = store.activity_stimuli(second.activity.id)
+
+    assert len(first_stimuli) == 2
+    assert all(s.activity_id == first.activity.id for s in first_stimuli)
+    assert len(second_stimuli) == 1
+    assert second_stimuli[0].activity_id == second.activity.id
+
+
+def test_activity_stimuli_returns_empty_for_unknown_activity() -> None:
+    store = make_store()
+
+    assert store.activity_stimuli(uuid4()) == ()

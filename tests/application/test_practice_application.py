@@ -429,6 +429,44 @@ def test_completed_activity_retains_its_stimulus() -> None:
     assert retained[0].attribution is not None
 
 
+def test_completed_activity_stimulus_is_traceable_for_reproducibility() -> None:
+    """SPEC-015 §53: a completed activity provides enough information to determine
+    which external stimulus was shown to the learner.
+
+    This enables debugging, learner revision, evaluation analysis, and
+    future pilot research.
+    """
+    application, store = make_application()
+    activity_id = first_activity_id(application)
+
+    # Start the activity — resolves a stimulus.
+    view = application.start_practice(activity_id)
+    assert view.stimulus is not None
+    original_image_url = view.stimulus.image_url
+
+    # Submit, reflect, complete.
+    application.submit_response(activity_id, "The contrast is striking.")
+    application.submit_reflection("I will look for balance next time.")
+    assert "completed this practice" in application.get_completion().message
+
+    # Reproducibility: trace from the activity back to the stimulus.
+    activity_stimuli = store.activity_stimuli(activity_id)
+    assert len(activity_stimuli) == 1
+    retained = activity_stimuli[0]
+    assert retained.image_url == original_image_url
+    assert retained.activity_id == activity_id
+    assert retained.provider
+    assert retained.source_url
+    assert retained.retrieved_at.tzinfo is not None
+
+    # The submission also references the activity, so the full chain is:
+    # submission → activity → stimulus.
+    submissions = store.recorded_submissions()
+    assert len(submissions) == 1
+    assert submissions[0].activity_id == activity_id
+    assert submissions[0].activity_id == retained.activity_id
+
+
 def test_journey_records_use_timezone_aware_timestamps() -> None:
     application, store = make_application()
 
