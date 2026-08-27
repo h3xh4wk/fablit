@@ -197,6 +197,21 @@ class LearnerJourneyStore:
             return None
         return self._reflections[self._last_reflection_id]
 
+    def activity_stimuli(self, activity_id: UUID) -> tuple[StimulusInstance, ...]:
+        """Return all stimuli resolved for a specific activity instance.
+
+        SPEC-015 §53/§68: a completed activity must provide enough
+        information to determine which stimulus was shown. This method
+        returns every stimulus ever resolved for the given activity so
+        developers can trace the exact stimulus associated with any
+        historical learner activity instance.
+        """
+        return tuple(
+            stimulus
+            for stimulus in self._stimuli.values()
+            if stimulus.activity_id == activity_id
+        )
+
     def recorded_stimuli(self) -> tuple[StimulusInstance, ...]:
         return tuple(self._stimuli.values())
 
