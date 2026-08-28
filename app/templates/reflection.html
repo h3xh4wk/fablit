@@ -5,7 +5,7 @@
   <nav class="subnav" aria-label="Back to the activity list">
     <a href="/"><span aria-hidden="true">←</span> All activities</a>
   </nav>
-  <h1 class="display">One last thing</h1>
+  <h1 class="display">🌱 One last thing</h1>
   <p class="lede">You've had a chance to think about your feedback. One question to carry it forward.</p>
   <p class="reflection__prompt">{{ view.prompt }}</p>
   {% if error %}
@@ -15,7 +15,7 @@
     <label class="form-label" for="content">Your reflection</label>
     <textarea id="content" name="content" class="form-control" rows="8" required>{{ submitted_content or "" }}</textarea>
     <p class="form-actions">
-      <button type="submit" class="button">Save reflection</button>
+      <button type="submit" class="button">Continue <span aria-hidden="true">→</span></button>
     </p>
   </form>
 </article>

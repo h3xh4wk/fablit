@@ -1,11 +1,11 @@
 /* ==========================================================================
-   Fablit — Learner Experience stylesheet (SPEC-013)
+   Fablit — Learner Experience stylesheet (SPEC-013, refined SPEC-016)
 
    A small, reusable design-system foundation built on centralized design
    tokens. The direction is calm, personal, spacious and editorial: a warm
    neutral foundation with a restrained Fablit accent. Colour communicates
    focus, invitation and interaction — never correct/incorrect or
-   performance. See SPEC-013 §28–29.
+   performance. See SPEC-013 §28–29, SPEC-016 §21–25.
    ========================================================================== */
 
 /* --------------------------------------------------------------------------
@@ -162,7 +162,7 @@ ol {
 }
 
 /* --------------------------------------------------------------------------
-   Typography hierarchy (§8)
+   Typography hierarchy (§8, SPEC-016 §23)
    -------------------------------------------------------------------------- */
 .display {
   font-family: var(--font-display);
@@ -179,7 +179,7 @@ ol {
 }
 
 /* --------------------------------------------------------------------------
-   Cards (§12, §28)
+   Cards (§12, §28, SPEC-016 §6.1)
    -------------------------------------------------------------------------- */
 .card-grid {
   list-style: none;
@@ -247,7 +247,7 @@ ol {
 }
 
 /* --------------------------------------------------------------------------
-   Buttons and links (§28)
+   Buttons and links (§28, SPEC-016 §12)
    -------------------------------------------------------------------------- */
 .button {
   display: inline-block;
@@ -283,7 +283,7 @@ ol {
 }
 
 /* --------------------------------------------------------------------------
-   Forms (§16, §28)
+   Forms (§16, §28, SPEC-016 §11)
    -------------------------------------------------------------------------- */
 .form-label {
   display: block;
@@ -302,6 +302,11 @@ ol {
   min-height: 3rem;
   resize: vertical;
   transition: border-color var(--transition-fast);
+}
+
+.form-control::placeholder {
+  color: var(--color-ink-muted);
+  font-style: italic;
 }
 
 .form-control:focus-visible {
@@ -330,7 +335,7 @@ ol {
 }
 
 /* --------------------------------------------------------------------------
-   Practice experience (§14–16) — visually quieter than the dashboard
+   Practice experience (§14–16, SPEC-016 §7–12)
    -------------------------------------------------------------------------- */
 .practice,
 .feedback,
@@ -338,6 +343,21 @@ ol {
 .completion {
   max-width: var(--container-narrow);
   margin: 0 auto;
+}
+
+/* Invitation cue — conversational emoji prefix (SPEC-016 §8) */
+.practice__invitation {
+  font-size: var(--text-small);
+  color: var(--color-ink-muted);
+  margin-bottom: var(--space-2);
+}
+
+.practice__title {
+  font-family: var(--font-display);
+  font-size: var(--text-display);
+  font-weight: 700;
+  line-height: var(--leading-tight);
+  margin-bottom: var(--space-5);
 }
 
 .practice__prompt,
@@ -355,7 +375,7 @@ ol {
   margin-bottom: var(--space-6);
 }
 
-/* Visual stimulus presentation (§25–26) */
+/* Visual stimulus presentation (§25–26, SPEC-016 §9) */
 .stimulus {
   margin: var(--space-6) 0;
   background: var(--color-surface);
@@ -389,7 +409,7 @@ ol {
 }
 
 /* --------------------------------------------------------------------------
-   Feedback experience (§17–19)
+   Feedback experience (§17–19, SPEC-016 §14–16)
    -------------------------------------------------------------------------- */
 .feedback__activity {
   color: var(--color-ink-muted);
@@ -421,7 +441,7 @@ ol {
 }
 
 /* --------------------------------------------------------------------------
-   Completion experience (§21) — quiet acknowledgement, no victory
+   Completion experience (§21, SPEC-016 §18)
    -------------------------------------------------------------------------- */
 .completion__note {
   font-family: var(--font-display);

@@ -11,7 +11,7 @@ def test_homepage_renders_the_practice_dashboard() -> None:
 
     assert response.status_code == 200
     assert "What would you like to explore?" in response.text
-    assert "Try it" in response.text
+    assert "Explore" in response.text
 
 
 def test_health_returns_healthy_status() -> None:

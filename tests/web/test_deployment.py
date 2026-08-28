@@ -129,7 +129,7 @@ def test_production_app_keeps_learner_journey_and_health() -> None:
     assert health.json() == {"status": "healthy"}
     assert dashboard.status_code == 200
     assert "What would you like to explore?" in dashboard.text
-    assert "Try it" in dashboard.text
+    assert "Explore" in dashboard.text
 
 
 def test_development_app_still_exposes_api_documentation() -> None:
