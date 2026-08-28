@@ -150,7 +150,7 @@ def _run_journey(page: Page, base_url: str) -> None:
     )
     page.get_by_role("button", name="Continue").click()
     expect(
-        page.get_by_role("heading", name="That's one done.", exact=True)
+        page.get_by_role("heading", name="✨ That's one done.", exact=True)
     ).to_be_visible()
 
     page.get_by_role("link", name="Back to explore").click()
