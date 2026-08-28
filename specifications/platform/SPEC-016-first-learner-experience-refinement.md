@@ -1,8 +1,8 @@
 # SPEC-016 — First Learner Experience Refinement
 
-**Status:** Proposed  
-**Type:** Product / UX Implementation  
-**Depends on:** SPEC-012, SPEC-013, SPEC-014, SPEC-015  
+**Status:** Proposed
+**Type:** Product / UX Implementation
+**Depends on:** SPEC-012, SPEC-013, SPEC-014, SPEC-015
 **UX References:** UX-001, UX-002
 
 ---
@@ -886,4 +886,3 @@ The learner should want to:
 And when the activity ends, the desired feeling is:
 
 > **"That was interesting. I want to try another one."**
-
