@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **SPEC-016 — First Learner Experience Refinement**: visual and interaction refinement of the complete learner activity from functional to intentional and inviting, guided by UX-001 and UX-002.
+  - Dashboard: conversational greeting with activity cards featuring clear visual hierarchy (title, invitation, skill, explore action).
+  - Practice page: conversational invitation cue, hero stimulus presentation, observation prompt encouraging curiosity, notebook-like response area with guidance text ("There isn't a right answer. Tell us what you notice..."), and conversational submit action ("I'm ready →").
+  - Feedback: "Something you noticed" heading with personalized Finding presentation, conversational tone (insight, not grade).
+  - Reflection: conversational heading with emoji cue, natural continuation from feedback.
+  - Completion: quiet accomplishment ("You noticed. You thought. You found something.") with clear return navigation.
+  - CSS: intentional whitespace, warm editorial typography, subtle interaction states, responsive mobile-first layout, preserved accessibility (focus states, reduced motion, semantic labels).
+  - No new domain models, no new persistence, no new backend architecture, no gamification.
+  - Tests updated and extended; all quality gates pass.
+
+See [SPEC-016](specifications/platform/SPEC-016-first-learner-experience-refinement.md) for details.
+
 - **SPEC-015 — Contextual Visual Stimulus & Response-Aware Evaluation**: the visual stimulus becomes part of the learner's activity instance, and evaluation responds to what the learner actually wrote.
   - Domain: `ActivityStimulusContext` (learning focus, stimulus context, retrieval query) on `AssessmentActivity`, and `StimulusInstance` (provider, asset ID, image URL, source URL, creator, license, attribution, alt text, timezone-aware retrieval timestamp) — both immutable and free of HTTP/provider/network dependencies; `EvaluationFinding` gains an optional `evidence` field grounding a Finding in the learner's response.
   - Application: `StimulusProvider` abstraction (§9) with a deterministic built-in provider (bundled images, the default), a `WikimediaCommonsProvider` for the approved external source (§8, §10), and a `ResilientStimulusProvider` that falls back to the built-in stimulus when external retrieval fails (§21–22). The Wikimedia provider sends the descriptive User-Agent Wikimedia requires, restricts search to bitmap images, and filters responses to image mime types so documents never become a stimulus; `DemoEvaluator` is now response-aware — matched concepts produce response-specific Findings with evidence, and empty/very short responses are handled without fabricating positives (§62–63, §69).

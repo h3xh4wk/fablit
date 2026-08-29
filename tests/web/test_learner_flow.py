@@ -39,7 +39,7 @@ def _visible_text(html: str) -> str:
     return re.sub(r"<[^>]+>", " ", html)
 
 
-# --- Dashboard (SPEC-013 §11–13) --------------------------------------------
+# --- Dashboard (SPEC-013 §11–13, SPEC-016 §6) --------------------------------
 
 
 def test_dashboard_renders_three_to_five_activities() -> None:
@@ -48,7 +48,7 @@ def test_dashboard_renders_three_to_five_activities() -> None:
 
     assert response.status_code == 200
     assert 3 <= len(_activity_hrefs(response.text)) <= 5
-    assert "Try it" in response.text
+    assert "Explore" in response.text
 
 
 def test_dashboard_displays_skill_names() -> None:
@@ -68,7 +68,7 @@ def test_activity_cards_show_invitation_hierarchy() -> None:
     assert "What would you like to explore?" in html
     assert "Visual Analysis — Composition" in html
     assert "Analyse the composition of this photograph." in html
-    assert "Try it" in html
+    assert "Explore" in html
     assert len(_activity_hrefs(html)) >= 3
 
 
@@ -84,7 +84,7 @@ def test_activity_cards_expose_no_internal_identifiers() -> None:
         assert activity_id not in visible
 
 
-# --- Practice (SPEC-013 §14–16) ----------------------------------------------
+# --- Practice (SPEC-013 §14–16, SPEC-016 §7–12) -------------------------------
 
 
 def test_practice_page_emphasises_prompt_with_accessible_response_field() -> None:
@@ -100,7 +100,28 @@ def test_practice_page_emphasises_prompt_with_accessible_response_field() -> Non
     assert 'name="response"' in response.text
     assert 'id="response"' in response.text
     assert 'for="response"' in response.text
-    assert "Submit response" in response.text
+    assert "I'm ready" in response.text
+
+
+def test_practice_page_shows_conversational_invitation() -> None:
+    """The practice page shows a conversational invitation cue (SPEC-016 §8)."""
+    with TestClient(app) as client:
+        dashboard = client.get("/")
+        href = _activity_hrefs(dashboard.text)[0]
+        response = client.get(href)
+
+    assert "Look a little closer" in response.text
+
+
+def test_practice_page_has_notebook_response_area() -> None:
+    """The response area has conversational guidance text (SPEC-016 §11)."""
+    with TestClient(app) as client:
+        dashboard = client.get("/")
+        href = _activity_hrefs(dashboard.text)[0]
+        response = client.get(href)
+
+    assert "What's your reading of it?" in response.text
+    assert "There isn't a right answer" in response.text
 
 
 # --- Visual stimulus presentation (SPEC-015 §24–26) ---------------------------
@@ -149,7 +170,7 @@ def test_practice_page_is_quieter_than_the_dashboard() -> None:
         response = client.get(href)
 
     assert _activity_hrefs(response.text) == []
-    assert "Try it" not in response.text
+    assert "Explore" not in response.text
 
 
 def test_submit_response_redirects_to_feedback() -> None:
@@ -180,7 +201,7 @@ def test_invalid_response_shows_validation_message() -> None:
     assert "Please enter a response before submitting." in response.text
 
 
-# --- Feedback (SPEC-013 §17–19) ----------------------------------------------
+# --- Feedback (SPEC-013 §17–19, SPEC-016 §14–16) ------------------------------
 
 
 def test_feedback_presents_conversational_sections() -> None:
@@ -189,7 +210,7 @@ def test_feedback_presents_conversational_sections() -> None:
         response = client.get("/feedback")
 
     assert response.status_code == 200
-    assert "A little feedback" in response.text
+    assert "Something you noticed" in response.text
     assert "What you noticed" in response.text
     assert "What to think about" in response.text
     assert "Try this next" in response.text
@@ -260,7 +281,7 @@ def test_feedback_avoids_score_and_grade_language() -> None:
         assert word not in lowered
 
 
-# --- Reflection (SPEC-013 §20) -----------------------------------------------
+# --- Reflection (SPEC-013 §20, SPEC-016 §17) ---------------------------------
 
 
 def test_reflection_page_shows_purposeful_prompt_and_accessible_field() -> None:
@@ -276,7 +297,7 @@ def test_reflection_page_shows_purposeful_prompt_and_accessible_field() -> None:
     assert 'id="content"' in response.text
     assert 'for="content"' in response.text
     assert 'name="content"' in response.text
-    assert "Save reflection" in response.text
+    assert "Continue" in response.text
 
 
 def test_submit_reflection_redirects_to_completion() -> None:
@@ -305,7 +326,7 @@ def test_empty_reflection_shows_validation_message() -> None:
     assert "Please enter a reflection before saving." in response.text
 
 
-# --- Completion (SPEC-013 §21) -----------------------------------------------
+# --- Completion (SPEC-013 §21, SPEC-016 §18) ---------------------------------
 
 
 def test_completion_is_quiet_and_offers_route_back_to_practice() -> None:
@@ -316,8 +337,8 @@ def test_completion_is_quiet_and_offers_route_back_to_practice() -> None:
 
     assert response.status_code == 200
     assert "That's one done." in response.text
-    assert "You have completed this practice." in response.text
-    assert "Back to practice" in response.text
+    assert "You noticed. You thought. You found something." in response.text
+    assert "Back to explore" in response.text
     assert 'href="/"' in response.text
 
 
@@ -366,7 +387,7 @@ def test_full_learner_journey_end_to_end() -> None:
             href + "/submit",
             data={"response": "The composition is dominated by the central subject."},
         )
-        assert "A little feedback" in submitted.text
+        assert "Something you noticed" in submitted.text
 
         feedback = client.get("/feedback")
         assert "Try this next" in feedback.text
@@ -381,10 +402,10 @@ def test_full_learner_journey_end_to_end() -> None:
         assert "That's one done." in saved.text
 
         complete = client.get("/complete")
-        assert "You have completed this practice." in complete.text
+        assert "You noticed. You thought. You found something." in complete.text
 
         back_home = client.get("/")
-        assert "Try it" in back_home.text
+        assert "Explore" in back_home.text
 
 
 # --- Responsive behaviour (SPEC-013 §25–26) -----------------------------------

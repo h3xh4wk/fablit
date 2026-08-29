@@ -117,28 +117,28 @@ def _run_journey(page: Page, base_url: str) -> None:
     expect(
         page.get_by_role("heading", name="What would you like to explore?", exact=True)
     ).to_be_visible()
-    expect(page.get_by_role("link", name="Try it").first).to_be_visible()
+    expect(page.get_by_role("link", name="Explore").first).to_be_visible()
 
-    page.get_by_role("link", name="Try it").first.click()
-    expect(page.get_by_label("Your response")).to_be_visible()
+    page.get_by_role("link", name="Explore").first.click()
+    expect(page.get_by_label("What's your reading of it?")).to_be_visible()
     # The practice page is visually quieter than the dashboard (SPEC-013 §14).
-    expect(page.get_by_role("link", name="Try it")).to_have_count(0)
+    expect(page.get_by_role("link", name="Explore")).to_have_count(0)
     # SPEC-015 §71: the learner sees the resolved image before responding.
     expect(page.get_by_role("img").first).to_be_visible()
 
-    page.get_by_label("Your response").fill(
+    page.get_by_label("What's your reading of it?").fill(
         "The contrast between the figure and the dark background is striking."
     )
-    page.get_by_role("button", name="Submit response").click()
+    page.get_by_role("button", name="I'm ready").click()
     expect(
-        page.get_by_role("heading", name="A little feedback", exact=True)
+        page.get_by_role("heading", name="Something you noticed", exact=False)
     ).to_be_visible()
     expect(page.get_by_text("What you noticed")).to_be_visible()
     expect(page.get_by_text("Try this next")).to_be_visible()
     # SPEC-015 §71: the feedback reflects the learner's actual response.
     expect(page.get_by_text("You noticed the contrast in the image")).to_be_visible()
 
-    page.get_by_role("link", name="Reflect").click()
+    page.get_by_role("link", name="Continue").click()
     expect(
         page.get_by_text(
             "What will you try differently the next time you practise this skill?"
@@ -148,12 +148,12 @@ def _run_journey(page: Page, base_url: str) -> None:
     page.get_by_label("Your reflection").fill(
         "I will explain how two elements interact next time."
     )
-    page.get_by_role("button", name="Save reflection").click()
+    page.get_by_role("button", name="Continue").click()
     expect(
-        page.get_by_role("heading", name="That's one done.", exact=True)
+        page.get_by_role("heading", name="✨ That's one done.", exact=True)
     ).to_be_visible()
 
-    page.get_by_role("link", name="Back to practice").click()
+    page.get_by_role("link", name="Back to explore").click()
     expect(
         page.get_by_role("heading", name="What would you like to explore?", exact=True)
     ).to_be_visible()
@@ -194,6 +194,6 @@ def test_keyboard_navigation_reaches_core_actions() -> None:
             expect(page.get_by_role("link", name="Fablit")).to_be_focused()
 
             page.keyboard.press("Tab")
-            expect(page.get_by_role("link", name="Try it").first).to_be_focused()
+            expect(page.get_by_role("link", name="Explore").first).to_be_focused()
         finally:
             browser.close()
