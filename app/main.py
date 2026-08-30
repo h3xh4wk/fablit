@@ -268,7 +268,11 @@ def create_app(config: AppConfig) -> FastAPI:
         except InvalidPracticeResponseError as exc:
             view = practice.start_practice(activity)
             if is_htmx:
-                return _practice_partial(request, view, error=str(exc), submitted_response=response)
+                return _practice_partial(
+                    request, view,
+                    error=str(exc),
+                    submitted_response=response,
+                )
             return templates.TemplateResponse(
                 request,
                 "practice.html",
@@ -279,7 +283,11 @@ def create_app(config: AppConfig) -> FastAPI:
             # message instead of an internal failure.
             view = practice.start_practice(activity)
             if is_htmx:
-                return _practice_partial(request, view, error=str(exc), submitted_response=response)
+                return _practice_partial(
+                    request, view,
+                    error=str(exc),
+                    submitted_response=response,
+                )
             return templates.TemplateResponse(
                 request,
                 "practice.html",

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import re
 from unittest.mock import patch
-from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
@@ -147,7 +146,7 @@ def test_htmx_success_swaps_to_feedback_in_place() -> None:
 
 
 def test_htmx_evaluation_failure_returns_error_with_retry() -> None:
-    """On evaluation failure, HTMX returns the form with error and retry path (FR-017-05)."""
+    """On evaluation failure, HTMX returns error with retry path (FR-017-05)."""
     with TestClient(app) as client:
         href = _first_activity_href(client)
         with patch(
@@ -161,7 +160,8 @@ def test_htmx_evaluation_failure_returns_error_with_retry() -> None:
             )
 
     assert response.status_code == 200
-    assert "couldn't evaluate" in response.text.lower() or "try again" in response.text.lower()
+    text = response.text.lower()
+    assert "couldn't evaluate" in text or "try again" in text
     # The form should still be present for retry
     assert 'hx-post="' in response.text
     assert 'name="response"' in response.text
@@ -203,7 +203,7 @@ def test_htmx_validation_error_preserves_submitted_response() -> None:
 
 
 def test_htmx_evaluation_failure_preserves_response_for_retry() -> None:
-    """On evaluation failure, the learner's response is preserved for retry (AC-017-06)."""
+    """On evaluation failure, the response is preserved for retry (AC-017-06)."""
     with TestClient(app) as client:
         href = _first_activity_href(client)
         with patch(
