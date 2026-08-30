@@ -269,7 +269,8 @@ def create_app(config: AppConfig) -> FastAPI:
             view = practice.start_practice(activity)
             if is_htmx:
                 return _practice_partial(
-                    request, view,
+                    request,
+                    view,
                     error=str(exc),
                     submitted_response=response,
                 )
@@ -284,7 +285,8 @@ def create_app(config: AppConfig) -> FastAPI:
             view = practice.start_practice(activity)
             if is_htmx:
                 return _practice_partial(
-                    request, view,
+                    request,
+                    view,
                     error=str(exc),
                     submitted_response=response,
                 )
