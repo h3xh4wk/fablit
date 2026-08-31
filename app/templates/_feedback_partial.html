@@ -1,0 +1,36 @@
+{# SPEC-017: partial template for feedback, replaces the submission area in-place #}
+<article class="feedback">
+  <h1 class="display">💡 Something you noticed</h1>
+  <p class="feedback__activity">{{ view.activity_title }}</p>
+  <section class="feedback-section">
+    <h2>What you noticed</h2>
+    <ul>
+      {% for strength in view.strengths %}
+      <li>{{ strength }}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  <section class="feedback-section">
+    <h2>What to think about</h2>
+    <ul>
+      {% for improvement in view.improvements %}
+      <li>{{ improvement }}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  <section class="feedback-section">
+    <h2>Try this next</h2>
+    <ul>
+      {% for next_step in view.next_steps %}
+      <li>{{ next_step }}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  <section class="feedback-section">
+    <h2>🌱 Reflect</h2>
+    <p>{{ view.reflection_prompt }}</p>
+    <p class="form-actions">
+      <a class="button" href="/reflect">Continue <span aria-hidden="true">→</span></a>
+    </p>
+  </section>
+</article>

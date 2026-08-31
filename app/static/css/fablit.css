@@ -456,6 +456,34 @@ ol {
 }
 
 /* --------------------------------------------------------------------------
+   Submission processing states (SPEC-017)
+   -------------------------------------------------------------------------- */
+
+/* HTMX hides the indicator by default; show it when the request is active */
+.htmx-indicator {
+  display: none;
+}
+
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+  display: inline;
+}
+
+/* Processing indicator — simple text, no fabricated progress (SPEC-017 §7.2) */
+.loading-indicator {
+  margin-left: var(--space-3);
+  color: var(--color-ink-muted);
+  font-size: var(--text-small);
+}
+
+/* Disabled/processing button state (FR-017-03, FR-017-06) */
+.button:disabled,
+.button[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* --------------------------------------------------------------------------
    Responsive behaviour (§25–26): mobile → tablet → desktop
    -------------------------------------------------------------------------- */
 @media (min-width: 40rem) {

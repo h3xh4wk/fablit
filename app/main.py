@@ -113,6 +113,40 @@ def _error_response(
     )
 
 
+def _practice_partial(
+    request: Request,
+    view: object,
+    *,
+    error: str | None = None,
+    submitted_response: str | None = None,
+) -> HTMLResponse:
+    """Render just the submission area for HTMX partial swap (SPEC-017)."""
+    html = templates.env.get_template("_practice_partial.html").render(
+        request=request,
+        view=view,
+        error=error,
+        submitted_response=submitted_response,
+    )
+    return HTMLResponse(content=html)
+
+
+def _feedback_partial(request: Request, practice: object) -> HTMLResponse:
+    """Render the feedback content for HTMX partial swap (SPEC-017).
+
+    The feedback view is obtained from the practice application and rendered
+    from a partial template that contains no page chrome.
+    """
+    from fablit.application import PracticeApplication
+
+    assert isinstance(practice, PracticeApplication)
+    view = practice.get_feedback()
+    html = templates.env.get_template("_feedback_partial.html").render(
+        request=request,
+        view=view,
+    )
+    return HTMLResponse(content=html)
+
+
 async def _unhandled_exception_handler(request: Request, exc: Exception) -> Response:
     """Turn unexpected failures into a learner-friendly page (SPEC-014 §20).
 
@@ -214,8 +248,15 @@ def create_app(config: AppConfig) -> FastAPI:
         activity_id: str,
         response: Annotated[str, Form()] = "",
     ) -> Response:
-        """Accept a learner response and move to feedback (UC-003/004/005)."""
+        """Accept a learner response and move to feedback (UC-003/004/005).
+
+        SPEC-017: HTMX requests receive partial HTML so the submission area
+        is replaced in-place without a full page navigation. Non-HTMX
+        requests (progressive enhancement, no JavaScript) continue to
+        receive a full-page redirect.
+        """
         practice = _practice(request)
+        is_htmx = request.headers.get("HX-Request") == "true"
         try:
             activity = _activity_id(activity_id)
         except ActivityNotFoundError:
@@ -226,6 +267,13 @@ def create_app(config: AppConfig) -> FastAPI:
             return _error_response(request, "Activity not found.")
         except InvalidPracticeResponseError as exc:
             view = practice.start_practice(activity)
+            if is_htmx:
+                return _practice_partial(
+                    request,
+                    view,
+                    error=str(exc),
+                    submitted_response=response,
+                )
             return templates.TemplateResponse(
                 request,
                 "practice.html",
@@ -235,11 +283,20 @@ def create_app(config: AppConfig) -> FastAPI:
             # SPEC-015 §64: preserve the learner's response and show a safe
             # message instead of an internal failure.
             view = practice.start_practice(activity)
+            if is_htmx:
+                return _practice_partial(
+                    request,
+                    view,
+                    error=str(exc),
+                    submitted_response=response,
+                )
             return templates.TemplateResponse(
                 request,
                 "practice.html",
                 {"view": view, "error": str(exc), "submitted_response": response},
             )
+        if is_htmx:
+            return _feedback_partial(request, practice)
         return RedirectResponse("/feedback", status_code=303)
 
     @app.get("/feedback", response_class=HTMLResponse)
