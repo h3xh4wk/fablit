@@ -139,7 +139,7 @@ def _feedback_partial(request: Request, practice: object) -> HTMLResponse:
     from fablit.application import PracticeApplication
 
     assert isinstance(practice, PracticeApplication)
-    view = practice.get_feedback()  # type: ignore[union-attr]
+    view = practice.get_feedback()
     html = templates.env.get_template("_feedback_partial.html").render(
         request=request,
         view=view,
