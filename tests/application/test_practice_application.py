@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from threading import Event, Thread
 from uuid import UUID, uuid4
 
 import pytest
@@ -30,6 +31,7 @@ from fablit.application import (
     ReflectionView,
     StimulusProvider,
     StimulusView,
+    SubmissionInProgressError,
     build_demo_activities,
     build_demo_activity_map,
     build_demo_skills,
@@ -65,6 +67,28 @@ class RaisingEvaluator:
         stimulus: StimulusInstance | None = None,
         evaluated_at: datetime | None = None,
     ) -> Evaluation:
+        raise RuntimeError("evaluator failure")
+
+
+class BlockingEvaluator:
+    """An evaluator that keeps one submission in progress for concurrency tests."""
+
+    def __init__(self) -> None:
+        self.started = Event()
+        self.release = Event()
+        self.calls = 0
+
+    def evaluate(
+        self,
+        submission: Submission,
+        *,
+        activity: AssessmentActivity,
+        stimulus: StimulusInstance | None = None,
+        evaluated_at: datetime | None = None,
+    ) -> Evaluation:
+        self.calls += 1
+        self.started.set()
+        assert self.release.wait(timeout=2)
         raise RuntimeError("evaluator failure")
 
 
@@ -328,6 +352,30 @@ def test_submit_response_evaluation_failure_is_learner_safe() -> None:
     with pytest.raises(EvaluationFailedError):
         application.submit_response(activity_id, "A considered response.")
 
+    assert store.recorded_submissions() == ()
+
+
+def test_submit_response_rejects_duplicate_while_evaluation_is_in_progress() -> None:
+    """Only one evaluation can run per activity, even for concurrent requests."""
+    evaluator = BlockingEvaluator()
+    application, store = make_application(evaluator=evaluator)
+    activity_id = first_activity_id(application)
+
+    def submit_first_response() -> None:
+        with pytest.raises(EvaluationFailedError):
+            application.submit_response(activity_id, "First response.")
+
+    first_submission = Thread(target=submit_first_response)
+    first_submission.start()
+    assert evaluator.started.wait(timeout=2)
+
+    with pytest.raises(SubmissionInProgressError, match="already being evaluated"):
+        application.submit_response(activity_id, "Duplicate response.")
+    assert evaluator.calls == 1
+
+    evaluator.release.set()
+    first_submission.join(timeout=2)
+    assert not first_submission.is_alive()
     assert store.recorded_submissions() == ()
 
 

@@ -27,6 +27,7 @@ from .errors import (
     InvalidReflectionResponseError,
     JourneyStateError,
     StimulusRetrievalError,
+    SubmissionInProgressError,
 )
 from .stimulus import (
     SUPPORTED_PROVIDERS,
@@ -79,6 +80,7 @@ __all__ = [
     "StimulusProvider",
     "StimulusRetrievalError",
     "StimulusView",
+    "SubmissionInProgressError",
     "SUPPORTED_PROVIDERS",
     "WikimediaCommonsProvider",
     "build_demo_activities",
