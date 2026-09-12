@@ -35,6 +35,7 @@ from fablit.application import (
     InvalidReflectionResponseError,
     LearnerJourneyStore,
     PracticeApplication,
+    SubmissionInProgressError,
     build_demo_activities,
     build_demo_activity_map,
     build_demo_skills,
@@ -266,6 +267,20 @@ def create_app(config: AppConfig) -> FastAPI:
         except ActivityNotFoundError:
             return _error_response(request, "Activity not found.")
         except InvalidPracticeResponseError as exc:
+            view = practice.start_practice(activity)
+            if is_htmx:
+                return _practice_partial(
+                    request,
+                    view,
+                    error=str(exc),
+                    submitted_response=response,
+                )
+            return templates.TemplateResponse(
+                request,
+                "practice.html",
+                {"view": view, "error": str(exc), "submitted_response": response},
+            )
+        except SubmissionInProgressError as exc:
             view = practice.start_practice(activity)
             if is_htmx:
                 return _practice_partial(

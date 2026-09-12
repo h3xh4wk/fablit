@@ -8,6 +8,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **SPEC-017 — Submission & Evaluation Feedback**: the learner is immediately
+  acknowledged while a response is being evaluated, with an accessible,
+  server-rendered HTMX processing state and an in-place transition to the
+  existing feedback experience.
+  - Submission controls communicate the evaluation state, disable repeated
+    clicks, and retain progressive enhancement for learners without JavaScript.
+  - The application layer also rejects concurrent submissions for the same
+    activity, so duplicate evaluation is prevented even when client-side
+    controls are bypassed or requests race.
+  - Recoverable validation and evaluation failures preserve the learner's
+    response and render a clear retry path with accessible error messaging.
+  - Web and application tests cover the processing state, successful and
+    failed transitions, response preservation, and duplicate prevention.
+
+See [SPEC-017](specifications/platform/SPEC-017-submission-and-evaluation-feedback.md) for details.
+
 - **SPEC-016 — First Learner Experience Refinement**: visual and interaction refinement of the complete learner activity from functional to intentional and inviting, guided by UX-001 and UX-002.
   - Dashboard: conversational greeting with activity cards featuring clear visual hierarchy (title, invitation, skill, explore action).
   - Practice page: conversational invitation cue, hero stimulus presentation, observation prompt encouraging curiosity, notebook-like response area with guidance text ("There isn't a right answer. Tell us what you notice..."), and conversational submit action ("I'm ready →").

@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
+from threading import Lock
 from uuid import UUID
 
 from fablit.domain import (
@@ -30,6 +31,7 @@ from .errors import (
     EvaluationFailedError,
     InvalidPracticeResponseError,
     InvalidReflectionResponseError,
+    SubmissionInProgressError,
 )
 from .stimulus import StimulusProvider
 from .store import DemoActivity, LearnerJourneyStore
@@ -70,6 +72,12 @@ class PracticeApplication:
         self._evaluator = evaluator
         self._stimulus_provider = stimulus_provider
         self._clock = clock or _now
+        # HTMX disables the submit button in normal browser use, but requests
+        # can still race due to retries or multiple clients. Keep this guard at
+        # the application boundary so only one evaluation per activity runs at
+        # a time (SPEC-017 FR-017-03).
+        self._submitting_activity_ids: set[UUID] = set()
+        self._submission_lock = Lock()
 
     # UC-001 — Get Practice Dashboard
     def get_dashboard(self) -> PracticeDashboardView:
@@ -120,44 +128,62 @@ class PracticeApplication:
             raise InvalidPracticeResponseError(
                 "Please enter a response before submitting."
             )
-        submitted = Submission(
-            learner_id=self._store.learner_id,
-            activity_id=activity_id,
-            response=response,
-        ).submit(submitted_at=self._clock())
-        # The stimulus is normally resolved when the activity is started; if
-        # it was not (for example a direct submission), resolve it now so the
-        # evaluator always receives the actual stimulus (§27).
-        stimulus = self._store.current_stimulus(activity_id)
-        if stimulus is None:
-            stimulus = self._resolve_stimulus(item)
+        self._begin_submission(activity_id)
         try:
-            evaluation = self._evaluator.evaluate(
-                submitted,
-                activity=item.activity,
-                stimulus=stimulus,
-                evaluated_at=self._clock(),
+            submitted = Submission(
+                learner_id=self._store.learner_id,
+                activity_id=activity_id,
+                response=response,
+            ).submit(submitted_at=self._clock())
+            # The stimulus is normally resolved when the activity is started; if
+            # it was not (for example a direct submission), resolve it now so the
+            # evaluator always receives the actual stimulus (§27).
+            stimulus = self._store.current_stimulus(activity_id)
+            if stimulus is None:
+                stimulus = self._resolve_stimulus(item)
+            try:
+                evaluation = self._evaluator.evaluate(
+                    submitted,
+                    activity=item.activity,
+                    stimulus=stimulus,
+                    evaluated_at=self._clock(),
+                )
+            except Exception:
+                # SPEC-015 §64: an evaluation failure must not lose the learner's
+                # response; the Web/UI layer re-presents it with a safe message.
+                logger.exception(
+                    "evaluation failed",
+                    extra={"activity_id": str(activity_id)},
+                )
+                raise EvaluationFailedError(
+                    "We couldn't evaluate your response. Please try again."
+                ) from None
+            feedback = Feedback(
+                evaluation_id=evaluation.id,
+                content=self._feedback_content(evaluation),
+                created_at=self._clock(),
             )
-        except Exception:
-            # SPEC-015 §64: an evaluation failure must not lose the learner's
-            # response; the Web/UI layer re-presents it with a safe message.
-            logger.exception(
-                "evaluation failed",
-                extra={"activity_id": str(activity_id)},
-            )
-            raise EvaluationFailedError(
-                "We couldn't evaluate your response. Please try again."
-            ) from None
-        feedback = Feedback(
-            evaluation_id=evaluation.id,
-            content=self._feedback_content(evaluation),
-            created_at=self._clock(),
-        )
-        self._store.save_submission(submitted)
-        self._store.save_evaluation(evaluation)
-        self._store.save_feedback(feedback)
-        self._store.set_current_feedback(feedback.id)
-        return self._feedback_view(item, feedback)
+            self._store.save_submission(submitted)
+            self._store.save_evaluation(evaluation)
+            self._store.save_feedback(feedback)
+            self._store.set_current_feedback(feedback.id)
+            return self._feedback_view(item, feedback)
+        finally:
+            self._finish_submission(activity_id)
+
+    def _begin_submission(self, activity_id: UUID) -> None:
+        """Reserve an activity while its submitted response is evaluated."""
+        with self._submission_lock:
+            if activity_id in self._submitting_activity_ids:
+                raise SubmissionInProgressError(
+                    "Your response is already being evaluated. Please wait."
+                )
+            self._submitting_activity_ids.add(activity_id)
+
+    def _finish_submission(self, activity_id: UUID) -> None:
+        """Make an activity available for a later submission or retry."""
+        with self._submission_lock:
+            self._submitting_activity_ids.discard(activity_id)
 
     # UC-005 — Present Feedback
     def get_feedback(self) -> FeedbackView:

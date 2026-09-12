@@ -37,3 +37,7 @@ class StimulusRetrievalError(ApplicationError):
 
 class EvaluationFailedError(ApplicationError):
     """Raised when the evaluator cannot evaluate a submitted response (SPEC-015 §64)."""
+
+
+class SubmissionInProgressError(ApplicationError):
+    """Raised when an activity already has a submission being evaluated (SPEC-017)."""
