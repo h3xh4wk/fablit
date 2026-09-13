@@ -85,6 +85,26 @@ def test_activity_cards_expose_no_internal_identifiers() -> None:
         assert activity_id not in visible
 
 
+def test_dashboard_marks_completed_practice_without_measurement_language() -> None:
+    """A completed activity receives a quiet continuity cue (SPEC-018 AC-018-03)."""
+    with TestClient(app) as client:
+        href = _activity_hrefs(client.get("/").text)[0]
+        client.post(href + "/submit", data={"response": "A thoughtful analysis."})
+        client.post("/reflect", data={"content": "I will compare two elements."})
+        response = client.get("/")
+
+    assert response.status_code == 200
+    card = re.search(
+        r'<li class="card">.*?CAT Practice.*?Practised.*?</li>',
+        response.text,
+        re.DOTALL,
+    )
+    assert card is not None
+    visible = _visible_text(response.text).lower()
+    for prohibited in ("mastery", "proficiency", "progress", "streak", "%"):
+        assert prohibited not in visible
+
+
 # --- Practice (SPEC-013 §14–16, SPEC-016 §7–12) -------------------------------
 
 

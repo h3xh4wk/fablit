@@ -1,9 +1,9 @@
 # SPEC-018 — Learner Practice Continuity & Progress Foundation
 
-**Status:** Proposed  
-**Version:** 0.1  
-**Type:** Platform / Learner Experience  
-**Depends on:** SPEC-017  
+**Status:** Proposed
+**Version:** 0.1
+**Type:** Platform / Learner Experience
+**Depends on:** SPEC-017
 **Primary Module:** Practice / Learner Journey
 
 ---
@@ -63,20 +63,20 @@ SPEC-018 shall:
 
 ### US-018-01 — Recognize Completed Practice
 
-**As a learner,**  
-I want the application to remember that I completed an activity,  
+**As a learner,**
+I want the application to remember that I completed an activity,
 **so that** returning to the practice area feels continuous rather than starting from zero each time.
 
 ### US-018-02 — Repeat Practice
 
-**As a learner,**  
-I want to practise an activity again after completing it,  
+**As a learner,**
+I want to practise an activity again after completing it,
 **so that** completion does not prevent deliberate repetition.
 
 ### US-018-03 — Avoid Premature Completion
 
-**As a learner,**  
-I want an activity to count as completed only after I finish the intended practice journey,  
+**As a learner,**
+I want an activity to count as completed only after I finish the intended practice journey,
 **so that** simply submitting an answer does not incorrectly represent completed practice.
 
 ---
@@ -183,44 +183,44 @@ The purpose is continuity, not measurement.
 
 ### AC-018-01 — Completion after Reflection
 
-**Given** a learner completes the response, evaluation, feedback, and reflection flow  
-**When** the reflection is successfully saved  
+**Given** a learner completes the response, evaluation, feedback, and reflection flow
+**When** the reflection is successfully saved
 **Then** a practice completion record exists for the activity.
 
 ### AC-018-02 — No Completion on Failed Reflection
 
-**Given** the learner has reached reflection  
-**When** saving/submitting the reflection fails  
+**Given** the learner has reached reflection
+**When** saving/submitting the reflection fails
 **Then** no new completion record is created.
 
 ### AC-018-03 — Dashboard Continuity
 
-**Given** a learner has previously completed an activity  
-**When** the learner returns to the dashboard/practice area  
+**Given** a learner has previously completed an activity
+**When** the learner returns to the dashboard/practice area
 **Then** the activity can be identified as previously practised/completed.
 
 ### AC-018-04 — Repeated Practice
 
-**Given** a learner has previously completed an activity  
-**When** the learner practises and completes the same activity again  
+**Given** a learner has previously completed an activity
+**When** the learner practises and completes the same activity again
 **Then** the second completion is accepted and the activity remains available for practice.
 
 ### AC-018-05 — No Premature Completion
 
-**Given** a learner submits a response and receives an evaluation  
-**When** the learner has not successfully completed reflection  
+**Given** a learner submits a response and receives an evaluation
+**When** the learner has not successfully completed reflection
 **Then** no practice completion is recorded.
 
 ### AC-018-06 — No Mastery Inference
 
-**Given** one or more completion records exist  
-**When** the application prepares learner/dashboard data  
+**Given** one or more completion records exist
+**When** the application prepares learner/dashboard data
 **Then** it does not calculate or expose mastery, proficiency, skill score, percentage progress, streaks, or ranking from those records.
 
 ### AC-018-07 — Evaluation Unchanged
 
-**Given** an otherwise identical response  
-**When** SPEC-018 is present  
+**Given** an otherwise identical response
+**When** SPEC-018 is present
 **Then** evaluation behaviour and evaluation content remain unchanged.
 
 ---
@@ -313,7 +313,7 @@ SPEC-018 is complete when:
 - [ ] The implementation follows the current lightweight MVP architecture.
 - [ ] No unnecessary database or infrastructure changes are introduced.
 - [ ] Architecture review approves the implementation.
-- [ ] The associated GitHub issue and PR are linked to SPEC-018.
+- [x] The associated GitHub issue and PR are linked to SPEC-018 (see §13 Traceability).
 
 ---
 
@@ -328,3 +328,15 @@ SPEC-018 is complete when:
 - SPEC-012 — Learner Practice Application Flow
 - SPEC-016 — Learner Experience and Visual Foundation
 - SPEC-017 — Submission & Evaluation Feedback
+
+### Traceability
+
+- Tracking issue: [#66 — SPEC-018 — Learner Practice Continuity & Progress Foundation](https://github.com/h3xh4wk/fablit/issues/66)
+- Implementation: [#68 — Implement learner practice continuity foundation (SPEC-018)](https://github.com/h3xh4wk/fablit/pulls/68)
+
+> Implementation note: the branch and implementation commit for this work were
+> originally labelled `#65`. Issue #65 is an unrelated enhancement (exam-oriented
+> activity labels); the correct issue for this specification is #66. The work was
+> first opened as PR #67 and superseded by PR #68 after the mislabelled branch
+> (`codex/implement-issue-#65`) was renamed to
+> `spec-018/learner-practice-continuity-and-progress`.

@@ -1,11 +1,12 @@
-"""In-memory journey store for the learner practice vertical slice (SPEC-012, SPEC-015).
+"""In-memory journey store for the learner practice vertical slice.
 
 SPEC-012 §28: the repository has no persistence layer yet, so the vertical
 slice preserves the learner journey in memory. This store keeps the seeded
 demo content and the records produced along the journey (Stimulus Instance,
-Submission, Evaluation, Feedback, Reflection) so the flow can be demonstrated
-and tested end to end. It is intentionally minimal and structured so a real
-repository can replace it later without redesigning the application layer.
+Submission, Evaluation, Feedback, Reflection, Practice Completion) so the
+flow can be demonstrated and tested end to end. It is intentionally minimal
+and structured so a real repository can replace it later without redesigning
+the application layer.
 
 SPEC-015 §16/§18: a resolved Stimulus Instance is retained with the activity
 instance so the learner's completed activity stays associated with the exact
@@ -15,6 +16,7 @@ stimulus that was shown; the store never silently replaces it (§48).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
 from fablit.domain import (
@@ -65,6 +67,20 @@ class DemoActivity:
         return self.activity.stimulus_context
 
 
+@dataclass(frozen=True)
+class PracticeCompletion:
+    """A completed learner practice journey (SPEC-018).
+
+    Completion deliberately records only the learner, activity, reflection,
+    and time. It conveys continuity without inferring achievement or mastery.
+    """
+
+    learner_id: UUID
+    activity_id: UUID
+    reflection_id: UUID
+    completed_at: datetime
+
+
 class LearnerJourneyStore:
     """In-memory store for the demo learner's practice journey."""
 
@@ -85,6 +101,7 @@ class LearnerJourneyStore:
         self._evaluations: dict[UUID, Evaluation] = {}
         self._feedback: dict[UUID, Feedback] = {}
         self._reflections: dict[UUID, Reflection] = {}
+        self._completions: list[PracticeCompletion] = []
         self._current_stimulus_id: UUID | None = None
         self._current_stimulus_activity_id: UUID | None = None
         self._current_feedback_id: UUID | None = None
@@ -161,6 +178,18 @@ class LearnerJourneyStore:
         self._reflections[reflection.id] = reflection
         self._last_reflection_id = reflection.id
 
+    def save_completion(self, completion: PracticeCompletion) -> None:
+        """Record a completed practice journey without collapsing repeats."""
+        self._completions.append(completion)
+
+    def has_completed_activity(self, activity_id: UUID) -> bool:
+        """Whether the demo learner has completed this activity before."""
+        return any(
+            completion.learner_id == self._learner_id
+            and completion.activity_id == activity_id
+            for completion in self._completions
+        )
+
     def get_submission(self, submission_id: UUID) -> Submission:
         """Return a recorded Submission by identity."""
         try:
@@ -226,3 +255,7 @@ class LearnerJourneyStore:
 
     def recorded_reflections(self) -> tuple[Reflection, ...]:
         return tuple(self._reflections.values())
+
+    def recorded_completions(self) -> tuple[PracticeCompletion, ...]:
+        """Return each completion event, including repeated activity practice."""
+        return tuple(self._completions)

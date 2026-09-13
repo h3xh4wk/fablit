@@ -7,7 +7,12 @@
   <ul class="card-grid">
     {% for activity in view.activities %}
     <li class="card">
-      <h2 class="card__title">{{ activity.title }}</h2>
+      <div class="card__heading">
+        <h2 class="card__title">{{ activity.title }}</h2>
+        {% if activity.has_completed_practice %}
+        <p class="card__continuity">Practised</p>
+        {% endif %}
+      </div>
       <p class="card__invitation">{{ activity.description }}</p>
       <div class="card__footer">
         <p class="card__skill">{{ activity.skills|join(", ") }}</p>

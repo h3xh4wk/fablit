@@ -1,9 +1,9 @@
 # Fablit Architecture Blueprint
 
 **Document ID:** AB-001
-**Version:** 0.5.0
+**Version:** 0.6.0
 **Status:** Draft
-**Last Updated:** 2026-08-17
+**Last Updated:** 2026-09-13
 
 ---
 
@@ -354,6 +354,29 @@ Implemented in SPEC-015:
 - **Reference activity (§56–58):** the composition activity (now labelled "CAT Practice — 2D & 3D Composition Analysis" for the design-aspirant pilot, issue #65) is the reference implementation of the stimulus + response-aware evaluation flow, with three of the five demo activities now presenting bundled visual stimuli.
 - **No new persistence dependency (§46):** the in-memory journey store retains stimulus metadata and evaluation results for the activity instance, so no production database is introduced.
 - **No scoring or gamification (§4, §37):** SPEC-015 deliberately introduces no points, grades, rankings, or AI evaluation platform; the evaluator is the smallest viable response-aware implementation, and future rule-based, AI-assisted, or hybrid evaluators can implement the same contract (§28, §60).
+
+---
+
+## Learner Practice Continuity & Progress Foundation
+
+SPEC-018 adds a deliberately small application-layer continuity boundary at
+the completion-to-dashboard transition. `PracticeApplication` records a
+`PracticeCompletion` in the in-process `LearnerJourneyStore` only after a
+Reflection is successfully saved. The record retains the learner, activity,
+reflection, and timezone-aware completion time; it is isolated from domain
+models so a later durable history implementation can replace the store without
+changing the learner-facing dashboard contract.
+
+```
+Response → Evaluation → Feedback → Reflection → Practice Completion → Dashboard
+```
+
+The dashboard may present a simple prior-practice indication for activities
+with one or more completion events. It neither counts nor measures them:
+there are no percentages, mastery or proficiency labels, scores, streaks,
+rankings, recommendations, analytics, authentication, or database changes.
+Activities continue to be available after completion, and repeated deliberate
+practice creates distinct completion events.
 
 ---
 
