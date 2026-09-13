@@ -34,7 +34,7 @@ from .errors import (
     SubmissionInProgressError,
 )
 from .stimulus import StimulusProvider
-from .store import DemoActivity, LearnerJourneyStore
+from .store import DemoActivity, LearnerJourneyStore, PracticeCompletion
 from .view_models import (
     CompletionView,
     FeedbackView,
@@ -88,6 +88,9 @@ class PracticeApplication:
                 title=item.title,
                 description=item.description,
                 skills=self._skill_names(item.activity.skill_ids),
+                has_completed_practice=self._store.has_completed_activity(
+                    item.activity.id
+                ),
             )
             for item in self._store.list_activities()
         )
@@ -217,6 +220,15 @@ class PracticeApplication:
             created_at=self._clock(),
         )
         self._store.save_reflection(reflection)
+        activity = self._activity_for_feedback(feedback)
+        self._store.save_completion(
+            PracticeCompletion(
+                learner_id=self._store.learner_id,
+                activity_id=activity.activity.id,
+                reflection_id=reflection.id,
+                completed_at=self._clock(),
+            )
+        )
         return self._completion_view()
 
     def get_completion(self) -> CompletionView:

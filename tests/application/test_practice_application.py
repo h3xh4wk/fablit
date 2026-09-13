@@ -423,6 +423,12 @@ def test_submit_reflection_creates_reflection_and_completion() -> None:
     assert reflections[0].content == "I will compare two elements next time."
     assert reflections[0].created_at == _fixed_clock()
     assert store.last_reflection() is not None
+    completions = store.recorded_completions()
+    assert len(completions) == 1
+    assert completions[0].learner_id == DEMO_LEARNER_ID
+    assert completions[0].activity_id == first_activity_id(application)
+    assert completions[0].reflection_id == reflections[0].id
+    assert completions[0].completed_at == _fixed_clock()
 
 
 @pytest.mark.parametrize("content", ["", "   ", "\n"])
@@ -434,6 +440,40 @@ def test_submit_reflection_rejects_blank_content(content: str) -> None:
         application.submit_reflection(content)
 
     assert store.recorded_reflections() == ()
+    assert store.recorded_completions() == ()
+
+
+def test_dashboard_marks_an_activity_practised_only_after_reflection() -> None:
+    application, store = make_application()
+    activity_id = first_activity_id(application)
+
+    assert not application.get_dashboard().activities[0].has_completed_practice
+    application.submit_response(activity_id, "A response.")
+
+    assert store.recorded_completions() == ()
+    assert not application.get_dashboard().activities[0].has_completed_practice
+
+    application.submit_reflection("I will compare two elements next time.")
+
+    assert application.get_dashboard().activities[0].has_completed_practice
+    assert not application.get_dashboard().activities[1].has_completed_practice
+
+
+def test_repeated_practice_records_each_completion_and_remains_available() -> None:
+    application, store = make_application()
+    activity_id = first_activity_id(application)
+
+    application.submit_response(activity_id, "A first response.")
+    application.submit_reflection("I will compare two elements next time.")
+    application.start_practice(activity_id)
+    application.submit_response(activity_id, "A second response.")
+    application.submit_reflection("I will look for balance next time.")
+
+    completions = store.recorded_completions()
+    assert len(completions) == 2
+    assert all(completion.activity_id == activity_id for completion in completions)
+    assert completions[0].reflection_id != completions[1].reflection_id
+    assert application.get_dashboard().activities[0].has_completed_practice
 
 
 def test_get_completion_requires_a_saved_reflection() -> None:
@@ -533,6 +573,8 @@ def test_journey_records_use_timezone_aware_timestamps() -> None:
         assert feedback.created_at.tzinfo is not None
     for reflection in store.recorded_reflections():
         assert reflection.created_at.tzinfo is not None
+    for completion in store.recorded_completions():
+        assert completion.completed_at.tzinfo is not None
 
 
 @pytest.mark.parametrize("forbidden", ["NIFT", "NID", "CEED"])

@@ -8,6 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **SPEC-018 — Learner Practice Continuity & Progress Foundation**: successful
+  reflections now create an in-memory `PracticeCompletion` record containing
+  the demo learner, activity, reflection, and timezone-aware completion time.
+  - Dashboard activity cards give a lightweight “Practised” indication after a
+    completed journey; repeated completions remain supported and activities
+    remain available to practise again.
+  - The implementation introduces no percentage, mastery, proficiency, score,
+    streak, ranking, recommendation, database, or analytics behaviour.
+  - Application and web tests cover completion timing, failed/blank reflection,
+    dashboard continuity, and repeated practice.
+
+See [SPEC-018](specifications/platform/SPEC-018-learner-practice-continuity-and-progress-foundation.md) for details.
+
 - **SPEC-017 — Submission & Evaluation Feedback**: the learner is immediately
   acknowledged while a response is being evaluated, with an accessible,
   server-rendered HTMX processing state and an in-place transition to the

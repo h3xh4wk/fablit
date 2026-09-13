@@ -21,6 +21,7 @@ class PracticeActivitySummary:
     title: str
     description: str
     skills: tuple[str, ...]
+    has_completed_practice: bool
 
 
 @dataclass(frozen=True)
