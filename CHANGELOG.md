@@ -19,7 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Application and web tests cover completion timing, failed/blank reflection,
     dashboard continuity, and repeated practice.
 
-See [SPEC-018](specifications/platform/SPEC-018-learner-practice-continuity-and-progress-foundation.md) for details.
+See [SPEC-018](specifications/platform/SPEC-018-learner-practice-continuity-and-progress-foundation.md) — issue [#66](https://github.com/h3xh4wk/fablit/issues/66), PR [#68](https://github.com/h3xh4wk/fablit/pulls/68) — for details.
 
 - **SPEC-017 — Submission & Evaluation Feedback**: the learner is immediately
   acknowledged while a response is being evaluated, with an accessible,

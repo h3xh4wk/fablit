@@ -313,7 +313,7 @@ SPEC-018 is complete when:
 - [ ] The implementation follows the current lightweight MVP architecture.
 - [ ] No unnecessary database or infrastructure changes are introduced.
 - [ ] Architecture review approves the implementation.
-- [ ] The associated GitHub issue and PR are linked to SPEC-018.
+- [x] The associated GitHub issue and PR are linked to SPEC-018 (see §13 Traceability).
 
 ---
 
@@ -328,3 +328,15 @@ SPEC-018 is complete when:
 - SPEC-012 — Learner Practice Application Flow
 - SPEC-016 — Learner Experience and Visual Foundation
 - SPEC-017 — Submission & Evaluation Feedback
+
+### Traceability
+
+- Tracking issue: [#66 — SPEC-018 — Learner Practice Continuity & Progress Foundation](https://github.com/h3xh4wk/fablit/issues/66)
+- Implementation: [#68 — Implement learner practice continuity foundation (SPEC-018)](https://github.com/h3xh4wk/fablit/pulls/68)
+
+> Implementation note: the branch and implementation commit for this work were
+> originally labelled `#65`. Issue #65 is an unrelated enhancement (exam-oriented
+> activity labels); the correct issue for this specification is #66. The work was
+> first opened as PR #67 and superseded by PR #68 after the mislabelled branch
+> (`codex/implement-issue-#65`) was renamed to
+> `spec-018/learner-practice-continuity-and-progress`.
