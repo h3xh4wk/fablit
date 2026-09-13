@@ -71,7 +71,7 @@ Key settings include:
 - `FABLIT_LOG_LEVEL`
 - `FABLIT_LOG_FORMAT`
 - `FABLIT_STIMULUS_PROVIDER` — `builtin` (default; deterministic bundled images, no network) or `wikimedia` (approved external source with a safe built-in fallback)
-- `FABLIT_STIMULUS_FALLBACK_IMAGES` — optional JSON object mapping activity title to a custom fallback image URL, overriding the bundled images without code changes (e.g. `{"Visual Analysis — Composition": "/static/images/my-image.svg"}`)
+- `FABLIT_STIMULUS_FALLBACK_IMAGES` — optional JSON object mapping activity title to a custom fallback image URL, overriding the bundled images without code changes (e.g. `{"CAT Practice — 2D & 3D Composition Analysis": "/static/images/my-image.svg"}`)
 - `FABLIT_WIKIMEDIA_ENDPOINT` — Wikimedia Commons API endpoint (default `https://commons.wikimedia.org/w/api.php`)
 - `FABLIT_WIKIMEDIA_TIMEOUT` — retrieval timeout in seconds (default `10.0`)
 - `FABLIT_WIKIMEDIA_WIDTH` — requested thumbnail width (default `1200`)
@@ -115,7 +115,7 @@ SPEC-012 introduces the first application layer under `fablit.application`, sepa
 - `StimulusProvider` abstraction (SPEC-015) — external image retrieval isolated behind an application-level boundary: a deterministic built-in provider serving bundled images (the default), a `WikimediaCommonsProvider` for the approved external source, and a resilient composition that falls back to the built-in stimulus when external retrieval fails (§21–22)
 - `LearnerJourneyStore` — a minimal in-memory store preserving the Stimulus → Submission → Evaluation → Feedback → Reflection chain for the vertical slice; a completed activity retains the exact stimulus that was shown (§18, §48)
 - `PracticeCompletion` (SPEC-018) — an application-level record written after successful reflection, retaining learner, activity, reflection, and completion time; dashboard cards acknowledge previously practised activities while repeated practice remains available. It does not calculate Progress, mastery, scores, streaks, or recommendations.
-- Demo content: 3–5 practice activities across the Visual Analysis, Written Communication, and Critical Observation Skills, with a stable demo learner context; three image-dependent activities present a bundled visual stimulus, and "Visual Analysis — Composition" is the SPEC-015 reference activity (§56–58)
+- Demo content: 3–5 practice activities across the Visual Analysis, Written Communication, and Critical Observation Skills, with a stable demo learner context; three image-dependent activities present a bundled visual stimulus, and "CAT Practice — 2D & 3D Composition Analysis" is the SPEC-015 reference activity (§56–58). Activity titles use exam-oriented labels for the initial design-aspirant pilot ([issue #65](https://github.com/h3xh4wk/fablit/issues/65)); the underlying Skill and Assessment Activity model stays exam-neutral
 
 The vertical slice introduces no authentication, scoring, Progress, mastery, recommendations, gamification, or examination-specific logic.
 

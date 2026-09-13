@@ -4,10 +4,12 @@ Provides the small, deterministic set of Skills and Assessment Activities the
 dashboard shows (3–5 activities). SPEC-015 extends the demo content so that
 image-dependent activities define a contextual stimulus requirement (§6), the
 concepts a response-aware evaluator can recognise in learner responses
-(§29–31), and a deterministic bundled fallback image (§22). The content is
-generic practice material: it is not examination-specific and requires no
-content infrastructure. The demo learner context (SPEC-012 §27) is a stable
-identity — no fake user-management model.
+(§29–31), and a deterministic bundled fallback image (§22). Activity titles use
+exam-oriented labels for the initial design-aspirant pilot (issue #65) while the
+underlying Skill and Assessment Activity model stays exam-neutral; the labels
+live in demo content, not application logic. The content requires no content
+infrastructure. The demo learner context (SPEC-012 §27) is a stable identity —
+no fake user-management model.
 """
 
 from __future__ import annotations
@@ -59,7 +61,7 @@ class DemoActivityDefinition:
 
 _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
     DemoActivityDefinition(
-        title="Visual Analysis — Composition",
+        title="CAT Practice — 2D & 3D Composition Analysis",
         description="Analyse the composition of this photograph.",
         activity_type=ActivityType.WRITTEN_RESPONSE,
         prompt=(
@@ -207,7 +209,7 @@ _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
         fallback_alt="A photograph-style composition for visual analysis.",
     ),
     DemoActivityDefinition(
-        title="Written Communication — Explaining an Idea",
+        title="Creative Writing — Concept Explanations for Poster Designs",
         description="Explain a complex idea in simple, clear language.",
         activity_type=ActivityType.WRITTEN_RESPONSE,
         prompt=(
@@ -224,7 +226,7 @@ _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
         ),
     ),
     DemoActivityDefinition(
-        title="Observation — Detail Spotting",
+        title="Memory Drawing Prep — Object & Proportion Detection",
         description="Practice noticing and describing meaningful visual details.",
         activity_type=ActivityType.OBSERVATION,
         prompt=(
@@ -339,7 +341,7 @@ _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
         fallback_alt="A close-up view of a detailed surface for observation.",
     ),
     DemoActivityDefinition(
-        title="Reflection — Process Review",
+        title="Situation Test Prep — Material & Design Process Reflection",
         description="Reflect on your recent practice process.",
         activity_type=ActivityType.REFLECTION,
         prompt=(
@@ -352,7 +354,7 @@ _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
         next_step=("Write one sentence about what you think caused the challenge."),
     ),
     DemoActivityDefinition(
-        title="Visual Analysis — Colour and Mood",
+        title="Color Theory — Mood & Atmosphere Interpretation",
         description="Analyse how colour shapes the mood of an image.",
         activity_type=ActivityType.WRITTEN_RESPONSE,
         prompt=(

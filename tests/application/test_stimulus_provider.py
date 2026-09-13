@@ -138,7 +138,9 @@ def test_wikimedia_provider_is_composed_with_fallback() -> None:
 def test_fallback_image_overrides_replace_bundled_images_by_title() -> None:
     activities = build_demo_activities()
     overrides = {
-        "Visual Analysis — Composition": "/static/images/custom-composition.svg"
+        "CAT Practice — 2D & 3D Composition Analysis": (
+            "/static/images/custom-composition.svg"
+        )
     }
 
     provider = build_stimulus_provider(
@@ -148,14 +150,18 @@ def test_fallback_image_overrides_replace_bundled_images_by_title() -> None:
     )
 
     composition = next(
-        item for item in activities if item.title == "Visual Analysis — Composition"
+        item
+        for item in activities
+        if item.title == "CAT Practice — 2D & 3D Composition Analysis"
     )
     stimulus = provider.resolve(composition.activity)
     assert stimulus.image_url == "/static/images/custom-composition.svg"
 
     # Unlisted activities keep their bundled image.
     other = next(
-        item for item in activities if item.title == "Observation — Detail Spotting"
+        item
+        for item in activities
+        if item.title == "Memory Drawing Prep — Object & Proportion Detection"
     )
     assert provider.resolve(other.activity).image_url == other.fallback_image
 
