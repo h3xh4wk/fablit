@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Exam-oriented activity labels ([issue #65](https://github.com/h3xh4wk/fablit/issues/65))**: the demo activities now use terminology that is immediately recognisable to design-entrance aspirants, while the Skill, Assessment Activity, Submission, Evaluation, Feedback, and Reflection structure stays unchanged:
+  - "Visual Analysis — Composition" → "CAT Practice — 2D & 3D Composition Analysis"
+  - "Visual Analysis — Colour and Mood" → "Color Theory — Mood & Atmosphere Interpretation"
+  - "Written Communication — Explaining an Idea" → "Creative Writing — Concept Explanations for Poster Designs"
+  - "Observation — Detail Spotting" → "Memory Drawing Prep — Object & Proportion Detection"
+  - "Reflection — Process Review" → "Situation Test Prep — Material & Design Process Reflection"
+  - The labels live in the demo/content configuration (`fablit/application/demo_data.py`), not application logic; activity IDs, Skill behaviour, and evaluation are unchanged, and no database migration or new architectural layer is introduced. Final labels are as proposed in issue #65 and remain subject to manual review before deployment.
+
 ### Added
 
 - **SPEC-017 — Submission & Evaluation Feedback**: the learner is immediately

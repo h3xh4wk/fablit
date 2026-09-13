@@ -124,7 +124,7 @@ def second_activity_id(application: PracticeApplication) -> UUID:
 
 
 def third_activity_id(application: PracticeApplication) -> UUID:
-    """The Observation — Detail Spotting activity, which also has a stimulus."""
+    """The Memory Drawing Prep activity, which also has a stimulus."""
     return application.get_dashboard().activities[2].id
 
 
@@ -155,7 +155,7 @@ def test_start_practice_presents_activity() -> None:
     view = application.start_practice(first_activity_id(application))
 
     assert isinstance(view, PracticeActivityView)
-    assert view.title == "Visual Analysis — Composition"
+    assert view.title == "CAT Practice — 2D & 3D Composition Analysis"
     assert "composition" in view.prompt.lower()
     assert "Visual Analysis" in view.skills
 
@@ -262,7 +262,7 @@ def test_submit_response_prepares_structured_feedback_view() -> None:
     assert view.strengths
     assert view.improvements
     assert view.next_steps
-    assert view.activity_title == "Visual Analysis — Composition"
+    assert view.activity_title == "CAT Practice — 2D & 3D Composition Analysis"
     assert view.reflection_prompt == REFLECTION_PROMPT
 
 
@@ -388,7 +388,7 @@ def test_get_feedback_returns_the_current_feedback_view() -> None:
     presented = application.get_feedback()
 
     assert presented.strengths == submitted.strengths
-    assert presented.activity_title == "Visual Analysis — Composition"
+    assert presented.activity_title == "CAT Practice — 2D & 3D Composition Analysis"
 
 
 def test_get_feedback_without_submission_raises() -> None:
@@ -406,7 +406,7 @@ def test_get_reflection_presents_prompt_with_feedback_context() -> None:
 
     assert isinstance(view, ReflectionView)
     assert view.prompt == REFLECTION_PROMPT
-    assert view.activity_title == "Visual Analysis — Composition"
+    assert view.activity_title == "CAT Practice — 2D & 3D Composition Analysis"
     assert "Strengths" in view.context
 
 

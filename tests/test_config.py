@@ -106,23 +106,29 @@ def test_stimulus_fallback_images_parse_from_json_environment(
 ) -> None:
     monkeypatch.setenv(
         "FABLIT_STIMULUS_FALLBACK_IMAGES",
-        json.dumps({"Visual Analysis — Composition": "/static/images/custom.svg"}),
+        json.dumps(
+            {"CAT Practice — 2D & 3D Composition Analysis": "/static/images/custom.svg"}
+        ),
     )
 
     config = load_config()
 
     assert config.stimulus_fallback_images == {
-        "Visual Analysis — Composition": "/static/images/custom.svg"
+        "CAT Practice — 2D & 3D Composition Analysis": "/static/images/custom.svg"
     }
 
 
 def test_stimulus_fallback_images_accept_direct_dict() -> None:
     config = AppConfig.model_validate(
-        {"stimulus_fallback_images": {"Visual Analysis — Composition": "/x.svg"}}
+        {
+            "stimulus_fallback_images": {
+                "CAT Practice — 2D & 3D Composition Analysis": "/x.svg"
+            }
+        }
     )
 
     assert config.stimulus_fallback_images == {
-        "Visual Analysis — Composition": "/x.svg"
+        "CAT Practice — 2D & 3D Composition Analysis": "/x.svg"
     }
 
 

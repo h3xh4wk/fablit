@@ -9,6 +9,7 @@ and keyboard-navigation support.
 from __future__ import annotations
 
 import re
+from html import unescape
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -66,7 +67,7 @@ def test_activity_cards_show_invitation_hierarchy() -> None:
 
     html = response.text
     assert "What would you like to explore?" in html
-    assert "Visual Analysis — Composition" in html
+    assert "CAT Practice — 2D & 3D Composition Analysis" in unescape(html)
     assert "Analyse the composition of this photograph." in html
     assert "Explore" in html
     assert len(_activity_hrefs(html)) >= 3
@@ -94,7 +95,7 @@ def test_practice_page_emphasises_prompt_with_accessible_response_field() -> Non
         response = client.get(href)
 
     assert response.status_code == 200
-    assert "Visual Analysis — Composition" in response.text
+    assert "CAT Practice — 2D & 3D Composition Analysis" in unescape(response.text)
     assert "Look at the photograph provided" in response.text
     assert "Visual Analysis" in response.text
     assert 'name="response"' in response.text
