@@ -1,9 +1,9 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Status:** Draft
-**Last Updated:** 2026-08-17
+**Last Updated:** 2026-09-13
 
 ---
 
@@ -613,6 +613,42 @@ The following rules are enforced by the SPEC-015 domain models:
 | DR-013 | An Evaluation Finding may carry optional evidence grounding it in the learner's response (SPEC-015 §31). |
 | DR-014 | An Evaluation Finding's evidence must be a non-blank string when present. |
 | DR-015 | A Stimulus Instance must not contain examination-specific concepts. |
+
+---
+
+## Practice Completion (SPEC-018)
+
+A Practice Completion is an application-level record that acknowledges a
+learner has finished one deliberate-practice journey. It is created only after
+the learner successfully saves a Reflection; a submitted response, Evaluation,
+or Feedback alone never creates one.
+
+### Relationship
+
+```
+Learner ────────┐
+                ▼
+Assessment Activity ◀── Practice Completion ──▶ Reflection
+                         │
+                         ▼
+                   completion time
+```
+
+Practice Completion references the learner, Assessment Activity, and
+Reflection by identity. It deliberately does not duplicate the associated
+objects or record a score, quality judgement, skill level, mastery,
+proficiency, streak, ranking, or recommendation. Repeated practice creates
+another completion record for the same activity rather than making that
+activity unavailable.
+
+### Domain Rules Reference
+
+| Rule | Description |
+|------|-------------|
+| DLR-009 | A Practice Completion exists only after a Reflection is successfully saved. |
+| DLR-010 | A Practice Completion identifies its learner, activity, reflection, and completion time. |
+| DLR-011 | A Practice Completion is not evidence of mastery, proficiency, score, or Progress. |
+| DLR-012 | Repeated completion of an activity is permitted and remains separate completion history. |
 
 ---
 

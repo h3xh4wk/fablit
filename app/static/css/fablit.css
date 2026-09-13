@@ -212,6 +212,25 @@ ol {
   line-height: var(--leading-tight);
 }
 
+.card__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/* A quiet continuity cue, not a measure of learner performance (SPEC-018). */
+.card__continuity {
+  flex-shrink: 0;
+  padding: var(--space-1) var(--space-2);
+  color: var(--color-accent-hover);
+  background: var(--color-accent-soft);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-small);
+  font-weight: 600;
+  line-height: var(--leading-tight);
+}
+
 .card__invitation {
   color: var(--color-ink-muted);
 }

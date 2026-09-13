@@ -39,7 +39,7 @@ from .stimulus import (
     build_fallback_stimuli,
     build_stimulus_provider,
 )
-from .store import Concept, DemoActivity, LearnerJourneyStore
+from .store import Concept, DemoActivity, LearnerJourneyStore, PracticeCompletion
 from .use_cases import PracticeApplication
 from .view_models import (
     CompletionView,
@@ -74,6 +74,7 @@ __all__ = [
     "PracticeActivityView",
     "PracticeApplication",
     "PracticeDashboardView",
+    "PracticeCompletion",
     "REFLECTION_PROMPT",
     "ReflectionView",
     "ResilientStimulusProvider",
