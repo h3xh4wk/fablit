@@ -125,6 +125,13 @@ def _run_journey(page: Page, base_url: str) -> None:
     expect(page.get_by_role("link", name="Explore")).to_have_count(0)
     # SPEC-015 §71: the learner sees the resolved image before responding.
     expect(page.get_by_role("img").first).to_be_visible()
+    # SPEC-020: the practice screen presents an observe → task → response
+    # hierarchy rather than a bare question-and-answer form.
+    expect(page.get_by_role("heading", name="Observe", exact=True)).to_be_visible()
+    expect(page.get_by_role("heading", name="Your task", exact=True)).to_be_visible()
+    expect(
+        page.get_by_role("heading", name="Your response", exact=True)
+    ).to_be_visible()
 
     page.get_by_label("What's your reading of it?").fill(
         "The contrast between the figure and the dark background is striking."

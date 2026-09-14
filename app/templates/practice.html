@@ -5,33 +5,34 @@
   <nav class="subnav" aria-label="Back to the activity list">
     <a href="/"><span aria-hidden="true">←</span> All activities</a>
   </nav>
-  <p class="practice__invitation" aria-hidden="true">👀 Look a little closer</p>
-  <h1 class="practice__title">{{ view.title }}</h1>
+  <header class="practice__header">
+    <p class="practice__invitation" aria-hidden="true">{% if view.stimulus %}👀 Look a little closer{% else %}✍️ Take your time with this one{% endif %}</p>
+    <h1 class="practice__title">{{ view.title }}</h1>
+    <p class="practice__skill">{{ view.skills|join(", ") }}</p>
+  </header>
   {% if view.stimulus %}
-  <figure class="stimulus">
-    <img class="stimulus__image" src="{{ view.stimulus.image_url }}" alt="{{ view.stimulus.alt_text }}">
-    {% if view.stimulus.attribution %}
-    <figcaption class="stimulus__attribution">
-      {{ view.stimulus.attribution }}
-      {% if view.stimulus.source_url %}<a class="stimulus__source" href="{{ view.stimulus.source_url }}">Source</a>{% endif %}
-    </figcaption>
-    {% endif %}
-  </figure>
+  <section class="practice__observe" aria-labelledby="observe-heading">
+    <h2 class="practice__step" id="observe-heading">Observe</h2>
+    <figure class="stimulus">
+      <img class="stimulus__image" src="{{ view.stimulus.image_url }}" alt="{{ view.stimulus.alt_text }}">
+      {% if view.stimulus.attribution %}
+      <figcaption class="stimulus__attribution">
+        {{ view.stimulus.attribution }}
+        {% if view.stimulus.source_url %}<a class="stimulus__source" href="{{ view.stimulus.source_url }}">Source</a>{% endif %}
+      </figcaption>
+      {% endif %}
+    </figure>
+  </section>
   {% endif %}
-  <p class="practice__prompt">{{ view.prompt }}</p>
-  <p class="practice__skill">{{ view.skills|join(", ") }}</p>
-  {% if error %}
-  <p class="field-error" role="alert">{{ error }}</p>
-  {% endif %}
-  <div id="submission-area">
-    <form method="post" action="/activities/{{ view.id }}/submit" hx-post="/activities/{{ view.id }}/submit" hx-target="#submission-area" hx-swap="innerHTML" hx-disabled-elt="find button">
-      <label class="form-label" for="response">💭 What's your reading of it?</label>
-      <textarea id="response" name="response" class="form-control" rows="8" required placeholder="There isn't a right answer. Tell us what you notice...">{{ submitted_response or "" }}</textarea>
-      <p class="form-actions">
-        <button type="submit" class="button">I'm ready <span aria-hidden="true">→</span></button>
-        <span class="htmx-indicator loading-indicator" aria-live="polite">Evaluating your response…</span>
-      </p>
-    </form>
-  </div>
+  <section class="practice__task" aria-labelledby="task-heading">
+    <h2 class="practice__step" id="task-heading">Your task</h2>
+    <p class="practice__prompt">{{ view.prompt }}</p>
+  </section>
+  <section class="practice__response" aria-labelledby="response-heading">
+    <h2 class="practice__step" id="response-heading">Your response</h2>
+    <div id="submission-area">
+      {% include "_practice_partial.html" %}
+    </div>
+  </section>
 </article>
 {% endblock %}

@@ -1,9 +1,9 @@
 # SPEC-020 — Visual Practice Experience Foundation
 
-**Status:** Proposed  
-**Version:** 0.1  
-**Type:** Platform / Learner Experience  
-**Depends on:** SPEC-015, SPEC-017, SPEC-018, SPEC-019  
+**Status:** Proposed
+**Version:** 0.1
+**Type:** Platform / Learner Experience
+**Depends on:** SPEC-015, SPEC-017, SPEC-018, SPEC-019
 **Primary Module:** Learner Experience / Practice Activity
 
 ---
