@@ -265,6 +265,20 @@ ol {
   text-decoration: underline;
 }
 
+/* Card preview image used on Explore cards (SPEC-019) */
+.card__preview {
+  margin-bottom: var(--space-3);
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+}
+
+.card__preview img {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: var(--color-surface);
+}
+
 /* --------------------------------------------------------------------------
    Buttons and links (§28, SPEC-016 §12)
    -------------------------------------------------------------------------- */

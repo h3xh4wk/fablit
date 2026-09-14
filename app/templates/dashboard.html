@@ -7,6 +7,11 @@
   <ul class="card-grid">
     {% for activity in view.activities %}
     <li class="card">
+      {% if activity.preview_image_url %}
+      <figure class="card__preview">
+        <img src="{{ activity.preview_image_url }}" alt="{{ activity.preview_alt_text }}">
+      </figure>
+      {% endif %}
       <div class="card__heading">
         <h2 class="card__title">{{ activity.title }}</h2>
         {% if activity.has_completed_practice %}

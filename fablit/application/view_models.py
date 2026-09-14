@@ -22,6 +22,8 @@ class PracticeActivitySummary:
     description: str
     skills: tuple[str, ...]
     has_completed_practice: bool
+    preview_image_url: str | None = None
+    preview_alt_text: str | None = None
 
 
 @dataclass(frozen=True)

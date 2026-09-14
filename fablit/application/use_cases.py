@@ -91,6 +91,8 @@ class PracticeApplication:
                 has_completed_practice=self._store.has_completed_activity(
                     item.activity.id
                 ),
+                preview_image_url=item.fallback_image,
+                preview_alt_text=item.fallback_alt,
             )
             for item in self._store.list_activities()
         )
