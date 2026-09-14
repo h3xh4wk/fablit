@@ -1,9 +1,9 @@
 # Fablit Architecture Blueprint
 
 **Document ID:** AB-001
-**Version:** 0.6.0
+**Version:** 0.7.0
 **Status:** Draft
-**Last Updated:** 2026-09-13
+**Last Updated:** 2026-09-14
 
 ---
 
@@ -377,6 +377,57 @@ there are no percentages, mastery or proficiency labels, scores, streaks,
 rankings, recommendations, analytics, authentication, or database changes.
 Activities continue to be available after completion, and repeated deliberate
 practice creates distinct completion events.
+
+---
+
+## Visual Practice Experience
+
+SPEC-019 and SPEC-020 strengthen how Fablit's existing learning experience is
+presented, without changing the learning model. Both are presentation-layer
+specifications: the domain models and the Application Layer are unchanged, and
+all work lives in the Web/UI layer (Jinja2 templates, the centralized
+stylesheet, and the existing design tokens).
+
+SPEC-019 refines the Explore/practice-discovery surface. It reuses the existing
+SPEC-015 stimulus content as a **card preview** — a discovery cue that is
+explicitly *not* the learner's activity-instance stimulus:
+
+```text
+Explore preview  ≠  Learner activity-instance stimulus
+```
+
+Starting an activity continues to use the authoritative SPEC-015 stimulus
+lifecycle. Activities without an appropriate bundled asset stay text-first; no
+decorative imagery is fabricated for consistency. The desktop card grid uses
+available horizontal space more effectively while preserving a comfortable
+reading measure.
+
+SPEC-020 turns the Practice Activity screen into a focused practice workspace
+organised around an explicit, labelled hierarchy:
+
+```text
+Stimulus (Observe)
+      ↓
+Task / Instruction (Your task)
+      ↓
+Learner Response (Your response)
+      ↓
+Submit
+```
+
+The resolved activity-instance stimulus is presented inside the observe region
+at a useful scale with meaningful alternative text and a compact
+source/attribution treatment. Text responses receive a distinct response
+surface with a generous response height, visible guidance, and keyboard
+accessibility, and the learner's response is preserved when submission or
+evaluation fails. The SPEC-017 submission acknowledgement and
+duplicate-submission protection, and the SPEC-018 completion semantics, remain
+intact.
+
+Both specifications deliberately introduce no scoring, progress indicators,
+streaks, badges, timers, recommendations, analytics, drawing/upload workflows,
+new Stimulus architecture, external image-provider integration, database
+migration, SPA framework, or new runtime dependency.
 
 ---
 

@@ -18,6 +18,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **SPEC-020 — Visual Practice Experience Foundation**: the Practice Activity screen now reads as a focused design-practice workspace rather than a question-and-answer form, while preserving the existing learner journey and learning model.
+  - The screen is organised around an explicit, labelled hierarchy — stimulus (Observe) → task (Your task) → response (Your response) — so the learner can see what to look at, what to do, and where to respond without searching the interface.
+  - The existing SPEC-015 resolved stimulus is presented inside the observe region at a useful scale with meaningful alternative text and a compact source/attribution treatment; activities without a suitable stimulus stay clean and text-first with no fabricated imagery.
+  - Text responses get a distinct response surface, a generous minimum response height, visible guidance text, and the response is preserved when submission or evaluation fails.
+  - SPEC-017 submission acknowledgement and duplicate-submission protection, and the SPEC-018 completion semantics, are unchanged; evaluation, feedback, reflection, and completion behave exactly as before.
+  - Presentation only: no scores, progress, streaks, timers, gamification, drawing/upload, new stimulus architecture, new external image provider, database migration, or new runtime dependency.
+  - Web tests cover the practice hierarchy, stimulus/no-stimulus presentation, response comfort and preservation, submission continuity, and the unchanged journey; the opt-in browser journey checks the practice workspace regions on desktop and mobile viewports.
+
+See [SPEC-020](specifications/platform/SPEC-020-visual-practice-experience-foundation.md) — issue [#72](https://github.com/h3xh4wk/fablit/issues/72) — for details.
+
 - **SPEC-018 — Learner Practice Continuity & Progress Foundation**: successful
   reflections now create an in-memory `PracticeCompletion` record containing
   the demo learner, activity, reflection, and timezone-aware completion time.

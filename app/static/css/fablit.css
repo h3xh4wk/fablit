@@ -1,5 +1,6 @@
 /* ==========================================================================
-   Fablit — Learner Experience stylesheet (SPEC-013, refined SPEC-016)
+   Fablit — Learner Experience stylesheet (SPEC-013, refined SPEC-016,
+   practice workspace refined SPEC-020)
 
    A small, reusable design-system foundation built on centralized design
    tokens. The direction is calm, personal, spacious and editorial: a warm
@@ -428,6 +429,7 @@ ol {
 
 .stimulus__attribution {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: var(--space-3);
   font-size: var(--text-small);
@@ -439,6 +441,69 @@ ol {
 .stimulus__source {
   color: var(--color-accent);
   white-space: nowrap;
+}
+
+/* --------------------------------------------------------------------------
+   Practice workspace (SPEC-020 §5–11)
+
+   A clear observe → task → response hierarchy with a comfortable response
+   surface. Presentation only: no scores, progress, timers, or gamification.
+   -------------------------------------------------------------------------- */
+.practice__header {
+  margin-bottom: var(--space-6);
+}
+
+/* Small, quiet section label that makes the practice hierarchy legible. */
+.practice__step {
+  font-size: var(--text-small);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-accent-hover);
+  margin-bottom: var(--space-2);
+}
+
+.practice__header .practice__skill {
+  margin-bottom: 0;
+}
+
+.practice__observe,
+.practice__task {
+  margin-bottom: var(--space-8);
+}
+
+/* The stimulus already carries its own frame; the section owns the spacing. */
+.practice__observe .stimulus {
+  margin: 0;
+}
+
+/* The section label replaces the prompt's standalone top margin. */
+.practice__task .practice__prompt {
+  margin: 0;
+}
+
+/* The response is a distinct surface, so it reads as a place to work. */
+.practice__response {
+  padding: var(--space-6);
+  background: var(--color-surface);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.practice__response .practice__step {
+  margin-bottom: var(--space-3);
+}
+
+/* A comfortable area for developing a thoughtful answer (AC-020-05). */
+.practice__response .form-control {
+  min-height: 15rem;
+}
+
+.form-hint {
+  color: var(--color-ink-muted);
+  font-size: var(--text-small);
+  margin-bottom: var(--space-3);
 }
 
 /* --------------------------------------------------------------------------
