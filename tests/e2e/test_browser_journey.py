@@ -197,3 +197,23 @@ def test_keyboard_navigation_reaches_core_actions() -> None:
             expect(page.get_by_role("link", name="Explore").first).to_be_focused()
         finally:
             browser.close()
+
+
+def test_dashboard_displays_activity_previews() -> None:
+    """Explore cards with bundled fallback images show a preview (SPEC-019)."""
+    with _running_server() as base_url, sync_playwright() as playwright:
+        browser: Browser = playwright.chromium.launch(**_launch_options())
+        try:
+            page = browser.new_page()
+            page.goto(base_url)
+            # The demo content includes three activities with bundled fallback images
+            expect(page.locator(".card__preview img")).to_have_count(3)
+            # Check one known alt text from demo content for robustness
+            expect(
+                page.get_by_role(
+                    "img",
+                    name="A photograph-style composition for visual analysis.",
+                )
+            ).to_be_visible()
+        finally:
+            browser.close()

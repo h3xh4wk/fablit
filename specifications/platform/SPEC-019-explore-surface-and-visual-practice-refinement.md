@@ -1,9 +1,9 @@
 # SPEC-019 — Explore Surface & Visual Practice Refinement
 
-**Status:** Proposed  
-**Version:** 0.1  
-**Type:** Platform / Learner Experience  
-**Depends on:** SPEC-016, SPEC-015, SPEC-018  
+**Status:** Proposed
+**Version:** 0.1
+**Type:** Platform / Learner Experience
+**Depends on:** SPEC-016, SPEC-015, SPEC-018
 **Primary Module:** Learner Experience / Practice Discovery
 
 ---
