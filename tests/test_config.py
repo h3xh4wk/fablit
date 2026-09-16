@@ -173,3 +173,58 @@ def test_invalid_wikimedia_limit_raises_validation_error(
 
     with pytest.raises(ConfigValidationError):
         load_config()
+
+
+# --- Practice history repository (SPEC-021) -----------------------------------
+
+
+def test_practice_history_repository_defaults_to_disabled() -> None:
+    config = AppConfig.model_validate({})
+
+    assert config.practice_history_repository is None
+
+
+def test_practice_history_repository_accepts_memory() -> None:
+    config = AppConfig.model_validate({"practice_history_repository": "memory"})
+
+    assert config.practice_history_repository == "memory"
+
+
+def test_practice_history_repository_accepts_datastore() -> None:
+    config = AppConfig.model_validate({"practice_history_repository": "datastore"})
+
+    assert config.practice_history_repository == "datastore"
+
+
+def test_practice_history_repository_is_normalised_to_lowercase() -> None:
+    config = AppConfig.model_validate({"practice_history_repository": "  DATASTORE "})
+
+    assert config.practice_history_repository == "datastore"
+
+
+def test_practice_history_repository_reads_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FABLIT_PRACTICE_HISTORY_REPOSITORY", "memory")
+
+    config = load_config()
+
+    assert config.practice_history_repository == "memory"
+
+
+@pytest.mark.parametrize("disabled", ["", "none", "off", "disabled"])
+def test_practice_history_repository_disabled_values_become_none(
+    disabled: str,
+) -> None:
+    config = AppConfig.model_validate({"practice_history_repository": disabled})
+
+    assert config.practice_history_repository is None
+
+
+def test_unsupported_practice_history_repository_raises_validation_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FABLIT_PRACTICE_HISTORY_REPOSITORY", "sqlite")
+
+    with pytest.raises(ConfigValidationError, match="practice history repository"):
+        load_config()

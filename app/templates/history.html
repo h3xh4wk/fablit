@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Your Practice{% endblock %}
+{% block content %}
+<section class="history">
+  <h1 class="display">Your practice</h1>
+  <p class="lede">What have you practised recently? Choose a completed practice to revisit what you saw, wrote, and learned.</p>
+
+  {% if view.is_empty %}
+  <div class="history__empty">
+    <h2 class="history__empty-title">Nothing here yet</h2>
+    <p class="history__empty-note">When you complete a practice, it will appear here so you can return to it later.</p>
+    <p class="form-actions">
+      <a class="button" href="/">Go to explore <span aria-hidden="true">→</span></a>
+    </p>
+  </div>
+  {% else %}
+  <ul class="history__list">
+    {% for entry in view.entries %}
+    <li class="history__item">
+      <a class="history__link" href="/history/{{ entry.completion_id }}">
+        <div class="history__heading">
+          <h2 class="history__title">{{ entry.activity_title }}</h2>
+          <time class="history__date" datetime="{{ entry.completed_at.isoformat() }}">
+            {{ entry.completed_at.strftime('%-d %B %Y at %H:%M UTC') }}
+          </time>
+        </div>
+        <p class="history__preview">{{ entry.submission_preview }}</p>
+        <p class="history__action">Review this practice <span aria-hidden="true">→</span></p>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <nav class="subnav" aria-label="History navigation">
+    <a href="/">Back to explore</a>
+  </nav>
+</section>
+{% endblock %}

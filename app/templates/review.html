@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Practice Review{% endblock %}
+{% block content %}
+<article class="review">
+  <p class="review__crumb"><a href="/history">Your practice</a> <span aria-hidden="true">→</span> Review</p>
+  <h1 class="display">{{ view.activity_title }}</h1>
+  <p class="review__timestamp">Completed {{ view.completed_at.strftime('%-d %B %Y at %H:%M UTC') }}</p>
+
+  {% if view.stimulus %}
+  <section class="review__section">
+    <h2 class="practice__step">What you observed</h2>
+    <figure class="stimulus">
+      <img class="stimulus__image" src="{{ view.stimulus.image_url }}" alt="{{ view.stimulus.alt_text }}">
+      <figcaption class="stimulus__attribution">
+        {% if view.stimulus.attribution %}<span>{{ view.stimulus.attribution }}</span>{% endif %}
+        {% if view.stimulus.source_url %}
+        <a class="stimulus__source" href="{{ view.stimulus.source_url }}" target="_blank" rel="noopener noreferrer">View source</a>
+        {% endif %}
+      </figcaption>
+    </figure>
+  </section>
+  {% endif %}
+
+  <section class="review__section">
+    <h2 class="practice__step">Your response</h2>
+    <div class="review__evidence">{{ view.learner_response }}</div>
+  </section>
+
+  <section class="review__section">
+    <h2 class="practice__step">Feedback you received</h2>
+    <div class="feedback-section">
+      {% if view.strengths %}
+      <h3>What you noticed</h3>
+      <ul>
+        {% for strength in view.strengths %}<li>{{ strength }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+      {% if view.improvements %}
+      <h3>What to think about</h3>
+      <ul>
+        {% for improvement in view.improvements %}<li>{{ improvement }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+      {% if view.next_steps %}
+      <h3>Try this next</h3>
+      <ul>
+        {% for step in view.next_steps %}<li>{{ step }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="review__section">
+    <h2 class="practice__step">Your reflection</h2>
+    <div class="review__evidence">{{ view.reflection }}</div>
+  </section>
+
+  <nav class="review__nav" aria-label="Review navigation">
+    <a class="button" href="/history">Back to your practice <span aria-hidden="true">→</span></a>
+    <a class="button button--secondary" href="/">Go to explore <span aria-hidden="true">→</span></a>
+  </nav>
+</article>
+{% endblock %}

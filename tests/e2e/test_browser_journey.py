@@ -187,7 +187,13 @@ def test_learner_journey_on_mobile_viewport() -> None:
 
 
 def test_keyboard_navigation_reaches_core_actions() -> None:
-    """Tab order reaches the core actions with visible focus (SPEC-013 §27)."""
+    """Tab order reaches the core actions with visible focus (SPEC-013 §27).
+
+    SPEC-021 added the persistent "Your practice" header link, so the tab
+    order on every page is now: skip link → brand → Your practice → page
+    content. The test asserts that order and that the new link is
+    keyboard-reachable alongside the pre-existing core actions.
+    """
     with _running_server() as base_url, sync_playwright() as playwright:
         browser: Browser = playwright.chromium.launch(**_launch_options())
         try:
@@ -199,6 +205,11 @@ def test_keyboard_navigation_reaches_core_actions() -> None:
 
             page.keyboard.press("Tab")
             expect(page.get_by_role("link", name="Fablit")).to_be_focused()
+
+            # SPEC-021: the header navigation to practice history is part of
+            # the core keyboard-reachable actions on every page.
+            page.keyboard.press("Tab")
+            expect(page.get_by_role("link", name="Your practice")).to_be_focused()
 
             page.keyboard.press("Tab")
             expect(page.get_by_role("link", name="Explore").first).to_be_focused()

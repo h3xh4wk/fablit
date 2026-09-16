@@ -1,9 +1,9 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Status:** Draft
-**Last Updated:** 2026-09-13
+**Last Updated:** 2026-09-16
 
 ---
 
@@ -651,6 +651,48 @@ activity unavailable.
 | DLR-012 | Repeated completion of an activity is permitted and remains separate completion history. |
 
 ---
+
+## Practice History Record (SPEC-021)
+
+A Practice History Record is the durable evidence of one completed practice
+journey. It is created only when the existing SPEC-018 completion flow succeeds:
+a submitted or evaluated response alone never becomes history. Each record is
+an independently reviewable unit — `activity_id` is never the identity of
+history, so repeated practice of the same activity remains distinguishable.
+
+### Relationship
+
+```
+Practice History Record
+    ├── learner context
+    ├── activity identity + title
+    ├── completion timestamp
+    ├── Stimulus Instance (SPEC-015, as resolved for that attempt)
+    ├── Submission (SPEC-006)
+    ├── Evaluation (SPEC-007)
+    ├── Feedback (SPEC-008)
+    └── Reflection (SPEC-009)
+```
+
+The record is expressed through a narrow persistence port
+(`PracticeHistoryRepository`) in the application layer. The domain model never
+depends on persistence mechanics; concrete adapters (in-memory, Google Cloud
+Datastore) live behind the boundary. The reflection identity is the stable
+completion identity, making retries idempotent. The learner context is kept
+explicit so future authentication/account work can establish ownership without
+redesigning the stored evidence.
+
+### Domain Rules Reference
+
+| Rule | Description |
+|------|-------------|
+| PHR-001 | A Practice History Record exists only after a successful Reflection/Completion (SPEC-018 boundary unchanged). |
+| PHR-002 | A Practice History Record retains the evidence required for review: activity, stimulus, response, evaluation, feedback, reflection, completion time. |
+| PHR-003 | A Practice History Record has a stable identity distinct from the activity identity; repeated practice creates separate records. |
+| PHR-004 | A reviewed practice shows the stimulus originally resolved for that attempt, never a newly resolved one. |
+| PHR-005 | Persistence is expressed through a port; the domain layer remains independent of Datastore, App Engine, HTTP, and serialization. |
+| PHR-006 | A failed persistence write is explicit; a completion is never falsely reported as durably recorded, and retries do not duplicate history. |
+| PHR-007 | History is not evidence of mastery, proficiency, score, Progress, or ranking. |
 
 ## Learner Practice Application Flow (SPEC-012)
 

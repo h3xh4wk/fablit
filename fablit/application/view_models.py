@@ -1,15 +1,17 @@
-"""Learner-facing view models for the practice flow (SPEC-012, SPEC-015).
+"""Learner-facing view models for the practice flow (SPEC-012, SPEC-015, SPEC-021).
 
 View models are the Application Layer's representations of domain state for
 the Web/UI layer (SPEC-012 §26). They carry data only — no HTML, no
 presentation formatting — so presentation concerns never leak into domain
 objects. SPEC-015 adds the stimulus view model used to present the resolved
-image to the learner (§24–26).
+image to the learner (§24–26). SPEC-021 adds history and review views for
+persistent practice completion records.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
 
@@ -80,3 +82,66 @@ class CompletionView:
     """The completion confirmation shown after saving a Reflection (UC-007)."""
 
     message: str
+
+
+# SPEC-021: Practice History and Review Views
+
+
+@dataclass(frozen=True)
+class PracticeHistoryEntry:
+    """A brief summary of one completed practice for history list (SPEC-021 §8).
+
+    SPEC-021 §8: the history view should provide enough context to distinguish
+    records: activity title, completion date/time, concise practice context,
+    indication that the item can be reviewed.
+    """
+
+    completion_id: UUID
+    activity_id: UUID
+    activity_title: str
+    completed_at: datetime
+    submission_preview: str
+
+
+@dataclass(frozen=True)
+class PracticeHistoryView:
+    """The learner's practice history list (SPEC-021 §8).
+
+    SPEC-021 §8: history should make it easy to answer "What have I practised
+    recently?" Recent completed practice appears first.
+
+    Empty history is valid when the learner has no completed practice yet.
+    """
+
+    entries: tuple[PracticeHistoryEntry, ...]
+    is_empty: bool
+
+
+@dataclass(frozen=True)
+class PracticeReviewView:
+    """Review of a completed practice instance (SPEC-021 §9).
+
+    SPEC-021 §9: selecting a completed practice allows the learner to review
+    the meaningful parts of that specific practice instance. The review should
+    expose:
+    1. activity identity/title
+    2. stimulus/context used for the practice
+    3. original learner response
+    4. evaluation result as currently defined by the application
+    5. feedback
+    6. learner reflection
+    7. completion timestamp
+
+    The review is a reflection and evidence surface, not a grading dashboard.
+    """
+
+    activity_title: str
+    activity_id: UUID
+    completed_at: datetime
+    stimulus: StimulusView | None  # SPEC-021 §10: preserve original stimulus
+    learner_response: str
+    strengths: tuple[str, ...]
+    improvements: tuple[str, ...]
+    next_steps: tuple[str, ...]
+    feedback: str
+    reflection: str

@@ -2,7 +2,7 @@
 
 Fablit is an open-source educational platform for helping learners build practical skills through deliberate practice, meaningful feedback, and continuous reflection.
 
-This repository implements **SPEC-001 — Bootstrap Platform**, **SPEC-002 — Engineering Toolchain**, **SPEC-003 — Configuration & Logging**, **SPEC-004 — Shared Platform Services**, **SPEC-005 — Assessment Activity Domain Foundation**, **SPEC-006 — Submission Domain Foundation**, **SPEC-007 — Evaluation Domain Foundation**, **SPEC-008 — Feedback Domain Foundation**, **SPEC-009 — Reflection Domain Foundation**, **SPEC-010 — Skill Domain Foundation**, **SPEC-011 — Skill–Assessment Activity Association**, **SPEC-012 — Learner Practice Application Flow**, **SPEC-013 — Learner Experience & Visual Foundation**, **SPEC-014 — Learner Pilot Deployment**, **SPEC-015 — Contextual Visual Stimulus & Response-Aware Evaluation**, **SPEC-016 — First Learner Experience Refinement**, **SPEC-017 — Submission & Evaluation Feedback**, **SPEC-018 — Learner Practice Continuity & Progress Foundation**, **SPEC-019 — Explore Surface & Visual Practice Refinement**, and **SPEC-020 — Visual Practice Experience Foundation**. It intentionally avoids Skill Labs, Content Packs, learner accounts, authentication, databases, AI services, analytics, user management, recommendation logic, scoring, gamification, mastery, and a live external image dependency by default; production readiness (backups, monitoring, security hardening, scalability, and a full security assessment) is deliberately deferred to a separate assessment.
+This repository implements **SPEC-001 — Bootstrap Platform**, **SPEC-002 — Engineering Toolchain**, **SPEC-003 — Configuration & Logging**, **SPEC-004 — Shared Platform Services**, **SPEC-005 — Assessment Activity Domain Foundation**, **SPEC-006 — Submission Domain Foundation**, **SPEC-007 — Evaluation Domain Foundation**, **SPEC-008 — Feedback Domain Foundation**, **SPEC-009 — Reflection Domain Foundation**, **SPEC-010 — Skill Domain Foundation**, **SPEC-011 — Skill–Assessment Activity Association**, **SPEC-012 — Learner Practice Application Flow**, **SPEC-013 — Learner Experience & Visual Foundation**, **SPEC-014 — Learner Pilot Deployment**, **SPEC-015 — Contextual Visual Stimulus & Response-Aware Evaluation**, **SPEC-016 — First Learner Experience Refinement**, **SPEC-017 — Submission & Evaluation Feedback**, **SPEC-018 — Learner Practice Continuity & Progress Foundation**, **SPEC-019 — Explore Surface & Visual Practice Refinement**, **SPEC-020 — Visual Practice Experience Foundation**, and **SPEC-021 — Persistent Practice History & Learner Review**. It intentionally avoids Skill Labs, Content Packs, learner accounts, authentication, AI services, analytics, user management, recommendation logic, scoring, gamification, mastery, and a live external image dependency by default; the only persistence is the focused SPEC-021 practice-history boundary (Google Cloud Datastore in production, opt-in via configuration), and production readiness (backups, monitoring, security hardening, scalability, and a full security assessment) is deliberately deferred to a separate assessment.
 
 ## Requirements
 
@@ -40,6 +40,8 @@ The platform exposes:
 - `GET /feedback` — learner feedback derived from the demo evaluation
 - `GET /reflect` and `POST /reflect` — the purposeful reflection prompt and submission
 - `GET /complete` — the completion confirmation
+- `GET /history` — the learner's practice history (completed practice, newest first; SPEC-021)
+- `GET /history/{completion_id}` — review of one completed practice (response, feedback, reflection, stimulus, completion time; SPEC-021)
 - `GET /health` — returns `{ "status": "healthy" }`
 - `GET /metrics` — returns in-memory Prometheus-style metrics
 - `GET /docs` — FastAPI Swagger UI (development and testing environments only)
@@ -78,8 +80,9 @@ Key settings include:
 - `FABLIT_WIKIMEDIA_TIMEOUT` — retrieval timeout in seconds (default `10.0`)
 - `FABLIT_WIKIMEDIA_WIDTH` — requested thumbnail width (default `1200`)
 - `FABLIT_WIKIMEDIA_LIMIT` — candidate images searched (default `5`)
+- `FABLIT_PRACTICE_HISTORY_REPOSITORY` — practice history persistence (SPEC-021): `memory` (in-memory, for tests and local development), `datastore` (Google Cloud Datastore, for the deployed App Engine environment), or unset (history persistence disabled; the `/history` surface shows an empty state)
 
-The `FABLIT_WIKIMEDIA_*` settings only take effect with `FABLIT_STIMULUS_PROVIDER=wikimedia`.
+The `FABLIT_WIKIMEDIA_*` settings only take effect with `FABLIT_STIMULUS_PROVIDER=wikimedia`. With `FABLIT_PRACTICE_HISTORY_REPOSITORY=datastore`, the application uses the normal Google Cloud authentication mechanism available to App Engine (application-default credentials) — no credentials are hard-coded or stored in source. No Datastore indexes are required for the scoped history queries.
 
 The application initializes structured logging during startup and attaches service and environment context to every log record.
 
@@ -118,8 +121,20 @@ SPEC-012 introduces the first application layer under `fablit.application`, sepa
 - `LearnerJourneyStore` — a minimal in-memory store preserving the Stimulus → Submission → Evaluation → Feedback → Reflection chain for the vertical slice; a completed activity retains the exact stimulus that was shown (§18, §48)
 - `PracticeCompletion` (SPEC-018) — an application-level record written after successful reflection, retaining learner, activity, reflection, and completion time; dashboard cards acknowledge previously practised activities while repeated practice remains available. It does not calculate Progress, mastery, scores, streaks, or recommendations.
 - Demo content: 3–5 practice activities across the Visual Analysis, Written Communication, and Critical Observation Skills, with a stable demo learner context; three image-dependent activities present a bundled visual stimulus, and "CAT Practice — 2D & 3D Composition Analysis" is the SPEC-015 reference activity (§56–58). Activity titles use exam-oriented labels for the initial design-aspirant pilot ([issue #65](https://github.com/h3xh4wk/fablit/issues/65)); the underlying Skill and Assessment Activity model stays exam-neutral
+- Practice history port (SPEC-021) — `PracticeHistoryRepository`, a deliberately narrow persistence boundary for learner practice history, with `InMemoryPracticeHistoryRepository` (tests/local development) and `DatastorePracticeHistoryRepository` (production Datastore adapter, isolated in `fablit.platform`) as interchangeable implementations; completed practice is persisted only after successful reflection, the reflection ID is the stable completion identity (idempotent retries), and history/review view models (`PracticeHistoryView`, `PracticeReviewView`) keep persistence concerns out of the domain
 
 The vertical slice introduces no authentication, scoring, Progress, mastery, recommendations, gamification, or examination-specific logic.
+
+## Persistent practice history (SPEC-021)
+
+Completed practice is durable: after the learner saves a reflection, the completion and its journey evidence (activity, stimulus, response, evaluation, feedback, reflection, completion time) are persisted through the practice-history repository, so a completed practice remains reviewable after an application instance restarts or is redeployed.
+
+- **Completion boundary unchanged (SPEC-018):** a submitted or evaluated response alone never creates history; persistence happens only after the existing successful reflection/completion flow, and a failed write raises an explicit `PersistenceError` rather than falsely reporting completion. The reflection ID is the stable completion identity, so a retried write never duplicates history.
+- **Repeated practice:** completing the same activity again creates a separate, independently reviewable history record; `activity_id` is never treated as the history identity.
+- **Stable stimulus context:** a review shows the stimulus that was originally resolved for that attempt (SPEC-015 semantics), never a newly resolved one.
+- **Production backend:** Google Cloud Datastore (`FABLIT_PRACTICE_HISTORY_REPOSITORY=datastore`), using per-learner key namespaces so learner context stays explicit for future ownership work. Records are stored under the `PracticeCompletion` kind; no Datastore indexes are required for the scoped queries. `google-cloud-datastore` is an optional dependency extra (`pip install fablit[datastore]` / `uv sync --extra datastore`) so ordinary unit tests never require Google Cloud credentials.
+- **Local development and tests:** `FABLIT_PRACTICE_HISTORY_REPOSITORY=memory` (or unset) keeps the journey fully functional with the in-memory repository; the Datastore adapter is unit-tested against a lightweight fake client, so the test suite never needs a live emulator or credentials.
+- **Learner surface:** "Your practice" (`/history`) answers *What have I practised recently?* with newest-first entries and a calm empty state pointing back to Explore; a review page answers *What did I do, what feedback did I receive, and what did I learn from it?* No scores, percentages, mastery labels, streaks, rankings, or recommendations are introduced.
 
 ## Quality checks
 

@@ -38,6 +38,11 @@ dev = [
 [project.urls]
 Source = "https://github.com/h3xh4wk/fablit"
 
+[project.optional-dependencies]
+# Production persistence for learner practice history (SPEC-021). Optional so
+# unit/application tests never require Google Cloud credentials.
+datastore = ["google-cloud-datastore>=2.20.0"]
+
 [build-system]
 requires = ["setuptools>=84.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
@@ -60,6 +65,12 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 python_version = "3.12"
 strict = true
 packages = ["app", "fablit", "tests"]
+
+[[tool.mypy.overrides]]
+# google-cloud-datastore is an optional extra; its lazy import is guarded at
+# runtime, so type checking treats it as Any when the package is absent.
+module = "google.cloud.*"
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

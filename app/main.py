@@ -1,10 +1,13 @@
-"""FastAPI application entry point for the Fablit platform (SPEC-012).
+"""FastAPI application entry point for the Fablit platform (SPEC-012, SPEC-021).
 
 SPEC-014 establishes the learner pilot deployment boundary: the application
 is assembled by ``create_app`` so environment-specific safety settings can be
 applied and tested, development-only interfaces (API documentation) are
 hidden in the pilot environment, and unhandled errors render a learner-facing
 page instead of exposing internals.
+
+SPEC-021 adds web routes for practice history and review, allowing learners
+to access their durable practice completion records.
 """
 
 import logging
@@ -41,6 +44,10 @@ from fablit.application import (
     build_demo_skills,
     build_stimulus_provider,
 )
+from fablit.application.persistence import (
+    PersistenceError,
+    PracticeHistoryRepository,
+)
 from fablit.config import AppConfig, load_config
 from fablit.logging import init_logging, reset_request_context, set_request_context
 from fablit.platform.metrics import MetricsRegistry
@@ -54,12 +61,15 @@ logger = logging.getLogger("fablit.app")
 metrics_registry = MetricsRegistry()
 
 
-def _build_practice_application() -> PracticeApplication:
+def _build_practice_application(app_config: AppConfig) -> PracticeApplication:
     """Assemble the demo learner application for the first vertical slice.
 
     SPEC-015: stimulus resolution goes through the provider abstraction so
     external image retrieval is isolated and replaceable, and the demo
     evaluator is wired to the seeded activity content.
+
+    SPEC-021: the application is initialized with a history repository if
+    configured via the app configuration.
     """
     activities = build_demo_activities()
     store = LearnerJourneyStore(
@@ -67,19 +77,73 @@ def _build_practice_application() -> PracticeApplication:
         activities=activities,
         skills=build_demo_skills(),
     )
+
+    # SPEC-021: wire the history repository (may be None for in-memory testing)
+    history_repository = _build_history_repository(app_config)
+
     return PracticeApplication(
         store=store,
         evaluator=DemoEvaluator(build_demo_activity_map(activities)),
         stimulus_provider=build_stimulus_provider(
             activities,
-            provider_name=config.stimulus_provider,
-            fallback_image_overrides=config.stimulus_fallback_images,
-            wikimedia_endpoint=config.wikimedia_endpoint,
-            wikimedia_timeout=config.wikimedia_timeout,
-            wikimedia_width=config.wikimedia_width,
-            wikimedia_limit=config.wikimedia_limit,
+            provider_name=app_config.stimulus_provider,
+            fallback_image_overrides=app_config.stimulus_fallback_images,
+            wikimedia_endpoint=app_config.wikimedia_endpoint,
+            wikimedia_timeout=app_config.wikimedia_timeout,
+            wikimedia_width=app_config.wikimedia_width,
+            wikimedia_limit=app_config.wikimedia_limit,
         ),
+        history_repository=history_repository,
     )
+
+
+def _build_history_repository(
+    app_config: AppConfig,
+) -> PracticeHistoryRepository | None:
+    """Build the appropriate history repository based on configuration.
+
+    SPEC-021 §13: unit/application tests use the in-memory repository.
+    Production uses Google Cloud Datastore. If neither is configured,
+    history is disabled.
+    """
+    repository_type = app_config.practice_history_repository
+
+    if repository_type == "datastore":
+        try:
+            from google.cloud import datastore
+
+            from fablit.platform.datastore_repository import (
+                DatastorePracticeHistoryRepository,
+            )
+
+            client: datastore.Client = datastore.Client()
+            logger.info(
+                "initialized datastore practice history repository",
+                extra={"project_id": client.project},
+            )
+            return DatastorePracticeHistoryRepository(client)
+        except Exception as e:
+            logger.exception(
+                "failed to initialize datastore practice history repository"
+            )
+            raise RuntimeError(
+                "Could not initialize Google Cloud Datastore for practice history. "
+                "Check GCP configuration and credentials."
+            ) from e
+
+    elif repository_type == "memory":
+        from fablit.application.repositories import (
+            InMemoryPracticeHistoryRepository,
+        )
+
+        logger.info("initialized in-memory practice history repository")
+        return InMemoryPracticeHistoryRepository()
+
+    else:
+        logger.warning(
+            "practice history repository not configured; history will be unavailable"
+        )
+        return None
 
 
 def _practice(request: Request) -> PracticeApplication:
@@ -96,6 +160,14 @@ def _activity_id(value: str) -> UUID:
         return UUID(value)
     except ValueError:
         raise ActivityNotFoundError("Activity not found.") from None
+
+
+def _completion_id(value: str) -> UUID:
+    """Parse a completion identity, raising CompletionNotFoundError when invalid."""
+    try:
+        return UUID(value)
+    except ValueError:
+        raise CompletionNotFoundError("Practice record not found.") from None
 
 
 def _error_response(
@@ -205,7 +277,7 @@ def create_app(config: AppConfig) -> FastAPI:
         logger.info("application startup", extra={"version": config.version})
         app.state.ready = True
         app.state.config = config
-        app.state.practice = _build_practice_application()
+        app.state.practice = _build_practice_application(config)
         yield
         app.state.ready = False
         app.state.practice = None
@@ -339,7 +411,11 @@ def create_app(config: AppConfig) -> FastAPI:
         request: Request,
         content: Annotated[str, Form()] = "",
     ) -> Response:
-        """Save the learner's Reflection and show completion (UC-007)."""
+        """Save the learner's Reflection and show completion (UC-007).
+
+        SPEC-021: if persistence fails, an error is shown and the learner is
+        not falsely told the completion was recorded.
+        """
         practice = _practice(request)
         try:
             practice.submit_reflection(content)
@@ -352,6 +428,15 @@ def create_app(config: AppConfig) -> FastAPI:
                 "reflection.html",
                 {"view": view, "error": str(exc), "submitted_content": content},
             )
+        except PersistenceError as exc:
+            # SPEC-021 §14: persistence failures are explicit and observable
+            view = practice.get_reflection()
+            return templates.TemplateResponse(
+                request,
+                "reflection.html",
+                {"view": view, "error": str(exc), "submitted_content": content},
+                status_code=500,
+            )
         return RedirectResponse("/complete", status_code=303)
 
     @app.get("/complete", response_class=HTMLResponse)
@@ -363,6 +448,72 @@ def create_app(config: AppConfig) -> FastAPI:
         except CompletionNotFoundError:
             return RedirectResponse("/", status_code=303)
         return templates.TemplateResponse(request, "complete.html", {"view": view})
+
+    # SPEC-021: Practice History and Review Routes
+
+    @app.get("/history", response_class=HTMLResponse)
+    async def practice_history(request: Request) -> Response:
+        """Render the learner's practice history (SPEC-021 §8).
+
+        SPEC-021 §8: the history view should make it easy to answer
+        "What have I practised recently?" Recent completed practice appears first.
+
+        Empty history is a valid state showing a clear empty state explaining
+        that completed practice will appear here.
+        """
+        practice = _practice(request)
+        try:
+            view = practice.get_practice_history()
+        except PersistenceError as exc:
+            return _error_response(
+                request,
+                "We couldn't load your practice history.",
+                status_code=500,
+                description=str(exc),
+            )
+        return templates.TemplateResponse(request, "history.html", {"view": view})
+
+    @app.get("/history/{completion_id}", response_class=HTMLResponse)
+    async def practice_review(request: Request, completion_id: str) -> Response:
+        """Render a review of a completed practice (SPEC-021 §9).
+
+        SPEC-021 §9: selecting a completed practice allows the learner to review
+        the meaningful parts of that specific practice instance. The review
+        contains the relevant activity, stimulus/context, response, evaluation,
+        feedback, reflection, and completion timestamp available to the
+        application. The review is a reflection and evidence surface, not a
+        grading dashboard.
+
+        Args:
+            completion_id: The stable identity of the completion to review.
+
+        Returns:
+            HTML response with the review, or an error page if the completion
+            does not exist or retrieval fails.
+        """
+        practice = _practice(request)
+        try:
+            cid = _completion_id(completion_id)
+        except CompletionNotFoundError:
+            return _error_response(request, "Practice record not found.")
+
+        try:
+            view = practice.get_practice_review(cid)
+        except CompletionNotFoundError:
+            return _error_response(
+                request,
+                "Practice record not found.",
+                description="This completed practice record is no longer available.",
+            )
+        except PersistenceError as exc:
+            return _error_response(
+                request,
+                "We couldn't load the practice record.",
+                status_code=500,
+                description=str(exc),
+            )
+
+        return templates.TemplateResponse(request, "review.html", {"view": view})
 
     @app.get("/health")
     async def health() -> dict[str, str]:
