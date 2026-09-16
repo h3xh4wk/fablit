@@ -1,9 +1,9 @@
 # SPEC-021 — Persistent Practice History & Learner Review
 
-**Status:** Proposed  
-**Version:** 0.1  
-**Type:** Platform / Persistence / Learner Experience  
-**Depends on:** SPEC-015, SPEC-017, SPEC-018, SPEC-020  
+**Status:** Proposed
+**Version:** 0.1
+**Type:** Platform / Persistence / Learner Experience
+**Depends on:** SPEC-015, SPEC-017, SPEC-018, SPEC-020
 **Primary Modules:** Application / Persistence / Learner Experience
 
 ---
