@@ -1,4 +1,4 @@
-"""Application use cases for the learner practice flow (SPEC-012, SPEC-015).
+"""Application use cases for the learner practice flow (SPEC-012, SPEC-015, SPEC-021).
 
 This module implements UC-001 through UC-007 from SPEC-012 by composing the
 existing learning-domain models, and adds the SPEC-015 stimulus flow: when an
@@ -6,6 +6,10 @@ activity defines a stimulus context, a stimulus is resolved at practice start
 (UC-002) and passed to the evaluator at submission (UC-003/004). It contains
 no HTML and no presentation logic: learner-facing view models
 (``view_models.py``) are prepared here and rendered by the Web/UI layer.
+
+SPEC-021 extends this with durable practice history and review: completed
+practice is persisted through the PracticeHistoryRepository port, and the
+learner can later retrieve and review specific completions.
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ from datetime import UTC, datetime
 from threading import Lock
 from uuid import UUID
 
+from fablit.application.persistence import PracticeHistoryRepository
 from fablit.domain import (
     Evaluation,
     Feedback,
@@ -41,6 +46,9 @@ from .view_models import (
     PracticeActivitySummary,
     PracticeActivityView,
     PracticeDashboardView,
+    PracticeHistoryEntry,
+    PracticeHistoryView,
+    PracticeReviewView,
     ReflectionView,
     StimulusView,
 )
@@ -58,6 +66,10 @@ class PracticeApplication:
     The facade the Web/UI layer uses to drive the learner journey. Each
     method maps to a SPEC-012 use case and returns a learner-facing view
     model, never a domain object.
+
+    SPEC-021: this application now also orchestrates durable practice history
+    persistence and review. The persistence boundary isolates Datastore
+    concerns via the PracticeHistoryRepository port.
     """
 
     def __init__(
@@ -66,11 +78,13 @@ class PracticeApplication:
         store: LearnerJourneyStore,
         evaluator: Evaluator,
         stimulus_provider: StimulusProvider,
+        history_repository: PracticeHistoryRepository | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._store = store
         self._evaluator = evaluator
         self._stimulus_provider = stimulus_provider
+        self._history_repository = history_repository
         self._clock = clock or _now
         # HTMX disables the submit button in normal browser use, but requests
         # can still race due to retries or multiple clients. Keep this guard at
@@ -88,7 +102,7 @@ class PracticeApplication:
                 title=item.title,
                 description=item.description,
                 skills=self._skill_names(item.activity.skill_ids),
-                has_completed_practice=self._store.has_completed_activity(
+                has_completed_practice=self._has_completed_activity(
                     item.activity.id
                 ),
                 preview_image_url=item.fallback_image,
@@ -210,7 +224,13 @@ class PracticeApplication:
 
     # UC-007 — Submit Reflection
     def submit_reflection(self, content: str) -> CompletionView:
-        """Save the learner's Reflection and return the completion result."""
+        """Save the learner's Reflection and return the completion result.
+
+        SPEC-021: after successful reflection, the completion is persisted
+        durably through the history repository. If persistence fails, an
+        explicit error is raised and the learner is not falsely told the
+        completion was recorded (SPEC-021 §14).
+        """
         feedback = self._store.current_feedback()
         if not isinstance(content, str) or not content.strip():
             raise InvalidReflectionResponseError(
@@ -231,6 +251,31 @@ class PracticeApplication:
                 completed_at=self._clock(),
             )
         )
+
+        # SPEC-021: persist the completion durably if a repository is configured
+        if self._history_repository is not None:
+            evaluation = self._store.get_evaluation(feedback.evaluation_id)
+            submission = self._store.get_submission(evaluation.submission_id)
+            stimulus = self._store.current_stimulus(activity.activity.id)
+            self._history_repository.save_completion(
+                learner_id=self._store.learner_id,
+                activity_id=activity.activity.id,
+                activity_title=activity.title,
+                submission=submission,
+                evaluation=evaluation,
+                feedback=feedback,
+                reflection=reflection,
+                stimulus=stimulus,
+            )
+            logger.info(
+                "practice completion persisted",
+                extra={
+                    "learner_id": str(self._store.learner_id),
+                    "activity_id": str(activity.activity.id),
+                    "reflection_id": str(reflection.id),
+                },
+            )
+
         return self._completion_view()
 
     def get_completion(self) -> CompletionView:
@@ -238,6 +283,88 @@ class PracticeApplication:
         if self._store.last_reflection() is None:
             raise CompletionNotFoundError("No completed practice yet.")
         return self._completion_view()
+
+    # SPEC-021: Practice History and Review
+
+    def get_practice_history(self) -> PracticeHistoryView:
+        """Retrieve the learner's completed practice history (SPEC-021 §8).
+
+        SPEC-021 §8: history should make it easy to answer "What have I
+        practised recently?" Recent completed practice appears first.
+
+        If no repository is configured, returns empty history. Otherwise
+        retrieves from durable storage.
+
+        Returns:
+            PracticeHistoryView: The history with entries ordered newest first,
+                or empty if no completed practice exists.
+
+        Raises:
+            PersistenceError: If durable storage retrieval fails.
+        """
+        if self._history_repository is None:
+            return PracticeHistoryView(entries=(), is_empty=True)
+
+        summaries = self._history_repository.list_completions(self._store.learner_id)
+        entries = tuple(
+            PracticeHistoryEntry(
+                completion_id=s.completion_id,
+                activity_id=s.activity_id,
+                activity_title=s.activity_title,
+                completed_at=s.completed_at,
+                submission_preview=s.submission_preview,
+            )
+            for s in summaries
+        )
+
+        return PracticeHistoryView(
+            entries=entries,
+            is_empty=len(entries) == 0,
+        )
+
+    def get_practice_review(self, completion_id: UUID) -> PracticeReviewView:
+        """Retrieve a specific completed practice for review (SPEC-021 §9).
+
+        SPEC-021 §9: selecting a completed practice allows the learner to review
+        the meaningful parts of that specific practice instance, including
+        activity, stimulus/context, response, evaluation, feedback, reflection,
+        and completion timestamp.
+
+        Args:
+            completion_id: The stable identity of the completion to review.
+
+        Returns:
+            PracticeReviewView: The review with all evidence.
+
+        Raises:
+            CompletionNotFoundError: If the completion doesn't exist or doesn't
+                belong to the learner.
+            PersistenceError: If durable storage retrieval fails.
+        """
+        if self._history_repository is None:
+            raise CompletionNotFoundError("Practice history is not available.")
+
+        completion = self._history_repository.get_completion(
+            self._store.learner_id, completion_id
+        )
+        if completion is None:
+            raise CompletionNotFoundError("Completed practice not found.")
+
+        # Split the evaluation findings into categories for presentation
+        strengths, improvements, next_steps = self._categorise(completion.evaluation)
+
+        return PracticeReviewView(
+            activity_title=completion.activity_title,
+            activity_id=completion.activity_id,
+            completed_at=completion.completed_at,
+            stimulus=self._stimulus_view(completion.stimulus),
+            learner_response=completion.submission.response,
+            strengths=strengths,
+            improvements=improvements,
+            next_steps=next_steps,
+            feedback=completion.feedback.content,
+            reflection=completion.reflection.content,
+        )
 
     def _resolve_stimulus(self, item: DemoActivity) -> StimulusInstance | None:
         """Resolve (or reuse) the stimulus for an activity instance, if required.
@@ -283,6 +410,24 @@ class PracticeApplication:
         evaluation = self._store.get_evaluation(feedback.evaluation_id)
         submission = self._store.get_submission(evaluation.submission_id)
         return self._store.get_activity(submission.activity_id)
+
+    def _has_completed_activity(self, activity_id: UUID) -> bool:
+        """Check if the learner has completed an activity.
+
+        First checks in-memory store for current session, then checks durable
+        history repository if configured.
+        """
+        # Check in-memory store first (current session)
+        if self._store.has_completed_activity(activity_id):
+            return True
+
+        # Check durable history if available
+        if self._history_repository is not None:
+            return self._history_repository.has_completed_activity(
+                self._store.learner_id, activity_id
+            )
+
+        return False
 
     def _feedback_content(self, evaluation: Evaluation) -> str:
         strengths, improvements, next_steps = self._categorise(evaluation)
