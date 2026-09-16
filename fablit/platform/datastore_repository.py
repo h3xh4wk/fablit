@@ -19,7 +19,6 @@ The domain layer remains independent of Datastore APIs.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -95,7 +94,10 @@ class DatastorePracticeHistoryRepository(PracticeHistoryRepository):
             PersistenceError: If the Datastore write fails.
         """
         completion_id = reflection.id
-        completed_at = datetime.now(reflection.created_at.tzinfo or None)
+        # The completion timestamp is the moment the learner's Reflection was
+        # recorded — deterministic, and consistent with the in-memory journey
+        # record for the same completion.
+        completed_at = reflection.created_at
 
         try:
             # Use the reflection ID as the stable completion identity.
@@ -293,7 +295,7 @@ class DatastorePracticeHistoryRepository(PracticeHistoryRepository):
 
             return len(list(query.fetch())) > 0
 
-        except Exception as e:
+        except Exception:
             logger.exception(
                 "activity completion check failed",
                 extra={
@@ -339,6 +341,7 @@ class DatastorePracticeHistoryRepository(PracticeHistoryRepository):
             "submission_id": str(evaluation.submission_id),
             "findings": [
                 {
+                    "id": str(f.id),
                     "observation": f.observation,
                     "evidence": f.evidence,
                 }
@@ -350,10 +353,14 @@ class DatastorePracticeHistoryRepository(PracticeHistoryRepository):
     @staticmethod
     def _deserialize_evaluation(data: dict[str, Any]) -> Evaluation:
         """Reconstruct an Evaluation from Datastore representation."""
-        from fablit.domain import Finding
+        from fablit.domain import EvaluationFinding
 
         findings = tuple(
-            Finding(observation=f["observation"], evidence=f["evidence"])
+            EvaluationFinding(
+                observation=f["observation"],
+                evidence=f.get("evidence"),
+                id=UUID(f["id"]),
+            )
             for f in data["findings"]
         )
         return Evaluation(
@@ -409,11 +416,15 @@ class DatastorePracticeHistoryRepository(PracticeHistoryRepository):
         return {
             "id": str(stimulus.id),
             "activity_id": str(stimulus.activity_id),
+            "provider": stimulus.provider,
             "image_url": stimulus.image_url,
-            "alt_text": stimulus.alt_text,
-            "attribution": stimulus.attribution,
             "source_url": stimulus.source_url,
-            "resolved_at": stimulus.resolved_at,
+            "retrieved_at": stimulus.retrieved_at,
+            "asset_id": stimulus.asset_id,
+            "creator": stimulus.creator,
+            "license": stimulus.license,
+            "attribution": stimulus.attribution,
+            "alt_text": stimulus.alt_text,
         }
 
     @staticmethod
@@ -421,12 +432,16 @@ class DatastorePracticeHistoryRepository(PracticeHistoryRepository):
         """Reconstruct a StimulusInstance from Datastore representation."""
         return StimulusInstance(
             activity_id=UUID(data["activity_id"]),
+            provider=data["provider"],
             image_url=data["image_url"],
-            alt_text=data["alt_text"],
-            attribution=data["attribution"],
             source_url=data["source_url"],
+            retrieved_at=data["retrieved_at"],
             id=UUID(data["id"]),
-            resolved_at=data["resolved_at"],
+            asset_id=data.get("asset_id"),
+            creator=data.get("creator"),
+            license=data.get("license"),
+            attribution=data.get("attribution"),
+            alt_text=data.get("alt_text"),
         )
 
     @staticmethod

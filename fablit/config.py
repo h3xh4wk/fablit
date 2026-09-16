@@ -20,6 +20,7 @@ except ModuleNotFoundError:  # pragma: no cover
 SUPPORTED_ENVIRONMENTS = {"development", "testing", "production"}
 SUPPORTED_LOG_FORMATS = {"json", "text"}
 SUPPORTED_STIMULUS_PROVIDERS = {"builtin", "wikimedia"}
+SUPPORTED_PRACTICE_HISTORY_REPOSITORIES = {"memory", "datastore"}
 
 
 class ConfigError(RuntimeError):
@@ -72,6 +73,15 @@ class AppConfig(BaseSettings):
         le=50,
         description="Number of candidate images searched on Wikimedia Commons.",
     )
+    practice_history_repository: str | None = Field(
+        None,
+        description=(
+            "Practice history persistence backend (SPEC-021): 'memory' "
+            "(in-memory, for tests and local development) or 'datastore' "
+            "(Google Cloud Datastore, for the deployed App Engine environment). "
+            "Unset disables practice history persistence."
+        ),
+    )
     config_file: Path | None = Field(None, description="Path to optional config file.")
     version: str = Field("0.1.0", description="Application version.")
 
@@ -113,6 +123,24 @@ class AppConfig(BaseSettings):
                 f"Unsupported stimulus provider '{value}'. Must be one of: {allowed}."
             )
         return normalized
+
+    @field_validator("practice_history_repository", mode="before")
+    def normalize_practice_history_repository(cls, value: object) -> object:
+        """Normalize the repository choice; empty/unset means disabled."""
+        if value is None:
+            return None
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if not normalized or normalized in {"none", "off", "disabled"}:
+                return None
+            if normalized not in SUPPORTED_PRACTICE_HISTORY_REPOSITORIES:
+                allowed = ", ".join(sorted(SUPPORTED_PRACTICE_HISTORY_REPOSITORIES))
+                raise ValueError(
+                    f"Unsupported practice history repository '{value}'. "
+                    f"Must be one of: {allowed}."
+                )
+            return normalized
+        return value
 
     @field_validator("stimulus_fallback_images", mode="before")
     def parse_stimulus_fallback_images(cls, value: object) -> dict[str, str]:
@@ -179,6 +207,7 @@ def _resolve_environment_overrides() -> dict[str, Any]:
         "wikimedia_timeout": "FABLIT_WIKIMEDIA_TIMEOUT",
         "wikimedia_width": "FABLIT_WIKIMEDIA_WIDTH",
         "wikimedia_limit": "FABLIT_WIKIMEDIA_LIMIT",
+        "practice_history_repository": "FABLIT_PRACTICE_HISTORY_REPOSITORY",
         "version": "FABLIT_VERSION",
     }
     resolved: dict[str, Any] = {}

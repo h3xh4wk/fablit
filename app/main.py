@@ -44,7 +44,10 @@ from fablit.application import (
     build_demo_skills,
     build_stimulus_provider,
 )
-from fablit.application.persistence import PersistenceError
+from fablit.application.persistence import (
+    PersistenceError,
+    PracticeHistoryRepository,
+)
 from fablit.config import AppConfig, load_config
 from fablit.logging import init_logging, reset_request_context, set_request_context
 from fablit.platform.metrics import MetricsRegistry
@@ -58,7 +61,7 @@ logger = logging.getLogger("fablit.app")
 metrics_registry = MetricsRegistry()
 
 
-def _build_practice_application() -> PracticeApplication:
+def _build_practice_application(app_config: AppConfig) -> PracticeApplication:
     """Assemble the demo learner application for the first vertical slice.
 
     SPEC-015: stimulus resolution goes through the provider abstraction so
@@ -76,32 +79,34 @@ def _build_practice_application() -> PracticeApplication:
     )
 
     # SPEC-021: wire the history repository (may be None for in-memory testing)
-    history_repository = _build_history_repository()
+    history_repository = _build_history_repository(app_config)
 
     return PracticeApplication(
         store=store,
         evaluator=DemoEvaluator(build_demo_activity_map(activities)),
         stimulus_provider=build_stimulus_provider(
             activities,
-            provider_name=config.stimulus_provider,
-            fallback_image_overrides=config.stimulus_fallback_images,
-            wikimedia_endpoint=config.wikimedia_endpoint,
-            wikimedia_timeout=config.wikimedia_timeout,
-            wikimedia_width=config.wikimedia_width,
-            wikimedia_limit=config.wikimedia_limit,
+            provider_name=app_config.stimulus_provider,
+            fallback_image_overrides=app_config.stimulus_fallback_images,
+            wikimedia_endpoint=app_config.wikimedia_endpoint,
+            wikimedia_timeout=app_config.wikimedia_timeout,
+            wikimedia_width=app_config.wikimedia_width,
+            wikimedia_limit=app_config.wikimedia_limit,
         ),
         history_repository=history_repository,
     )
 
 
-def _build_history_repository() -> object | None:
+def _build_history_repository(
+    app_config: AppConfig,
+) -> PracticeHistoryRepository | None:
     """Build the appropriate history repository based on configuration.
 
     SPEC-021 §13: unit/application tests use the in-memory repository.
     Production uses Google Cloud Datastore. If neither is configured,
     history is disabled.
     """
-    repository_type = getattr(config, "practice_history_repository", None)
+    repository_type = app_config.practice_history_repository
 
     if repository_type == "datastore":
         try:
@@ -111,7 +116,7 @@ def _build_history_repository() -> object | None:
                 DatastorePracticeHistoryRepository,
             )
 
-            client = datastore.Client()
+            client: datastore.Client = datastore.Client()
             logger.info(
                 "initialized datastore practice history repository",
                 extra={"project_id": client.project},
@@ -272,7 +277,7 @@ def create_app(config: AppConfig) -> FastAPI:
         logger.info("application startup", extra={"version": config.version})
         app.state.ready = True
         app.state.config = config
-        app.state.practice = _build_practice_application()
+        app.state.practice = _build_practice_application(config)
         yield
         app.state.ready = False
         app.state.practice = None

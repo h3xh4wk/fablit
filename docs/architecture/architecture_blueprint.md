@@ -1,9 +1,9 @@
 # Fablit Architecture Blueprint
 
 **Document ID:** AB-001
-**Version:** 0.7.0
+**Version:** 0.8.0
 **Status:** Draft
-**Last Updated:** 2026-09-14
+**Last Updated:** 2026-09-16
 
 ---
 
@@ -428,6 +428,49 @@ Both specifications deliberately introduce no scoring, progress indicators,
 streaks, badges, timers, recommendations, analytics, drawing/upload workflows,
 new Stimulus architecture, external image-provider integration, database
 migration, SPA framework, or new runtime dependency.
+
+---
+
+## Persistent Practice History & Learner Review
+
+SPEC-021 establishes the first production persistence boundary for the learner
+journey. The layering is deliberate:
+
+```text
+Learner Experience (app)
+        ↓
+Application / Use Cases (PracticeApplication)
+        ↓
+Learner Journey Repository / Persistence Port (PracticeHistoryRepository)
+        ↓
+Google Cloud Datastore Adapter (fablit.platform)
+```
+
+The application layer depends only on the port; the domain layer depends on
+neither the port's adapters nor any persistence mechanism. Two adapters exist:
+the in-memory repository (unit/application tests, local development) and the
+Datastore adapter (the deployed App Engine environment), selected purely by
+configuration (`FABLIT_PRACTICE_HISTORY_REPOSITORY`).
+
+A completed practice becomes durable history only after the SPEC-018
+completion flow succeeds; a failed write raises an explicit persistence error
+instead of falsely reporting completion, and the reflection identity serves as
+the stable completion identity so retried writes are idempotent. Each
+completion retains the evidence needed for review — activity, the stimulus
+resolved for that attempt, the learner's response, evaluation, feedback,
+reflection, and completion time — so repeated practice remains distinguishable
+and reviews never silently re-resolve a stimulus.
+
+```text
+Response → Evaluation → Feedback → Reflection → Completion → Durable History → Review
+                                                    (SPEC-018)     (SPEC-021)  (SPEC-021)
+```
+
+The learner-facing surface ("Your practice" history and per-completion review)
+is a reflection and evidence surface: no mastery, scores, percentages,
+rankings, streaks, or recommendations. Per-learner Datastore key namespaces
+keep learner context explicit for future authentication/ownership work without
+redesigning the stored evidence.
 
 ---
 

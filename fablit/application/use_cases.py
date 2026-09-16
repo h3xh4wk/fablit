@@ -102,9 +102,7 @@ class PracticeApplication:
                 title=item.title,
                 description=item.description,
                 skills=self._skill_names(item.activity.skill_ids),
-                has_completed_practice=self._has_completed_activity(
-                    item.activity.id
-                ),
+                has_completed_practice=self._has_completed_activity(item.activity.id),
                 preview_image_url=item.fallback_image,
                 preview_alt_text=item.fallback_alt,
             )

@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **SPEC-021 — Persistent Practice History & Learner Review**: completed practice is now durable and reviewable. Completed practice survives application restarts and redeployments through a new persistence boundary backed by Google Cloud Datastore in production, and learners can browse their practice history and revisit any completed practice.
+  - A narrow `PracticeHistoryRepository` port (application layer) isolates persistence: an in-memory implementation serves unit/application tests and local development, and a Google Cloud Datastore adapter serves the deployed App Engine environment (`FABLIT_PRACTICE_HISTORY_REPOSITORY=datastore`), with no Datastore imports in the domain or application layers.
+  - Completion is persisted only after the existing successful reflection/completion flow (SPEC-018 semantics unchanged); the reflection ID is the stable completion identity, so retries never duplicate history, and a failed write raises an explicit persistence error instead of falsely reporting completion.
+  - The new "Your practice" surface lists completed practice newest-first with title, completion time, and a response preview, with a calm empty state pointing back to Explore; selecting an entry opens a review showing the original stimulus (never re-resolved), the learner's response, the feedback, the learner's reflection, and the completion timestamp — an evidence surface, not a dashboard.
+  - Repeated practice of the same activity remains distinguishable as separate completion records; per-learner namespacing keeps learner context explicit for future ownership work.
+  - Configuration via `FABLIT_PRACTICE_HISTORY_REPOSITORY` (`memory`, `datastore`, or unset/disabled); `google-cloud-datastore` is an optional extra so ordinary tests never require Google Cloud credentials.
+  - Application, persistence (fake Datastore client), configuration, and web tests cover the repository port, ordering, review reconstruction, idempotency, failure mapping, empty state, and the unchanged journey.
+
+See [SPEC-021](specifications/platform/SPEC-021-persistent-practice-history-and-learner-review.md) — issue [#74](https://github.com/h3xh4wk/fablit/issues/74) — for details.
+
 ### Changed
 
 - **Exam-oriented activity labels ([issue #65](https://github.com/h3xh4wk/fablit/issues/65))**: the demo activities now use terminology that is immediately recognisable to design-entrance aspirants, while the Skill, Assessment Activity, Submission, Evaluation, Feedback, and Reflection structure stays unchanged:

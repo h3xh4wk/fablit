@@ -13,11 +13,9 @@ This implementation is suitable for:
 
 from __future__ import annotations
 
-from datetime import datetime
 from uuid import UUID
 
 from fablit.application.persistence import (
-    PersistenceError,
     PracticeHistoryRepository,
     PracticeHistorySummary,
     StoredPracticeCompletion,
@@ -82,7 +80,9 @@ class InMemoryPracticeHistoryRepository(PracticeHistoryRepository):
         # SPEC-021 §10: each completed practice must remain independently
         # reviewable. Repeated practice creates separate history records.
         completion_id = reflection.id
-        completed_at = datetime.now(reflection.created_at.tzinfo or None)
+        # The completion timestamp is the moment the learner's Reflection was
+        # recorded — deterministic and identical to the Datastore adapter.
+        completed_at = reflection.created_at
 
         completion = StoredPracticeCompletion(
             completion_id=completion_id,

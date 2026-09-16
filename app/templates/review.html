@@ -1,271 +1,63 @@
 {% extends "base.html" %}
-
 {% block title %}Practice Review{% endblock %}
-
 {% block content %}
-<div class="practice-review-container">
-    <h1>{{ view.activity_title }}</h1>
-    <p class="review-timestamp">Completed on {{ view.completed_at.strftime('%B %d, %Y at %I:%M %p') }}</p>
+<article class="review">
+  <p class="review__crumb"><a href="/history">Your practice</a> <span aria-hidden="true">→</span> Review</p>
+  <h1 class="display">{{ view.activity_title }}</h1>
+  <p class="review__timestamp">Completed {{ view.completed_at.strftime('%-d %B %Y at %H:%M UTC') }}</p>
 
-    <!-- Stimulus / Context -->
-    {% if view.stimulus %}
-    <section class="review-section stimulus-section">
-        <h2>Context</h2>
-        <div class="stimulus-container">
-            <img 
-                src="{{ view.stimulus.image_url }}" 
-                alt="{{ view.stimulus.alt_text }}"
-                class="stimulus-image"
-            />
-            {% if view.stimulus.attribution %}
-            <p class="stimulus-attribution">
-                Image: {{ view.stimulus.attribution }}
-                {% if view.stimulus.source_url %}
-                <a href="{{ view.stimulus.source_url }}" target="_blank" rel="noopener noreferrer">View source</a>
-                {% endif %}
-            </p>
-            {% endif %}
-        </div>
-    </section>
-    {% endif %}
-
-    <!-- Learner Response -->
-    <section class="review-section">
-        <h2>Your Response</h2>
-        <div class="response-box">
-            <p>{{ view.learner_response }}</p>
-        </div>
-    </section>
-
-    <!-- Feedback -->
-    <section class="review-section feedback-section">
-        <h2>Feedback</h2>
-        
-        {% if view.strengths %}
-        <div class="feedback-item strengths">
-            <h3>What You Noticed</h3>
-            <ul>
-                {% for strength in view.strengths %}
-                <li>{{ strength }}</li>
-                {% endfor %}
-            </ul>
-        </div>
+  {% if view.stimulus %}
+  <section class="review__section">
+    <h2 class="practice__step">What you observed</h2>
+    <figure class="stimulus">
+      <img class="stimulus__image" src="{{ view.stimulus.image_url }}" alt="{{ view.stimulus.alt_text }}">
+      <figcaption class="stimulus__attribution">
+        {% if view.stimulus.attribution %}<span>{{ view.stimulus.attribution }}</span>{% endif %}
+        {% if view.stimulus.source_url %}
+        <a class="stimulus__source" href="{{ view.stimulus.source_url }}" target="_blank" rel="noopener noreferrer">View source</a>
         {% endif %}
+      </figcaption>
+    </figure>
+  </section>
+  {% endif %}
 
-        {% if view.improvements %}
-        <div class="feedback-item improvements">
-            <h3>Consider This</h3>
-            <ul>
-                {% for improvement in view.improvements %}
-                <li>{{ improvement }}</li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
+  <section class="review__section">
+    <h2 class="practice__step">Your response</h2>
+    <div class="review__evidence">{{ view.learner_response }}</div>
+  </section>
 
-        {% if view.next_steps %}
-        <div class="feedback-item next-steps">
-            <h3>Next Step</h3>
-            <ul>
-                {% for step in view.next_steps %}
-                <li>{{ step }}</li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-    </section>
+  <section class="review__section">
+    <h2 class="practice__step">Feedback you received</h2>
+    <div class="feedback-section">
+      {% if view.strengths %}
+      <h3>What you noticed</h3>
+      <ul>
+        {% for strength in view.strengths %}<li>{{ strength }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+      {% if view.improvements %}
+      <h3>What to think about</h3>
+      <ul>
+        {% for improvement in view.improvements %}<li>{{ improvement }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+      {% if view.next_steps %}
+      <h3>Try this next</h3>
+      <ul>
+        {% for step in view.next_steps %}<li>{{ step }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+  </section>
 
-    <!-- Reflection -->
-    <section class="review-section">
-        <h2>Your Reflection</h2>
-        <div class="reflection-box">
-            <p>{{ view.reflection }}</p>
-        </div>
-    </section>
+  <section class="review__section">
+    <h2 class="practice__step">Your reflection</h2>
+    <div class="review__evidence">{{ view.reflection }}</div>
+  </section>
 
-    <!-- Navigation -->
-    <nav class="review-navigation">
-        <a href="/history" class="button button-secondary">Back to History</a>
-        <a href="/" class="button button-secondary">Back to Practice</a>
-    </nav>
-</div>
-
-<style scoped>
-.practice-review-container {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 2rem 1.5rem;
-}
-
-.practice-review-container h1 {
-    font-size: 2rem;
-    font-weight: 600;
-    margin: 0 0 0.5rem 0;
-    color: #1a1a1a;
-}
-
-.review-timestamp {
-    font-size: 0.95rem;
-    color: #999;
-    margin: 0 0 2rem 0;
-}
-
-.review-section {
-    margin-bottom: 2.5rem;
-}
-
-.review-section h2 {
-    font-size: 1.25rem;
-    font-weight: 600;
-    margin: 0 0 1rem 0;
-    color: #1a1a1a;
-    border-bottom: 2px solid #f0f0f0;
-    padding-bottom: 0.75rem;
-}
-
-.review-section h3 {
-    font-size: 1rem;
-    font-weight: 600;
-    margin: 1rem 0 0.5rem 0;
-    color: #333;
-}
-
-.review-section ul {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
-
-.review-section li {
-    font-size: 0.95rem;
-    color: #333;
-    line-height: 1.6;
-    margin-bottom: 0.75rem;
-    padding-left: 1.5rem;
-    position: relative;
-}
-
-.review-section li::before {
-    content: "→";
-    position: absolute;
-    left: 0;
-    color: #999;
-    font-weight: 500;
-}
-
-/* Stimulus Section */
-.stimulus-section {
-    background: #fafafa;
-    padding: 1.5rem;
-    border-radius: 8px;
-    border: 1px solid #e0e0e0;
-}
-
-.stimulus-container {
-    margin: 0;
-}
-
-.stimulus-image {
-    display: block;
-    max-width: 100%;
-    height: auto;
-    border-radius: 6px;
-    margin-bottom: 0.75rem;
-}
-
-.stimulus-attribution {
-    font-size: 0.8rem;
-    color: #999;
-    margin: 0;
-}
-
-.stimulus-attribution a {
-    color: #007bff;
-    text-decoration: none;
-    margin-left: 0.5rem;
-}
-
-.stimulus-attribution a:hover {
-    text-decoration: underline;
-}
-
-/* Response & Reflection Boxes */
-.response-box,
-.reflection-box {
-    background: #f9f9f9;
-    padding: 1.25rem;
-    border-left: 4px solid #ddd;
-    border-radius: 4px;
-    font-size: 0.95rem;
-    line-height: 1.6;
-    color: #333;
-}
-
-.response-box p,
-.reflection-box p {
-    margin: 0;
-    white-space: pre-wrap;
-    word-break: break-word;
-}
-
-/* Feedback Items */
-.feedback-item {
-    margin-bottom: 1.5rem;
-}
-
-.feedback-item.strengths h3 {
-    color: #2d5016;
-}
-
-.feedback-item.improvements h3 {
-    color: #d97706;
-}
-
-.feedback-item.next-steps h3 {
-    color: #0369a1;
-}
-
-.feedback-item li::before {
-    color: #999;
-}
-
-/* Navigation */
-.review-navigation {
-    display: flex;
-    gap: 1rem;
-    justify-content: center;
-    margin-top: 2.5rem;
-    padding-top: 2rem;
-    border-top: 1px solid #f0f0f0;
-}
-
-/* Responsive */
-@media (max-width: 600px) {
-    .practice-review-container {
-        padding: 1.5rem 1rem;
-    }
-
-    .practice-review-container h1 {
-        font-size: 1.5rem;
-    }
-
-    .review-section {
-        margin-bottom: 2rem;
-    }
-
-    .review-section h2 {
-        font-size: 1.1rem;
-    }
-
-    .response-box,
-    .reflection-box {
-        padding: 1rem;
-        font-size: 0.9rem;
-    }
-
-    .review-navigation {
-        flex-direction: column;
-    }
-}
-</style>
+  <nav class="review__nav" aria-label="Review navigation">
+    <a class="button" href="/history">Back to your practice <span aria-hidden="true">→</span></a>
+    <a class="button button--secondary" href="/">Go to explore <span aria-hidden="true">→</span></a>
+  </nav>
+</article>
 {% endblock %}
