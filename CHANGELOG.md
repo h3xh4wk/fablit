@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **SPEC-022 — Optional Practice Modes & Learner Choice**: learners can now explicitly choose the shape of practice that fits the moment, while shorter practice stays optional and the existing learner journey is preserved.
+  - A calm, low-friction chooser at `/practice` presents two modes: **A short drill** (about 5–10 minutes of learner effort — an indication, never a countdown, limit, or penalty) and **A full practice** (the existing standard experience). The Explore dashboard keeps a quiet invite link, and the normal activity library remains fully available without any mode selection.
+  - Practice modes live entirely at the application/learner-experience boundary (`fablit/application/practice_modes.py` plus view models): a `PracticeMode` StrEnum (`short-drill`, `full-practice`), curated eligibility definitions, and `PracticeApplication.get_practice_modes()`/`get_practice_mode_activities()`. No new domain model, no new Assessment Activity type, no parallel submission/evaluation workflow.
+  - Short Drill eligibility is explicit content configuration (`SHORT_DRILL_ACTIVITY_TITLES` in `fablit/application/demo_data.py`, resolved to stable activity identities): one concise observation activity and one concise writing activity, reusing existing Assessment Activities. New activities become drill-eligible by editing the list — not application logic.
+  - Explicit learner choice only: no mode is recommended, ranked, or pre-selected from history or behaviour; the mode layer never touches the history repository.
+  - Either choice enters the unchanged Activity → Submission → Evaluation → Feedback → Reflection → Completion journey, and a completed Short Drill is simply completed practice, stored and reviewable through the SPEC-021 history/review.
+  - Application tests (21) and web/route tests (16) cover the mode set, curated resolution and ordering, empty/stale eligibility configuration, journey preservation through both paths, history compatibility, accessible links and labels, the ungated return path to Explore, and absence of countdown/scoring language.
+
+See [SPEC-022](specifications/platform/SPEC-022-optional-practice-modes-and-learner-choice.md) — issue [#81](https://github.com/h3xh4wk/fablit/issues/81) — for details.
+
 - **SPEC-021 — Persistent Practice History & Learner Review**: completed practice is now durable and reviewable. Completed practice survives application restarts and redeployments through a new persistence boundary backed by Google Cloud Datastore in production, and learners can browse their practice history and revisit any completed practice.
   - A narrow `PracticeHistoryRepository` port (application layer) isolates persistence: an in-memory implementation serves unit/application tests and local development, and a Google Cloud Datastore adapter serves the deployed App Engine environment (`FABLIT_PRACTICE_HISTORY_REPOSITORY=datastore`), with no Datastore imports in the domain or application layers.
   - Completion is persisted only after the existing successful reflection/completion flow (SPEC-018 semantics unchanged); the reflection ID is the stable completion identity, so retries never duplicate history, and a failed write raises an explicit persistence error instead of falsely reporting completion.

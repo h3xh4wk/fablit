@@ -1,4 +1,4 @@
-"""Learner-facing view models for the practice flow (SPEC-012, SPEC-015, SPEC-021).
+"""Learner-facing view models for the practice flow (SPEC-012…022).
 
 View models are the Application Layer's representations of domain state for
 the Web/UI layer (SPEC-012 §26). They carry data only — no HTML, no
@@ -145,3 +145,46 @@ class PracticeReviewView:
     next_steps: tuple[str, ...]
     feedback: str
     reflection: str
+
+
+# SPEC-022: Practice Mode Views
+
+
+@dataclass(frozen=True)
+class PracticeModeOption:
+    """One selectable practice mode prepared for the learner (SPEC-022 §7)."""
+
+    mode_id: str
+    label: str
+    description: str
+    effort_guidance: str
+
+
+@dataclass(frozen=True)
+class PracticeModeChoiceView:
+    """The calm, low-friction practice-mode choice (SPEC-022 §7).
+
+    A small invitation, not a settings screen: the chooser never recommends,
+    ranks, or pre-selects a mode (AC-022-10), and the existing Explore
+    surface stays reachable (§9).
+    """
+
+    question: str
+    modes: tuple[PracticeModeOption, ...]
+
+
+@dataclass(frozen=True)
+class PracticeModeActivitiesView:
+    """The existing activities a chosen mode resolves to (SPEC-022 §3, §8).
+
+    Reuse, not a parallel library: entries are the same dashboard summaries
+    as the normal activity library, so choosing a mode always leads into the
+    unchanged Assessment Activity and learner journey.
+    """
+
+    mode_id: str
+    mode_label: str
+    mode_description: str
+    effort_guidance: str
+    activities: tuple[PracticeActivitySummary, ...]
+    is_empty: bool

@@ -1,9 +1,9 @@
 # Fablit Architecture Blueprint
 
 **Document ID:** AB-001
-**Version:** 0.8.0
+**Version:** 0.9.0
 **Status:** Draft
-**Last Updated:** 2026-09-16
+**Last Updated:** 2026-09-19
 
 ---
 
@@ -471,6 +471,36 @@ is a reflection and evidence surface: no mastery, scores, percentages,
 rankings, streaks, or recommendations. Per-learner Datastore key namespaces
 keep learner context explicit for future authentication/ownership work without
 redesigning the stored evidence.
+
+---
+
+## Optional Practice Modes & Learner Choice
+
+SPEC-022 adds a lightweight practice-mode concept at the
+application/learner-experience boundary — deliberately outside the domain
+model, which still knows nothing about modes:
+
+```text
+Learner Experience (chooser, /practice)
+        ↓
+Practice Choice / Application Layer (PracticeApplication, practice_modes.py)
+        ↓ selects
+Existing Assessment Activity → existing learner journey (SPEC-012…018)
+        ↓
+Persistence / History (SPEC-021)
+```
+
+The initial mode set is deliberately small: **Short Drill** (about 5–10
+minutes of learner effort — an indication, never a countdown or limit) and
+**Full Practice** (the existing standard experience). Short Drill eligibility
+is explicit, curated content configuration (`SHORT_DRILL_ACTIVITY_TITLES` in
+the demo content) resolved to stable activity identities — never title-string
+inference, recommendations, or hidden personalization. The learner's explicit
+selection is authoritative for the current practice entry; a learner who
+ignores the chooser still reaches the ordinary activity library, and a
+completed Short Drill is simply completed practice under SPEC-021. No new
+domain type, no parallel workflow, no scores, streaks, timers, or
+recommendation engine.
 
 ---
 

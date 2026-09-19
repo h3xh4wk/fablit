@@ -1,4 +1,4 @@
-"""Application layer for the learner practice flow (SPEC-012, SPEC-015).
+"""Application layer for the learner practice flow (SPEC-012, SPEC-015, SPEC-022).
 
 The application layer orchestrates the existing learning-domain models into
 the first learner-facing vertical slice. It contains no HTML and no
@@ -11,6 +11,7 @@ evaluator contract.
 
 from .demo_data import (
     DEMO_LEARNER_ID,
+    PRACTICE_MODE_CHOICE_QUESTION,
     REFLECTION_PROMPT,
     build_demo_activities,
     build_demo_activity_map,
@@ -28,6 +29,12 @@ from .errors import (
     JourneyStateError,
     StimulusRetrievalError,
     SubmissionInProgressError,
+    UnknownPracticeModeError,
+)
+from .practice_modes import (
+    PracticeMode,
+    PracticeModeDefinition,
+    build_practice_mode_definitions,
 )
 from .stimulus import (
     SUPPORTED_PROVIDERS,
@@ -47,6 +54,9 @@ from .view_models import (
     PracticeActivitySummary,
     PracticeActivityView,
     PracticeDashboardView,
+    PracticeModeActivitiesView,
+    PracticeModeChoiceView,
+    PracticeModeOption,
     ReflectionView,
     StimulusView,
 )
@@ -70,11 +80,17 @@ __all__ = [
     "InvalidReflectionResponseError",
     "JourneyStateError",
     "LearnerJourneyStore",
+    "PRACTICE_MODE_CHOICE_QUESTION",
     "PracticeActivitySummary",
     "PracticeActivityView",
     "PracticeApplication",
     "PracticeDashboardView",
     "PracticeCompletion",
+    "PracticeMode",
+    "PracticeModeActivitiesView",
+    "PracticeModeChoiceView",
+    "PracticeModeDefinition",
+    "PracticeModeOption",
     "REFLECTION_PROMPT",
     "ReflectionView",
     "ResilientStimulusProvider",
@@ -83,10 +99,12 @@ __all__ = [
     "StimulusView",
     "SubmissionInProgressError",
     "SUPPORTED_PROVIDERS",
+    "UnknownPracticeModeError",
     "WikimediaCommonsProvider",
     "build_demo_activities",
     "build_demo_activity_map",
     "build_demo_skills",
     "build_fallback_stimuli",
+    "build_practice_mode_definitions",
     "build_stimulus_provider",
 ]

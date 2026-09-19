@@ -1,4 +1,4 @@
-"""Demo content for the first learner vertical slice (SPEC-012, SPEC-015).
+"""Demo content for the first learner vertical slice (SPEC-012, SPEC-015, SPEC-022).
 
 Provides the small, deterministic set of Skills and Assessment Activities the
 dashboard shows (3–5 activities). SPEC-015 extends the demo content so that
@@ -39,6 +39,35 @@ REFLECTION_PROMPT = (
 COMPOSITION_IMAGE = "/static/images/stimulus-composition.svg"
 DETAIL_IMAGE = "/static/images/stimulus-detail.svg"
 COLOUR_MOOD_IMAGE = "/static/images/stimulus-colour-mood.svg"
+
+# --- Practice-mode content (SPEC-022) ------------------------------------------
+# Learner-facing copy for the practice-mode chooser (SPEC-022 §7). The exact
+# wording may evolve through UX review; the semantics do not: effort guidance
+# is an indication, never a countdown, a limit, or a penalty (§10).
+
+PRACTICE_MODE_CHOICE_QUESTION = "What kind of practice feels right today?"
+
+SHORT_DRILL_LABEL = "A short drill"
+SHORT_DRILL_DESCRIPTION = "A few minutes to notice, write, or reset your attention."
+SHORT_DRILL_EFFORT_GUIDANCE = "About 5–10 minutes, whenever suits you."
+
+FULL_PRACTICE_LABEL = "A full practice"
+FULL_PRACTICE_DESCRIPTION = (
+    "A longer focused activity with the complete practice journey."
+)
+FULL_PRACTICE_EFFORT_GUIDANCE = "Take as long as you like — there's no clock."
+
+#: Activities eligible for the Short Drill practice mode (SPEC-022 §6, §13).
+#: Explicit, curated content configuration (AC-022-07): one concise
+#: observation activity and one concise writing activity, matched to the
+#: seeded demo activities by title — the same title-keyed convention as the
+#: FABLIT_STIMULUS_FALLBACK_IMAGES override map. Eligibility is resolved to
+#: stable activity identities by the application's mode layer; new activities
+#: become drill-eligible by editing this list, not application logic.
+SHORT_DRILL_ACTIVITY_TITLES: tuple[str, ...] = (
+    "Memory Drawing Prep — Object & Proportion Detection",
+    "Creative Writing — Concept Explanations for Poster Designs",
+)
 
 
 @dataclass(frozen=True)

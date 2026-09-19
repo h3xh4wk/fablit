@@ -2,7 +2,7 @@
 
 Fablit is an open-source educational platform for helping learners build practical skills through deliberate practice, meaningful feedback, and continuous reflection.
 
-This repository implements **SPEC-001 — Bootstrap Platform**, **SPEC-002 — Engineering Toolchain**, **SPEC-003 — Configuration & Logging**, **SPEC-004 — Shared Platform Services**, **SPEC-005 — Assessment Activity Domain Foundation**, **SPEC-006 — Submission Domain Foundation**, **SPEC-007 — Evaluation Domain Foundation**, **SPEC-008 — Feedback Domain Foundation**, **SPEC-009 — Reflection Domain Foundation**, **SPEC-010 — Skill Domain Foundation**, **SPEC-011 — Skill–Assessment Activity Association**, **SPEC-012 — Learner Practice Application Flow**, **SPEC-013 — Learner Experience & Visual Foundation**, **SPEC-014 — Learner Pilot Deployment**, **SPEC-015 — Contextual Visual Stimulus & Response-Aware Evaluation**, **SPEC-016 — First Learner Experience Refinement**, **SPEC-017 — Submission & Evaluation Feedback**, **SPEC-018 — Learner Practice Continuity & Progress Foundation**, **SPEC-019 — Explore Surface & Visual Practice Refinement**, **SPEC-020 — Visual Practice Experience Foundation**, and **SPEC-021 — Persistent Practice History & Learner Review**. It intentionally avoids Skill Labs, Content Packs, learner accounts, authentication, AI services, analytics, user management, recommendation logic, scoring, gamification, mastery, and a live external image dependency by default; the only persistence is the focused SPEC-021 practice-history boundary (Google Cloud Datastore in production, opt-in via configuration), and production readiness (backups, monitoring, security hardening, scalability, and a full security assessment) is deliberately deferred to a separate assessment.
+This repository implements **SPEC-001 — Bootstrap Platform**, **SPEC-002 — Engineering Toolchain**, **SPEC-003 — Configuration & Logging**, **SPEC-004 — Shared Platform Services**, **SPEC-005 — Assessment Activity Domain Foundation**, **SPEC-006 — Submission Domain Foundation**, **SPEC-007 — Evaluation Domain Foundation**, **SPEC-008 — Feedback Domain Foundation**, **SPEC-009 — Reflection Domain Foundation**, **SPEC-010 — Skill Domain Foundation**, **SPEC-011 — Skill–Assessment Activity Association**, **SPEC-012 — Learner Practice Application Flow**, **SPEC-013 — Learner Experience & Visual Foundation**, **SPEC-014 — Learner Pilot Deployment**, **SPEC-015 — Contextual Visual Stimulus & Response-Aware Evaluation**, **SPEC-016 — First Learner Experience Refinement**, **SPEC-017 — Submission & Evaluation Feedback**, **SPEC-018 — Learner Practice Continuity & Progress Foundation**, **SPEC-019 — Explore Surface & Visual Practice Refinement**, **SPEC-020 — Visual Practice Experience Foundation**, **SPEC-021 — Persistent Practice History & Learner Review**, and **SPEC-022 — Optional Practice Modes & Learner Choice**. It intentionally avoids Skill Labs, Content Packs, learner accounts, authentication, AI services, analytics, user management, recommendation logic, scoring, gamification, mastery, and a live external image dependency by default; the only persistence is the focused SPEC-021 practice-history boundary (Google Cloud Datastore in production, opt-in via configuration), and production readiness (backups, monitoring, security hardening, scalability, and a full security assessment) is deliberately deferred to a separate assessment.
 
 ## Requirements
 
@@ -35,6 +35,8 @@ uv run uvicorn app.main:app --reload
 The platform exposes:
 
 - `GET /` — the learner practice dashboard (3–5 available activities)
+- `GET /practice` — the practice-mode choice: a short drill or a full practice (SPEC-022; optional — the activity library below needs no mode selection)
+- `GET /practice/{mode_id}` — the activities a chosen practice mode offers (`short-drill`, `full-practice`; SPEC-022)
 - `GET /activities/{activity_id}` — the practice activity page
 - `POST /activities/{activity_id}/submit` — submit a learner response
 - `GET /feedback` — learner feedback derived from the demo evaluation
@@ -124,6 +126,15 @@ SPEC-012 introduces the first application layer under `fablit.application`, sepa
 - Practice history port (SPEC-021) — `PracticeHistoryRepository`, a deliberately narrow persistence boundary for learner practice history, with `InMemoryPracticeHistoryRepository` (tests/local development) and `DatastorePracticeHistoryRepository` (production Datastore adapter, isolated in `fablit.platform`) as interchangeable implementations; completed practice is persisted only after successful reflection, the reflection ID is the stable completion identity (idempotent retries), and history/review view models (`PracticeHistoryView`, `PracticeReviewView`) keep persistence concerns out of the domain
 
 The vertical slice introduces no authentication, scoring, Progress, mastery, recommendations, gamification, or examination-specific logic.
+
+## Practice modes (SPEC-022)
+
+Learners can explicitly choose the shape of practice that fits the moment at `/practice`: **A short drill** (about 5–10 minutes of learner effort — an indication, never a countdown or limit) or **A full practice** (the existing standard experience). The choice is optional: the Explore dashboard remains the primary, ungated path, and a learner who ignores the chooser loses nothing.
+
+- **Application boundary only:** practice modes live in `fablit/application/practice_modes.py` and the view models — they are deliberately outside the domain model and introduce no new Assessment Activity type, submission workflow, scoring, progress, or personalization semantics.
+- **Curated eligibility:** Short Drill activities come from explicit content configuration (`SHORT_DRILL_ACTIVITY_TITLES` in `fablit/application/demo_data.py` — one concise observation activity and one concise writing activity), resolved to stable activity identities; new activities become drill-eligible by editing the list, not application logic. Full Practice resolves the whole existing library.
+- **Explicit choice, no hidden selection:** the learner's selection is authoritative for the current practice entry; no mode is ever recommended, ranked, or pre-selected from history or behaviour.
+- **Journey and history unchanged:** either choice starts the existing Activity → Submission → Evaluation → Feedback → Reflection → Completion journey, and a completed Short Drill is simply completed practice, recorded and reviewable through the SPEC-021 history.
 
 ## Persistent practice history (SPEC-021)
 

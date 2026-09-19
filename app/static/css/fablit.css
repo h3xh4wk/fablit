@@ -649,6 +649,98 @@ ol {
   margin-bottom: var(--space-8);
 }
 
+/* --------------------------------------------------------------------------
+   Practice mode choice (SPEC-022 §7)
+
+   A small invitation, not a settings screen: no mode is pre-selected or
+   recommended, effort guidance is text (never a countdown), and the ordinary
+   activity library stays one quiet link away.
+   -------------------------------------------------------------------------- */
+.dashboard__mode-invite {
+  margin-bottom: var(--space-6);
+  color: var(--color-ink-muted);
+}
+
+.dashboard__mode-invite a {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.dashboard__mode-invite a:hover {
+  color: var(--color-accent-hover);
+}
+
+.mode-choice {
+  max-width: var(--container-narrow);
+  margin: 0 auto;
+}
+
+.mode-choice__list {
+  list-style: none;
+  display: grid;
+  gap: var(--space-4);
+  margin-bottom: var(--space-8);
+}
+
+.mode-choice__option {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-6);
+  background: var(--color-surface);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  text-decoration: none;
+  color: inherit;
+  transition: box-shadow var(--transition-base), transform var(--transition-base);
+}
+
+.mode-choice__option:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.mode-choice__label {
+  font-family: var(--font-display);
+  font-size: var(--text-title);
+  font-weight: 700;
+  line-height: var(--leading-tight);
+}
+
+.mode-choice__description {
+  color: var(--color-ink);
+}
+
+.mode-choice__effort {
+  color: var(--color-ink-muted);
+  font-size: var(--text-small);
+}
+
+.mode-choice__action {
+  margin-top: var(--space-2);
+  font-weight: 600;
+  color: var(--color-accent);
+}
+
+.mode-choice__option:hover .mode-choice__action {
+  color: var(--color-accent-hover);
+  text-decoration: underline;
+}
+
+.mode-activities {
+  max-width: var(--container-narrow);
+  margin: 0 auto;
+}
+
+.mode-activities__empty {
+  padding: var(--space-8) var(--space-5);
+  background: var(--color-surface);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-lg);
+  text-align: center;
+}
+
 .history__item {
   background: var(--color-surface);
   border: 1px solid var(--color-rule);
@@ -767,6 +859,10 @@ ol {
    -------------------------------------------------------------------------- */
 @media (min-width: 40rem) {
   .card-grid {
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  }
+
+  .mode-choice__list {
     grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
   }
 

@@ -1,4 +1,4 @@
-"""FastAPI application entry point for the Fablit platform (SPEC-012, SPEC-021).
+"""FastAPI application entry point for the Fablit platform (SPEC-012…022).
 
 SPEC-014 establishes the learner pilot deployment boundary: the application
 is assembled by ``create_app`` so environment-specific safety settings can be
@@ -38,7 +38,9 @@ from fablit.application import (
     InvalidReflectionResponseError,
     LearnerJourneyStore,
     PracticeApplication,
+    PracticeMode,
     SubmissionInProgressError,
+    UnknownPracticeModeError,
     build_demo_activities,
     build_demo_activity_map,
     build_demo_skills,
@@ -220,6 +222,14 @@ def _feedback_partial(request: Request, practice: object) -> HTMLResponse:
     return HTMLResponse(content=html)
 
 
+def _mode_id(value: str) -> PracticeMode:
+    """Parse a mode identifier, raising UnknownPracticeModeError when invalid."""
+    try:
+        return PracticeMode(value)
+    except ValueError:
+        raise UnknownPracticeModeError("Practice mode not found.") from None
+
+
 async def _unhandled_exception_handler(request: Request, exc: Exception) -> Response:
     """Turn unexpected failures into a learner-friendly page (SPEC-014 §20).
 
@@ -304,6 +314,38 @@ def create_app(config: AppConfig) -> FastAPI:
         """Render the learner practice dashboard (UC-001)."""
         view = _practice(request).get_dashboard()
         return templates.TemplateResponse(request, "dashboard.html", {"view": view})
+
+    # SPEC-022: Practice Mode Choice Routes
+
+    @app.get("/practice", response_class=HTMLResponse)
+    async def practice_mode_choice(request: Request) -> Response:
+        """Render the practice-mode choice (SPEC-022 §7).
+
+        A calm, low-friction invitation to choose how to practise right now:
+        no mode is pre-selected or recommended, and the normal activity
+        library stays reachable without choosing (AC-022-02).
+        """
+        view = _practice(request).get_practice_modes()
+        return templates.TemplateResponse(
+            request, "practice_mode_choice.html", {"view": view}
+        )
+
+    @app.get("/practice/{mode_id}", response_class=HTMLResponse)
+    async def practice_mode_activities(request: Request, mode_id: str) -> Response:
+        """Render the activities a chosen practice mode offers (SPEC-022 §6, §8).
+
+        The learner's explicit selection is authoritative for this practice
+        entry (§12): activities come from the mode's curated configuration
+        and each starts the unchanged practice journey.
+        """
+        try:
+            mode = _mode_id(mode_id)
+        except UnknownPracticeModeError:
+            return _error_response(request, "Practice mode not found.")
+        view = _practice(request).get_practice_mode_activities(mode)
+        return templates.TemplateResponse(
+            request, "practice_mode_activities.html", {"view": view}
+        )
 
     @app.get("/activities/{activity_id}", response_class=HTMLResponse)
     async def practice_page(request: Request, activity_id: str) -> Response:
