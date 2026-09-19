@@ -1,0 +1,47 @@
+{# SPEC-022 §6/§8: the existing activities a chosen practice mode offers.
+   Deliberately reuse, not a parallel library: each entry is an ordinary
+   activity whose link starts the unchanged practice journey. #}
+{% extends "base.html" %}
+{% block title %}{{ view.mode_label }}{% endblock %}
+{% block content %}
+<section class="mode-activities">
+  <nav class="subnav" aria-label="Back to the practice choice">
+    <a href="/practice"><span aria-hidden="true">←</span> Change practice choice</a>
+  </nav>
+  <h1 class="display">{{ view.mode_label }}</h1>
+  <p class="lede">{{ view.mode_description }} {{ view.effort_guidance }}</p>
+
+  {% if view.is_empty %}
+  <div class="mode-activities__empty">
+    <h2 class="history__empty-title">Nothing here yet</h2>
+    <p class="history__empty-note">This practice shape doesn't have an activity right now. The full activity library is still available.</p>
+    <p class="form-actions">
+      <a class="button" href="/">Go to explore <span aria-hidden="true">→</span></a>
+    </p>
+  </div>
+  {% else %}
+  <ul class="card-grid">
+    {% for activity in view.activities %}
+    <li class="card">
+      {% if activity.preview_image_url %}
+      <figure class="card__preview">
+        <img src="{{ activity.preview_image_url }}" alt="{{ activity.preview_alt_text }}">
+      </figure>
+      {% endif %}
+      <div class="card__heading">
+        <h2 class="card__title">{{ activity.title }}</h2>
+        {% if activity.has_completed_practice %}
+        <p class="card__continuity">Practised</p>
+        {% endif %}
+      </div>
+      <p class="card__invitation">{{ activity.description }}</p>
+      <div class="card__footer">
+        <p class="card__skill">{{ activity.skills|join(", ") }}</p>
+        <a class="card__action" href="/activities/{{ activity.id }}">Explore <span aria-hidden="true">→</span></a>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,4 +1,4 @@
-"""Application use cases for the learner practice flow (SPEC-012, SPEC-015, SPEC-021).
+"""Application use cases for the learner practice flow (SPEC-012…022).
 
 This module implements UC-001 through UC-007 from SPEC-012 by composing the
 existing learning-domain models, and adds the SPEC-015 stimulus flow: when an
@@ -29,7 +29,7 @@ from fablit.domain import (
     Submission,
 )
 
-from .demo_data import REFLECTION_PROMPT
+from .demo_data import PRACTICE_MODE_CHOICE_QUESTION, REFLECTION_PROMPT
 from .demo_evaluator import Evaluator
 from .errors import (
     CompletionNotFoundError,
@@ -37,6 +37,12 @@ from .errors import (
     InvalidPracticeResponseError,
     InvalidReflectionResponseError,
     SubmissionInProgressError,
+    UnknownPracticeModeError,
+)
+from .practice_modes import (
+    PracticeMode,
+    PracticeModeDefinition,
+    build_practice_mode_definitions,
 )
 from .stimulus import StimulusProvider
 from .store import DemoActivity, LearnerJourneyStore, PracticeCompletion
@@ -48,6 +54,9 @@ from .view_models import (
     PracticeDashboardView,
     PracticeHistoryEntry,
     PracticeHistoryView,
+    PracticeModeActivitiesView,
+    PracticeModeChoiceView,
+    PracticeModeOption,
     PracticeReviewView,
     ReflectionView,
     StimulusView,
@@ -92,23 +101,90 @@ class PracticeApplication:
         # a time (SPEC-017 FR-017-03).
         self._submitting_activity_ids: set[UUID] = set()
         self._submission_lock = Lock()
+        # SPEC-022: the supported practice modes and their curated activity
+        # eligibility, resolved once from the seeded content configuration.
+        self._practice_modes = build_practice_mode_definitions(store.list_activities())
+
+    # SPEC-022 — Practice Mode Choice
+
+    def get_practice_modes(self) -> PracticeModeChoiceView:
+        """Return the available practice modes (SPEC-022 §7).
+
+        The chooser presents every supported mode with its learner-facing
+        label, brief description, and indicative effort guidance (a guide,
+        never a countdown or limit). No mode is recommended, ranked, or
+        pre-selected from learner history or behaviour (§12, AC-022-10).
+        """
+        return PracticeModeChoiceView(
+            question=PRACTICE_MODE_CHOICE_QUESTION,
+            modes=tuple(
+                PracticeModeOption(
+                    mode_id=definition.mode.value,
+                    label=definition.label,
+                    description=definition.description,
+                    effort_guidance=definition.effort_guidance,
+                )
+                for definition in self._practice_modes
+            ),
+        )
+
+    def get_practice_mode_activities(
+        self, mode: PracticeMode
+    ) -> PracticeModeActivitiesView:
+        """Resolve the existing activities a chosen mode offers (SPEC-022 §6).
+
+        Selection is always the learner's explicit choice: activities come
+        from the mode's curated eligibility configuration, never from
+        history-based inference. Entries reuse the ordinary dashboard
+        summaries, and every eligible activity runs the unchanged practice
+        journey (§8, §9).
+
+        Raises:
+            UnknownPracticeModeError: If the mode is not supported.
+        """
+        definition = self._practice_mode_definition(mode)
+        # The curated configuration defines both membership and order; Full
+        # Practice's eligibility tuple already follows library order.
+        summaries = tuple(
+            self._activity_summary(self._store.get_activity(activity_id))
+            for activity_id in definition.eligible_activity_ids
+        )
+        return PracticeModeActivitiesView(
+            mode_id=definition.mode.value,
+            mode_label=definition.label,
+            mode_description=definition.description,
+            effort_guidance=definition.effort_guidance,
+            activities=summaries,
+            is_empty=len(summaries) == 0,
+        )
+
+    def _activity_summary(self, item: DemoActivity) -> PracticeActivitySummary:
+        """Prepare the dashboard summary for one available activity."""
+        return PracticeActivitySummary(
+            id=item.activity.id,
+            title=item.title,
+            description=item.description,
+            skills=self._skill_names(item.activity.skill_ids),
+            has_completed_practice=self._has_completed_activity(item.activity.id),
+            preview_image_url=item.fallback_image,
+            preview_alt_text=item.fallback_alt,
+        )
+
+    def _practice_mode_definition(self, mode: PracticeMode) -> PracticeModeDefinition:
+        """Return the definition of a supported mode, rejecting unknown ones."""
+        for definition in self._practice_modes:
+            if definition.mode is mode:
+                return definition
+        raise UnknownPracticeModeError("That practice mode isn't available.")
 
     # UC-001 — Get Practice Dashboard
     def get_dashboard(self) -> PracticeDashboardView:
         """Return the available practice activities for the dashboard."""
-        summaries = tuple(
-            PracticeActivitySummary(
-                id=item.activity.id,
-                title=item.title,
-                description=item.description,
-                skills=self._skill_names(item.activity.skill_ids),
-                has_completed_practice=self._has_completed_activity(item.activity.id),
-                preview_image_url=item.fallback_image,
-                preview_alt_text=item.fallback_alt,
+        return PracticeDashboardView(
+            activities=tuple(
+                self._activity_summary(item) for item in self._store.list_activities()
             )
-            for item in self._store.list_activities()
         )
-        return PracticeDashboardView(activities=summaries)
 
     # UC-002 — Start Practice Activity
     def start_practice(self, activity_id: UUID) -> PracticeActivityView:

@@ -1,0 +1,28 @@
+{# SPEC-022 §7: a calm, low-friction choice about the shape of practice —
+   a small invitation, not a settings screen. No mode is pre-selected,
+   recommended, or ranked; the ordinary activity library stays reachable. #}
+{% extends "base.html" %}
+{% block title %}Practice{% endblock %}
+{% block content %}
+<section class="mode-choice">
+  <h1 class="display">{{ view.question }}</h1>
+  <p class="lede">Both ways count as practice. Pick the one that fits your moment — you can always change your mind.</p>
+
+  <ul class="mode-choice__list">
+    {% for mode in view.modes %}
+    <li class="mode-choice__item">
+      <a class="mode-choice__option" href="/practice/{{ mode.mode_id }}">
+        <span class="mode-choice__label">{{ mode.label }}</span>
+        <span class="mode-choice__description">{{ mode.description }}</span>
+        <span class="mode-choice__effort">{{ mode.effort_guidance }}</span>
+        <span class="mode-choice__action">Begin <span aria-hidden="true">→</span></span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+
+  <nav class="subnav" aria-label="Practice navigation">
+    <a href="/">Skip this and go to explore</a>
+  </nav>
+</section>
+{% endblock %}

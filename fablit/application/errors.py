@@ -41,3 +41,7 @@ class EvaluationFailedError(ApplicationError):
 
 class SubmissionInProgressError(ApplicationError):
     """Raised when an activity already has a submission being evaluated (SPEC-017)."""
+
+
+class UnknownPracticeModeError(ApplicationError):
+    """Raised when a requested practice mode does not exist (SPEC-022)."""

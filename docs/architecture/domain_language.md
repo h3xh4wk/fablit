@@ -1,9 +1,9 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 1.2.0
+**Version:** 1.3.0
 **Status:** Draft
-**Last Updated:** 2026-09-16
+**Last Updated:** 2026-09-19
 
 ---
 
@@ -693,6 +693,33 @@ redesigning the stored evidence.
 | PHR-005 | Persistence is expressed through a port; the domain layer remains independent of Datastore, App Engine, HTTP, and serialization. |
 | PHR-006 | A failed persistence write is explicit; a completion is never falsely reported as durably recorded, and retries do not duplicate history. |
 | PHR-007 | History is not evidence of mastery, proficiency, score, Progress, or ranking. |
+
+## Practice Mode (SPEC-022)
+
+A **Practice Mode** is a learner-experience/application concept — not a domain
+model — describing the *shape* of practice the learner explicitly chooses for
+the current interaction: a compact **Short Drill** (about 5–10 minutes of
+learner effort, as an indication rather than a limit) or the existing **Full
+Practice** experience.
+
+A mode is only a pointer at existing Assessment Activities: it never
+re-identifies an activity, never duplicates Skill, Evaluation, or Completion
+semantics, and never becomes a scoring, progress, or ranking dimension. Its
+eligibility is explicit, curated content configuration rather than
+inference from titles or learner history, and the learner's selection is
+authoritative for the current practice entry. A learner who ignores the mode
+chooser still reaches the ordinary activity library, and a completed Short
+Drill is simply completed practice recorded under SPEC-021.
+
+### Domain Rules Reference
+
+| Rule | Description |
+|------|-------------|
+| PM-001 | A Practice Mode exists at the application/learner-experience boundary and is not a domain model. |
+| PM-002 | A Practice Mode selects existing Assessment Activities; it never re-identifies, wraps, or replaces them. |
+| PM-003 | Mode eligibility is explicit configuration, never title-string inference, history-based selection, or hidden personalization. |
+| PM-004 | Indicative effort guidance is guidance only — never a countdown, enforced window, or grading input. |
+| PM-005 | A completed practice in any mode is recorded and reviewed exactly like any other completion (SPEC-021). |
 
 ## Learner Practice Application Flow (SPEC-012)
 

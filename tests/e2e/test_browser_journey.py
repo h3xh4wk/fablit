@@ -193,6 +193,9 @@ def test_keyboard_navigation_reaches_core_actions() -> None:
     order on every page is now: skip link → brand → Your practice → page
     content. The test asserts that order and that the new link is
     keyboard-reachable alongside the pre-existing core actions.
+
+    SPEC-022 adds the dashboard's quiet practice-mode invitation as the
+    first content link, before the activity cards.
     """
     with _running_server() as base_url, sync_playwright() as playwright:
         browser: Browser = playwright.chromium.launch(**_launch_options())
@@ -210,6 +213,13 @@ def test_keyboard_navigation_reaches_core_actions() -> None:
             # the core keyboard-reachable actions on every page.
             page.keyboard.press("Tab")
             expect(page.get_by_role("link", name="Your practice")).to_be_focused()
+
+            # SPEC-022: the optional practice-mode invitation is the first
+            # keyboard-reachable content link on the dashboard.
+            page.keyboard.press("Tab")
+            expect(
+                page.get_by_role("link", name="Choose how you'd like to practise")
+            ).to_be_focused()
 
             page.keyboard.press("Tab")
             expect(page.get_by_role("link", name="Explore").first).to_be_focused()
