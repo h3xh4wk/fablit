@@ -43,12 +43,12 @@ def _visible_text(html: str) -> str:
 # --- Dashboard (SPEC-013 §11–13, SPEC-016 §6) --------------------------------
 
 
-def test_dashboard_renders_three_to_five_activities() -> None:
+def test_dashboard_renders_the_expanded_activity_library() -> None:
     with TestClient(app) as client:
         response = client.get("/")
 
     assert response.status_code == 200
-    assert 3 <= len(_activity_hrefs(response.text)) <= 5
+    assert 3 <= len(_activity_hrefs(response.text)) <= 12
     assert "Explore" in response.text
 
 

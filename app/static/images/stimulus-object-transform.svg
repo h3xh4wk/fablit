@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-labelledby="title">
+  <title id="title">Fablit object transform stimulus</title>
+  <defs>
+    <radialGradient id="studio" cx="0.4" cy="0.35" r="1">
+      <stop offset="0" stop-color="#fffdf9"/>
+      <stop offset="1" stop-color="#d8c8b0"/>
+    </radialGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="0.7" y2="1">
+      <stop offset="0" stop-color="#e8dccb"/>
+      <stop offset="1" stop-color="#b7a68f"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#studio)"/>
+  <!-- an ordinary kettle-like household object, drawn as simple forms -->
+  <ellipse cx="400" cy="470" rx="210" ry="30" fill="#a89379" fill-opacity="0.45"/>
+  <!-- the body -->
+  <path d="M250 460 Q 240 250 400 245 Q 560 250 550 460 Z" fill="url(#body)" stroke="#8a7460" stroke-width="4"/>
+  <!-- the lid -->
+  <ellipse cx="400" cy="245" rx="120" ry="26" fill="#cbb9a2" stroke="#8a7460" stroke-width="4"/>
+  <rect x="382" y="196" width="36" height="34" rx="12" fill="#8a643e"/>
+  <!-- the spout -->
+  <path d="M540 300 Q 640 300 655 385 L 620 400 Q 600 330 535 340 Z" fill="#cbb9a2" stroke="#8a7460" stroke-width="4"/>
+  <!-- the handle -->
+  <path d="M262 300 Q 170 305 178 380 Q 182 420 252 415" fill="none" stroke="#8a7460" stroke-width="14" stroke-linecap="round"/>
+  <!-- the water level seen through the form -->
+  <path d="M270 400 Q 400 440 530 400 L 545 460 L 255 460 Z" fill="#a4927a" fill-opacity="0.35"/>
+  <!-- a quiet hint of transformation: the spout curls upward like a sprout -->
+  <path d="M655 385 Q 690 360 680 315" fill="none" stroke="#4a6152" stroke-width="8" stroke-linecap="round"/>
+  <ellipse cx="683" cy="296" rx="22" ry="13" transform="rotate(-38 683 296)" fill="#4a6152"/>
+  <ellipse cx="706" cy="330" rx="18" ry="10" transform="rotate(24 706 330)" fill="#4a6152"/>
+  <!-- soft daylight -->
+  <path d="M0 0 L 300 0 L 90 600 L 0 600 Z" fill="#ffffff" fill-opacity="0.2"/>
+</svg>

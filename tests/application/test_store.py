@@ -72,7 +72,7 @@ def test_list_activities_returns_deterministic_order() -> None:
     positions = [item.activity.position for item in store.list_activities()]
 
     assert positions == sorted(positions)
-    assert len(positions) == 5
+    assert len(positions) == 12
 
 
 # --- Stimulus records (SPEC-015 §16, §18, §19) --------------------------------

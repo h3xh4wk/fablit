@@ -545,12 +545,21 @@ class PracticeApplication:
         guidance = tuple(
             finding for finding in evaluation.findings if finding.evidence is None
         )
+        # The demo evaluator's ordering contract: grounded Findings (matched
+        # concepts, response excerpts) come first as what was noticed; when
+        # nothing is grounded, the first guidance Finding plays that role
+        # (SPEC-012 presentation); and the LAST guidance Finding is always
+        # the actionable next step (SPEC-023 §12 / AC-023-09). Anything
+        # grounded beyond the first guidance Finding is improvement guidance.
         if grounded:
             strengths = tuple(finding.observation for finding in grounded)
+            remaining = guidance
         elif guidance:
             strengths = (guidance[0].observation,)
+            remaining = guidance[1:]
         else:
             strengths = ()
-        improvements = tuple(finding.observation for finding in guidance[1:2])
-        next_steps = tuple(finding.observation for finding in guidance[2:3])
+            remaining = ()
+        next_steps = (remaining[-1].observation,) if remaining else ()
+        improvements = tuple(finding.observation for finding in remaining[:-1])
         return strengths, improvements, next_steps

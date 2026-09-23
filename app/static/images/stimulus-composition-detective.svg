@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-labelledby="title">
+  <title id="title">Fablit composition detective stimulus</title>
+  <defs>
+    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#efe4d4"/>
+      <stop offset="1" stop-color="#d3c2aa"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#ground)"/>
+  <!-- an abstract still-life arrangement: a few forms, deliberately placed -->
+  <!-- the dominant circle, placed off-centre -->
+  <circle cx="330" cy="270" r="120" fill="#b0563e" fill-opacity="0.9"/>
+  <circle cx="330" cy="270" r="120" fill="none" stroke="#7d3a2a" stroke-width="5" stroke-opacity="0.6"/>
+  <!-- a tall rectangle anchoring the right side -->
+  <rect x="520" y="150" width="110" height="290" rx="10" fill="#4a6152" fill-opacity="0.9"/>
+  <rect x="520" y="150" width="110" height="290" rx="10" fill="none" stroke="#33463b" stroke-width="4" stroke-opacity="0.6"/>
+  <!-- a small echo of the circle, balancing the arrangement -->
+  <circle cx="655" cy="140" r="34" fill="#c99b3f" fill-opacity="0.9"/>
+  <!-- a low wedge pointing back toward the dominant form -->
+  <path d="M180 470 L 420 470 L 360 540 L 140 540 Z" fill="#6f6152" fill-opacity="0.85"/>
+  <!-- a thin diagonal line connecting the forms -->
+  <path d="M240 210 L 620 430" stroke="#5c4d3c" stroke-width="4" stroke-opacity="0.55"/>
+  <!-- shadows that give the forms their weight -->
+  <ellipse cx="360" cy="404" rx="150" ry="24" fill="#5c4d3c" fill-opacity="0.3"/>
+  <ellipse cx="585" cy="452" rx="90" ry="18" fill="#5c4d3c" fill-opacity="0.3"/>
+  <ellipse cx="668" cy="182" rx="48" ry="10" fill="#5c4d3c" fill-opacity="0.25"/>
+  <!-- generous negative space in the upper left -->
+  <path d="M0 0 L 800 0 L 800 60 L 0 90 Z" fill="#fffdf9" fill-opacity="0.35"/>
+</svg>

@@ -234,8 +234,9 @@ def test_dashboard_displays_activity_previews() -> None:
         try:
             page = browser.new_page()
             page.goto(base_url)
-            # The demo content includes three activities with bundled fallback images
-            expect(page.locator(".card__preview img")).to_have_count(3)
+            # The demo content includes seven activities with bundled fallback images
+            # (the three SPEC-015 originals plus four SPEC-023 additions)
+            expect(page.locator(".card__preview img")).to_have_count(7)
             # Check one known alt text from demo content for robustness
             expect(
                 page.get_by_role(

@@ -1,9 +1,9 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 1.3.0
+**Version:** 1.4.0
 **Status:** Draft
-**Last Updated:** 2026-09-19
+**Last Updated:** 2026-09-23
 
 ---
 
@@ -720,6 +720,32 @@ Drill is simply completed practice recorded under SPEC-021.
 | PM-003 | Mode eligibility is explicit configuration, never title-string inference, history-based selection, or hidden personalization. |
 | PM-004 | Indicative effort guidance is guidance only — never a countdown, enforced window, or grading input. |
 | PM-005 | A completed practice in any mode is recorded and reviewed exactly like any other completion (SPEC-021). |
+
+## Practice Capability Lens (SPEC-023)
+
+A **Practice Capability** is a content-design label — not a domain concept,
+not a Skill, and not learner-visible state — used to review the practice
+library for balance. The lens is the internal set **Observe, Interpret,
+Ideate, Articulate, Reflect**. Every Assessment Activity in the demo content
+carries exactly one *primary* capability plus optional *secondary*
+capabilities.
+
+The lens lives in demo content metadata only: it never appears in
+learner-facing copy, never reaches a view model, and never drives selection,
+ordering, or recommendations (AC-023-12). The library expansion it reviews is
+itself content: new activities reuse the existing Assessment Activity model,
+the unchanged learner journey, and SPEC-021 history, and the Short Drill
+curated list simply names more of them.
+
+### Domain Rules Reference
+
+| Rule | Description |
+|------|-------------|
+| PCL-001 | The capability lens (Observe/Interpret/Ideate/Articulate/Reflect) is internal content-design metadata, never a domain model, Skill hierarchy, or learner-facing taxonomy. |
+| PCL-002 | Every activity carries exactly one primary capability; secondaries are optional and must differ from the primary. |
+| PCL-003 | The lens never drives selection, ordering, recommendation, or any learner-visible presentation. |
+| PCL-004 | Library expansion adds content only: no new activity type, workflow, or journey semantics (the Submission → Evaluation → Feedback → Reflection → Completion flow is unchanged). |
+| PCL-005 | Expanded Short Drill eligibility is explicit content configuration (an extension of PM-003), never history-based. |
 
 ## Learner Practice Application Flow (SPEC-012)
 

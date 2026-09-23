@@ -1,7 +1,17 @@
-"""Demo content for the first learner vertical slice (SPEC-012, SPEC-015, SPEC-022).
+"""Demo content for the first learner vertical slice (SPEC-012, SPEC-015, SPEC-022,
+SPEC-023).
 
-Provides the small, deterministic set of Skills and Assessment Activities the
-dashboard shows (3–5 activities). SPEC-015 extends the demo content so that
+Provides the deterministic set of Skills and Assessment Activities the
+dashboard shows. SPEC-023 expands the practice library from the original
+five-activity baseline to a varied twelve-activity set so that repeated
+deliberate practice is plausible, and gives every activity a documented
+primary practice capability (and optional secondary capabilities) using the
+internal Observe / Interpret / Ideate / Articulate / Reflect lens (§2, §5).
+That lens is a content-design and review aid — it is deliberately NOT a
+domain concept, a learner-facing taxonomy, or a model of what a learner has
+achieved, and no recommendation or selection logic is built on it
+(§12, AC-023-12).
+SPEC-015 extends the demo content so that
 image-dependent activities define a contextual stimulus requirement (§6), the
 concepts a response-aware evaluator can recognise in learner responses
 (§29–31), and a deterministic bundled fallback image (§22). Activity titles use
@@ -39,6 +49,10 @@ REFLECTION_PROMPT = (
 COMPOSITION_IMAGE = "/static/images/stimulus-composition.svg"
 DETAIL_IMAGE = "/static/images/stimulus-detail.svg"
 COLOUR_MOOD_IMAGE = "/static/images/stimulus-colour-mood.svg"
+OBJECT_STUDY_IMAGE = "/static/images/stimulus-object-study.svg"
+STREET_SCENE_IMAGE = "/static/images/stimulus-street-scene.svg"
+OBJECT_TRANSFORM_IMAGE = "/static/images/stimulus-object-transform.svg"
+COMPOSITION_DETECTIVE_IMAGE = "/static/images/stimulus-composition-detective.svg"
 
 # --- Practice-mode content (SPEC-022) ------------------------------------------
 # Learner-facing copy for the practice-mode chooser (SPEC-022 §7). The exact
@@ -57,16 +71,46 @@ FULL_PRACTICE_DESCRIPTION = (
 )
 FULL_PRACTICE_EFFORT_GUIDANCE = "Take as long as you like — there's no clock."
 
-#: Activities eligible for the Short Drill practice mode (SPEC-022 §6, §13).
-#: Explicit, curated content configuration (AC-022-07): one concise
-#: observation activity and one concise writing activity, matched to the
+#: Activities eligible for the Short Drill practice mode (SPEC-022 §6, §13,
+#: expanded by SPEC-023 §8). Explicit, curated content configuration
+#: (AC-022-07, AC-023-06): concise activities with a focused prompt and a
+#: short response expectation, chosen for capability variety — observation,
+#: writing, ideation, and reflection are all represented. Matched to the
 #: seeded demo activities by title — the same title-keyed convention as the
 #: FABLIT_STIMULUS_FALLBACK_IMAGES override map. Eligibility is resolved to
 #: stable activity identities by the application's mode layer; new activities
-#: become drill-eligible by editing this list, not application logic.
+#: become drill-eligible by editing this list, not application logic, and
+#: nothing selects or orders activities from learner history (AC-023-12).
 SHORT_DRILL_ACTIVITY_TITLES: tuple[str, ...] = (
     "Memory Drawing Prep — Object & Proportion Detection",
     "Creative Writing — Concept Explanations for Poster Designs",
+    "Observation Drill — Everyday Object Study",
+    "Short Ideation Sprint — Alternative Uses",
+    "Design Articulation — Explain a Poster Concept",
+    "Reflection Prompt — What Did Practice Ask of You?",
+)
+
+# --- Practice coverage lens (SPEC-023 §2, §5) -----------------------------------
+# The five practice capabilities are an internal content-design lens for
+# reviewing the library for balance and coverage. They are deliberately NOT
+# a domain concept: no Skill hierarchy, no learner mastery model, no
+# learner-facing taxonomy — activity content stays understandable without
+# them (§6), and no capability drives selection, ordering, or recommendations
+# (§14, AC-023-12). The labels never appear in learner-visible copy or URLs.
+
+PRACTICE_CAPABILITY_OBSERVE = "Observe"
+PRACTICE_CAPABILITY_INTERPRET = "Interpret"
+PRACTICE_CAPABILITY_IDEATE = "Ideate"
+PRACTICE_CAPABILITY_ARTICULATE = "Articulate"
+PRACTICE_CAPABILITY_REFLECT = "Reflect"
+
+#: Every capability the content-design lens recognises, in review order.
+PRACTICE_CAPABILITIES: tuple[str, ...] = (
+    PRACTICE_CAPABILITY_OBSERVE,
+    PRACTICE_CAPABILITY_INTERPRET,
+    PRACTICE_CAPABILITY_IDEATE,
+    PRACTICE_CAPABILITY_ARTICULATE,
+    PRACTICE_CAPABILITY_REFLECT,
 )
 
 
@@ -82,10 +126,16 @@ class DemoActivityDefinition:
     strength: str
     improvement: str
     next_step: str
+    #: The activity's primary practice capability (SPEC-023 §5, AC-023-03):
+    #: an internal content-design label, never learner-facing.
+    primary_capability: str
     stimulus_context: ActivityStimulusContext | None = None
     concepts: tuple[Concept, ...] = ()
     fallback_image: str | None = None
     fallback_alt: str | None = None
+    #: Capabilities the activity genuinely exercises beyond its primary one
+    #: (SPEC-023 §5); empty when the activity is single-focused.
+    secondary_capabilities: tuple[str, ...] = ()
 
 
 _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
@@ -99,6 +149,8 @@ _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
         ),
         skill_names=("Visual Analysis",),
         strength="You identified the dominant visual elements in your response.",
+        primary_capability=PRACTICE_CAPABILITY_INTERPRET,
+        secondary_capabilities=(PRACTICE_CAPABILITY_OBSERVE,),
         improvement=(
             "Your response describes the elements separately; "
             "try explaining how they interact."
@@ -247,6 +299,7 @@ _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
         ),
         skill_names=("Written Communication",),
         strength="Your response explains the idea in clear, accessible language.",
+        primary_capability=PRACTICE_CAPABILITY_ARTICULATE,
         improvement=(
             "Your explanation could include a concrete example to anchor the idea."
         ),
@@ -264,6 +317,8 @@ _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
         ),
         skill_names=("Visual Analysis", "Critical Observation"),
         strength="You noticed several concrete details in the image.",
+        primary_capability=PRACTICE_CAPABILITY_OBSERVE,
+        secondary_capabilities=(PRACTICE_CAPABILITY_INTERPRET,),
         improvement=(
             "Your observations focus on the obvious; try including smaller or "
             "less prominent details."
@@ -379,6 +434,7 @@ _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
         ),
         skill_names=("Critical Observation",),
         strength="You identified a specific challenge from your practice.",
+        primary_capability=PRACTICE_CAPABILITY_REFLECT,
         improvement=("Your reflection describes the challenge but not what caused it."),
         next_step=("Write one sentence about what you think caused the challenge."),
     ),
@@ -392,6 +448,11 @@ _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
         ),
         skill_names=("Visual Analysis",),
         strength="You correctly connected specific colours to the overall mood.",
+        primary_capability=PRACTICE_CAPABILITY_INTERPRET,
+        secondary_capabilities=(
+            PRACTICE_CAPABILITY_OBSERVE,
+            PRACTICE_CAPABILITY_ARTICULATE,
+        ),
         improvement=(
             "Your analysis mentions colour but does not explain how it guides "
             "the viewer's attention."
@@ -513,6 +574,579 @@ _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
         fallback_image=COLOUR_MOOD_IMAGE,
         fallback_alt="A landscape scene with warm and cool colours for analysis.",
     ),
+    DemoActivityDefinition(
+        title="Observation Drill — Everyday Object Study",
+        description="Practise slow, detailed looking at a single object.",
+        activity_type=ActivityType.OBSERVATION,
+        prompt=(
+            "Look closely at the object in the image. Describe its surfaces, edges, "
+            "and details — include what the wear and material suggest about how it "
+            "has been used."
+        ),
+        skill_names=("Visual Analysis", "Critical Observation"),
+        strength="You described concrete surface details of the object.",
+        improvement=(
+            "Your observations stay at the level of naming; try describing how one "
+            "detail relates to another."
+        ),
+        next_step=(
+            "Pick the smallest detail you can find and describe what it tells you "
+            "about the object."
+        ),
+        primary_capability=PRACTICE_CAPABILITY_OBSERVE,
+        secondary_capabilities=(PRACTICE_CAPABILITY_INTERPRET,),
+        stimulus_context=ActivityStimulusContext(
+            learning_focus="Object detail",
+            stimulus_context="A well-used everyday object",
+            retrieval_query="worn everyday object close up surface",
+        ),
+        concepts=(
+            Concept(
+                keyword="wear",
+                finding=(
+                    "You noticed the wear on the object, which records how it has "
+                    "actually been used."
+                ),
+            ),
+            Concept(
+                keyword="texture",
+                finding=(
+                    "You noticed the texture of the object's surface, which tells "
+                    "you about its material."
+                ),
+            ),
+            Concept(
+                keyword="edge",
+                finding=(
+                    "You noticed the object's edges, which define its form against "
+                    "the background."
+                ),
+            ),
+            Concept(
+                keyword="scratch",
+                finding=(
+                    "You noticed the scratches, small details that carry the "
+                    "object's history."
+                ),
+            ),
+            Concept(
+                keyword="surface",
+                finding=(
+                    "You described the object's surface, which is where careful "
+                    "observation begins."
+                ),
+            ),
+            Concept(
+                keyword="handle",
+                finding=("You noticed the handle and how it has been shaped by use."),
+            ),
+            Concept(
+                keyword="metal",
+                finding=(
+                    "You noticed the metal, whose finish changes how light sits on "
+                    "the object."
+                ),
+            ),
+            Concept(
+                keyword="wood",
+                finding=(
+                    "You noticed the wood, whose grain adds direction to the surface."
+                ),
+            ),
+            Concept(
+                keyword="light",
+                finding=(
+                    "You noticed how light falls on the object, which reveals its form."
+                ),
+            ),
+            Concept(
+                keyword="shadow",
+                finding=(
+                    "You noticed the shadow the object casts, which grounds it in "
+                    "the scene."
+                ),
+            ),
+            Concept(
+                keyword="reflection",
+                finding=(
+                    "You noticed the reflection on the surface, a detail that "
+                    "reveals the material."
+                ),
+            ),
+            Concept(
+                keyword="colour",
+                finding=(
+                    "You noticed the object's colour, including how it varies "
+                    "across the surface."
+                ),
+            ),
+            Concept(
+                keyword="color",
+                finding=(
+                    "You noticed the object's color, including how it varies "
+                    "across the surface."
+                ),
+            ),
+            Concept(
+                keyword="detail",
+                finding=(
+                    "You noticed a specific detail, which is exactly what slow "
+                    "looking is about."
+                ),
+            ),
+            Concept(
+                keyword="material",
+                finding=(
+                    "You considered the material itself, which explains much of "
+                    "what you see."
+                ),
+            ),
+        ),
+        fallback_image=OBJECT_STUDY_IMAGE,
+        fallback_alt="A close-up study of a worn everyday object.",
+    ),
+    DemoActivityDefinition(
+        title="Visual Interpretation — Reading a Street Scene",
+        description="Read the story a busy scene might tell.",
+        activity_type=ActivityType.WRITTEN_RESPONSE,
+        prompt=(
+            "Look at the street scene in the image. What might be happening here? "
+            "Support your reading with at least two specific visual details."
+        ),
+        skill_names=("Visual Analysis",),
+        strength=(
+            "You connected specific details in the scene to a possible reading of it."
+        ),
+        improvement=(
+            "Some of your reading goes beyond what the image shows; tie each claim "
+            "back to a visible detail."
+        ),
+        next_step=(
+            "Choose one detail in the scene and describe two different things it "
+            "could mean."
+        ),
+        primary_capability=PRACTICE_CAPABILITY_INTERPRET,
+        secondary_capabilities=(
+            PRACTICE_CAPABILITY_OBSERVE,
+            PRACTICE_CAPABILITY_ARTICULATE,
+        ),
+        stimulus_context=ActivityStimulusContext(
+            learning_focus="Interpretation",
+            stimulus_context="Everyday street scenes with people",
+            retrieval_query="street scene people daily life city",
+        ),
+        concepts=(
+            Concept(
+                keyword="people",
+                finding=(
+                    "You noticed the people in the scene, whose positions and "
+                    "movement carry much of its story."
+                ),
+            ),
+            Concept(
+                keyword="movement",
+                finding=(
+                    "You noticed the movement in the scene, which gives the image "
+                    "its sense of pace."
+                ),
+            ),
+            Concept(
+                keyword="sign",
+                finding=(
+                    "You noticed the signs, which anchor the scene in a particular "
+                    "place."
+                ),
+            ),
+            Concept(
+                keyword="shop",
+                finding=(
+                    "You noticed the shopfronts, which suggest the everyday life "
+                    "of the street."
+                ),
+            ),
+            Concept(
+                keyword="light",
+                finding=(
+                    "You noticed how light falls across the scene, which shapes "
+                    "its time of day and mood."
+                ),
+            ),
+            Concept(
+                keyword="shadow",
+                finding=(
+                    "You noticed the shadows, which add depth and direction to "
+                    "the scene."
+                ),
+            ),
+            Concept(
+                keyword="mood",
+                finding=(
+                    "You connected the scene's details to an overall mood, which "
+                    "is the heart of interpretation."
+                ),
+            ),
+            Concept(
+                keyword="story",
+                finding=(
+                    "You read a possible story in the scene, which is exactly what "
+                    "this activity asks."
+                ),
+            ),
+            Concept(
+                keyword="foreground",
+                finding=(
+                    "You noticed the foreground, which brings the viewer into the "
+                    "scene."
+                ),
+            ),
+            Concept(
+                keyword="background",
+                finding=(
+                    "You noticed the background, which sets the context for what "
+                    "is happening."
+                ),
+            ),
+            Concept(
+                keyword="street",
+                finding=(
+                    "You considered the street itself — its space, direction, and "
+                    "rhythm."
+                ),
+            ),
+            Concept(
+                keyword="crowd",
+                finding=(
+                    "You noticed the crowd, whose density tells you something "
+                    "about the moment."
+                ),
+            ),
+            Concept(
+                keyword="colour",
+                finding=(
+                    "You noticed the scene's colours, which suggest its time, "
+                    "weather, and atmosphere."
+                ),
+            ),
+            Concept(
+                keyword="color",
+                finding=(
+                    "You noticed the scene's colors, which suggest its time, "
+                    "weather, and atmosphere."
+                ),
+            ),
+        ),
+        fallback_image=STREET_SCENE_IMAGE,
+        fallback_alt="A street scene with people and shopfronts for interpretation.",
+    ),
+    DemoActivityDefinition(
+        title="Short Ideation Sprint — Alternative Uses",
+        description="Practise generating many ideas in a few minutes.",
+        activity_type=ActivityType.WRITTEN_RESPONSE,
+        prompt=(
+            "Think of an ordinary object you use every day. List as many unusual "
+            "uses for it as you can — then mark the one you would develop further."
+        ),
+        skill_names=("Written Communication",),
+        strength=(
+            "You generated several different directions instead of settling on the "
+            "first idea."
+        ),
+        improvement=(
+            "Several of your uses are close variations; push one further from the "
+            "object's usual role."
+        ),
+        next_step=(
+            "Take your strongest idea and write two sentences on why it could "
+            "actually work."
+        ),
+        primary_capability=PRACTICE_CAPABILITY_IDEATE,
+        secondary_capabilities=(PRACTICE_CAPABILITY_ARTICULATE,),
+    ),
+    DemoActivityDefinition(
+        title="Design Ideation — Transform the Object",
+        description="Turn an observed object into a new design possibility.",
+        activity_type=ActivityType.WRITTEN_RESPONSE,
+        prompt=(
+            "Look at the object in the image and reimagine it as something new. "
+            "Describe your transformed design and explain the thinking behind it."
+        ),
+        skill_names=("Visual Analysis", "Written Communication"),
+        strength=(
+            "You proposed a clear transformation grounded in the object's actual form."
+        ),
+        improvement=(
+            "Your concept explains what the new design is but not why it works; "
+            "connect the design back to what you observed."
+        ),
+        next_step=(
+            "Name one feature of the original object your design keeps, and why."
+        ),
+        primary_capability=PRACTICE_CAPABILITY_IDEATE,
+        secondary_capabilities=(
+            PRACTICE_CAPABILITY_INTERPRET,
+            PRACTICE_CAPABILITY_ARTICULATE,
+        ),
+        stimulus_context=ActivityStimulusContext(
+            learning_focus="Transformation",
+            stimulus_context="Ordinary household objects",
+            retrieval_query="single household object white background",
+        ),
+        concepts=(
+            Concept(
+                keyword="form",
+                finding=(
+                    "You worked with the object's form, which gives your new design "
+                    "its structure."
+                ),
+            ),
+            Concept(
+                keyword="function",
+                finding=(
+                    "You thought about function, which turns a shape into a real "
+                    "design."
+                ),
+            ),
+            Concept(
+                keyword="transform",
+                finding=(
+                    "You transformed the object deliberately, which is exactly what "
+                    "ideation asks of you."
+                ),
+            ),
+            Concept(
+                keyword="combine",
+                finding=(
+                    "You combined the object with something new — a productive "
+                    "ideation move."
+                ),
+            ),
+            Concept(
+                keyword="material",
+                finding=(
+                    "You considered the material, which constrains and inspires "
+                    "what the design can be."
+                ),
+            ),
+            Concept(
+                keyword="scale",
+                finding=(
+                    "You played with scale, one of the simplest ways to open up a "
+                    "new design idea."
+                ),
+            ),
+            Concept(
+                keyword="shape",
+                finding=(
+                    "You used the object's shape as the starting point of your design."
+                ),
+            ),
+            Concept(
+                keyword="purpose",
+                finding=(
+                    "You explained the design's purpose, which makes the concept "
+                    "convincing."
+                ),
+            ),
+            Concept(
+                keyword="handle",
+                finding=(
+                    "You kept the handle in your design, a feature worth holding onto."
+                ),
+            ),
+            Concept(
+                keyword="light",
+                finding=(
+                    "You considered how light works in your design, which gives it "
+                    "depth."
+                ),
+            ),
+            Concept(
+                keyword="texture",
+                finding=(
+                    "You carried the object's texture into your design, which keeps "
+                    "it grounded."
+                ),
+            ),
+            Concept(
+                keyword="user",
+                finding=(
+                    "You thought about the person using the design, which is at the "
+                    "centre of design thinking."
+                ),
+            ),
+        ),
+        fallback_image=OBJECT_TRANSFORM_IMAGE,
+        fallback_alt="An everyday object drawn as a simple form for transformation.",
+    ),
+    DemoActivityDefinition(
+        title="Composition Detective — What Holds This Together?",
+        description="Find the structure inside an arrangement of shapes.",
+        activity_type=ActivityType.OBSERVATION,
+        prompt=(
+            "Look at the arrangement in the image. Identify what holds the "
+            "composition together — where your eye goes first, and what keeps it "
+            "moving."
+        ),
+        skill_names=("Visual Analysis", "Critical Observation"),
+        strength="You identified where the composition directs your attention.",
+        improvement=(
+            "You named compositional devices; explain how two of them work together."
+        ),
+        next_step=(
+            "Describe one change to the arrangement that would make the composition "
+            "calmer."
+        ),
+        primary_capability=PRACTICE_CAPABILITY_OBSERVE,
+        secondary_capabilities=(PRACTICE_CAPABILITY_INTERPRET,),
+        stimulus_context=ActivityStimulusContext(
+            learning_focus="Composition",
+            stimulus_context="Abstract still-life arrangements",
+            retrieval_query="abstract geometric still life arrangement",
+        ),
+        concepts=(
+            Concept(
+                keyword="focal point",
+                finding=(
+                    "You identified the focal point, which explains where the eye "
+                    "lands first."
+                ),
+            ),
+            Concept(
+                keyword="balance",
+                finding=(
+                    "You noticed how the arrangement is balanced, which gives it "
+                    "stability."
+                ),
+            ),
+            Concept(
+                keyword="symmetry",
+                finding=(
+                    "You noticed the symmetry in the arrangement, which creates a "
+                    "sense of order."
+                ),
+            ),
+            Concept(
+                keyword="asymmetry",
+                finding=(
+                    "You noticed the asymmetry, which gives the arrangement its "
+                    "tension."
+                ),
+            ),
+            Concept(
+                keyword="diagonal",
+                finding=(
+                    "You noticed the diagonals, which set the arrangement's "
+                    "direction of movement."
+                ),
+            ),
+            Concept(
+                keyword="repetition",
+                finding=(
+                    "You noticed the repetition of shapes, which gives the "
+                    "composition its rhythm."
+                ),
+            ),
+            Concept(
+                keyword="negative space",
+                finding=(
+                    "You noticed the negative space, which shapes the arrangement "
+                    "as much as the forms do."
+                ),
+            ),
+            Concept(
+                keyword="empty space",
+                finding=(
+                    "You noticed the empty space, which shapes the arrangement as "
+                    "much as the forms do."
+                ),
+            ),
+            Concept(
+                keyword="leading lines",
+                finding=(
+                    "You noticed how lines lead your eye through the arrangement."
+                ),
+            ),
+            Concept(
+                keyword="light",
+                finding=(
+                    "You noticed how light separates the shapes and guides your eye."
+                ),
+            ),
+            Concept(
+                keyword="shadow",
+                finding=("You noticed the shadows, which anchor the shapes in space."),
+            ),
+            Concept(
+                keyword="depth",
+                finding=(
+                    "You noticed how the arrangement reads as depth, not just pattern."
+                ),
+            ),
+            Concept(
+                keyword="contrast",
+                finding=(
+                    "You noticed the contrast between the shapes, which creates "
+                    "emphasis."
+                ),
+            ),
+            Concept(
+                keyword="foreground",
+                finding=(
+                    "You noticed the foreground shapes, which carry the "
+                    "arrangement's weight."
+                ),
+            ),
+            Concept(
+                keyword="shape",
+                finding=(
+                    "You described the shapes themselves, which is where "
+                    "composition analysis starts."
+                ),
+            ),
+        ),
+        fallback_image=COMPOSITION_DETECTIVE_IMAGE,
+        fallback_alt=("An abstract arrangement of shapes for composition analysis."),
+    ),
+    DemoActivityDefinition(
+        title="Design Articulation — Explain a Poster Concept",
+        description="Practise explaining a design idea in convincing language.",
+        activity_type=ActivityType.WRITTEN_RESPONSE,
+        prompt=(
+            "Imagine a poster for a cause you care about. Describe the poster — its "
+            "image, its words, and its mood — and explain why each choice serves "
+            "the cause."
+        ),
+        skill_names=("Written Communication",),
+        strength="You communicated the poster concept in clear, confident language.",
+        improvement=(
+            "Your explanation states the choices but not the reasons; give the "
+            "reasoning behind one visual choice."
+        ),
+        next_step=(
+            "Rewrite one sentence so it links a design choice directly to the cause."
+        ),
+        primary_capability=PRACTICE_CAPABILITY_ARTICULATE,
+        secondary_capabilities=(PRACTICE_CAPABILITY_IDEATE,),
+    ),
+    DemoActivityDefinition(
+        title="Reflection Prompt — What Did Practice Ask of You?",
+        description="A short reflective pause after practice.",
+        activity_type=ActivityType.REFLECTION,
+        prompt=(
+            "Think about the last practice activity you completed. What kind of "
+            "thinking did it ask of you, and what would make your next attempt "
+            "stronger?"
+        ),
+        skill_names=("Critical Observation",),
+        strength="You looked honestly at what the practice demanded of you.",
+        improvement=(
+            "Your reflection stays general; name the specific moment that was hardest."
+        ),
+        next_step=(
+            "Write one sentence you would want to read before your next attempt."
+        ),
+        primary_capability=PRACTICE_CAPABILITY_REFLECT,
+    ),
 )
 
 _DEMO_SKILLS: tuple[Skill, ...] = (
@@ -563,6 +1197,8 @@ def build_demo_activities() -> tuple[DemoActivity, ...]:
             concepts=definition.concepts,
             fallback_image=definition.fallback_image,
             fallback_alt=definition.fallback_alt,
+            primary_capability=definition.primary_capability,
+            secondary_capabilities=definition.secondary_capabilities,
         )
         for position, definition in enumerate(_DEMO_ACTIVITIES)
     )
