@@ -49,7 +49,12 @@ class Concept:
 
 @dataclass(frozen=True)
 class DemoActivity:
-    """A seeded demo practice activity plus its learner-facing content."""
+    """A seeded demo practice activity plus its learner-facing content.
+
+    ``primary_capability`` and ``secondary_capabilities`` are internal
+    content-design metadata (SPEC-023 §5): a review lens over the library,
+    never learner-facing copy and never a selection or ordering signal.
+    """
 
     activity: AssessmentActivity
     title: str
@@ -57,9 +62,11 @@ class DemoActivity:
     strength: str
     improvement: str
     next_step: str
+    primary_capability: str = ""
     concepts: tuple[Concept, ...] = ()
     fallback_image: str | None = None
     fallback_alt: str | None = None
+    secondary_capabilities: tuple[str, ...] = ()
 
     @property
     def stimulus_context(self) -> ActivityStimulusContext | None:

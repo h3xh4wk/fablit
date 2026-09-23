@@ -500,7 +500,39 @@ selection is authoritative for the current practice entry; a learner who
 ignores the chooser still reaches the ordinary activity library, and a
 completed Short Drill is simply completed practice under SPEC-021. No new
 domain type, no parallel workflow, no scores, streaks, timers, or
-recommendation engine.
+recommendation engine. SPEC-023 expands the curated drill list to six
+activities without changing this mechanism.
+
+---
+
+## Practice Library Expansion (SPEC-023)
+
+The practice library is content, not architecture. SPEC-023 grows the demo
+library from the five-activity baseline to twelve curated Assessment
+Activities so that repeated deliberate practice is plausible, and records an
+internal **practice capability lens** (Observe / Interpret / Ideate /
+Articulate / Reflect) on each activity as content-design metadata.
+
+```text
+Content configuration (demo_data.py — definitions + capability metadata)
+        ↓ builds
+Assessment Activity (existing domain model, unchanged)
+        ↓
+Existing practice application (unchanged journey)
+        ↓
+Submission → Evaluation → Feedback → Reflection → Completion
+        ↓
+Practice History (SPEC-021, unchanged)
+```
+
+The lens is a review aid over the library, not a runtime concept: it is not
+a domain model, not a Skill hierarchy, never learner-visible, and never
+drives selection or recommendations (AC-023-12, AC-023-13). New activities
+add no application branches — stimulus-dependent ones reuse the SPEC-015
+stimulus abstraction with deterministic bundled fallbacks, response-aware
+ones reuse the SPEC-015 concept-matching evaluator, and text-first ones reuse
+the predefined-feedback path. The resulting inventory, capability coverage,
+and remaining gaps are documented in `docs/product/practice_coverage.md`.
 
 ---
 

@@ -1,7 +1,7 @@
 # SPEC-023 — Practice Library Expansion & Skill Coverage
 
-**Status:** Proposed  
-**Type:** Product / Learning Content  
+**Status:** Proposed
+**Type:** Product / Learning Content
 **Depends on:** SPEC-005, SPEC-010, SPEC-011, SPEC-015, SPEC-017, SPEC-018, SPEC-019, SPEC-020, SPEC-021, SPEC-022
 
 ---
@@ -449,14 +449,14 @@ Visual stimuli must have meaningful alternative text where appropriate.
 
 ### AC-023-01 — Expanded Library
 
-**Given** the current five-activity baseline  
-**When** SPEC-023 is implemented  
+**Given** the current five-activity baseline
+**When** SPEC-023 is implemented
 **Then** the library contains a meaningfully expanded set of curated Assessment Activities, with an initial target of at least 10–12 total activities unless content-quality review justifies a smaller set.
 
 ### AC-023-02 — Capability Coverage
 
-**Given** the expanded activity library  
-**When** activities are reviewed using the internal practice-capability lens  
+**Given** the expanded activity library
+**When** activities are reviewed using the internal practice-capability lens
 **Then** all five capabilities are represented:
 
 - Observe
@@ -467,38 +467,38 @@ Visual stimuli must have meaningful alternative text where appropriate.
 
 ### AC-023-03 — Primary Capability
 
-**Given** every activity in the expanded library  
-**When** the content inventory is reviewed  
+**Given** every activity in the expanded library
+**When** the content inventory is reviewed
 **Then** each activity has one documented primary capability.
 
 ### AC-023-04 — Meaningful Variety
 
-**Given** the expanded library  
-**When** activities are compared  
+**Given** the expanded library
+**When** activities are compared
 **Then** the library contains meaningful variation in stimulus, thinking task, response style, context, and practice effort rather than superficial prompt duplication.
 
 ### AC-023-05 — Exam-Relevant Practice
 
-**Given** a design-entrance aspirant uses the activity library  
-**When** they inspect the available activities  
+**Given** a design-entrance aspirant uses the activity library
+**When** they inspect the available activities
 **Then** the activities provide recognisable practice in visual thinking, creative reasoning, design articulation, observation, interpretation, ideation, or related design-entrance capabilities.
 
 ### AC-023-06 — Short Drill Variety
 
-**Given** the Short Drill mode  
-**When** eligible activities are reviewed  
+**Given** the Short Drill mode
+**When** eligible activities are reviewed
 **Then** the curated set contains more than the original two activities and provides meaningful capability variety.
 
 ### AC-023-07 — Full Practice Preservation
 
-**Given** a learner chooses Full Practice or uses the normal activity library  
-**When** they start an activity  
+**Given** a learner chooses Full Practice or uses the normal activity library
+**When** they start an activity
 **Then** the existing practice journey remains unchanged in learning semantics.
 
 ### AC-023-08 — Existing Journey Preservation
 
-**Given** any new activity  
-**When** the learner completes it  
+**Given** any new activity
+**When** the learner completes it
 **Then** the flow remains:
 
 ```
@@ -507,44 +507,44 @@ Submission → Evaluation → Feedback → Reflection → Completion
 
 ### AC-023-09 — Evaluation and Feedback
 
-**Given** a learner submits a response to a new activity  
-**When** evaluation completes  
+**Given** a learner submits a response to a new activity
+**When** evaluation completes
 **Then** the learner receives a concrete finding, improvement guidance, and an actionable next step using the existing evaluation/feedback architecture.
 
 ### AC-023-10 — History Compatibility
 
-**Given** a learner completes a new activity  
-**When** practice history is reviewed  
+**Given** a learner completes a new activity
+**When** practice history is reviewed
 **Then** the attempt is persisted and reviewable through the existing SPEC-021 capability.
 
 ### AC-023-11 — Content Configuration
 
-**Given** a new activity is added  
-**When** its content definition is registered  
+**Given** a new activity is added
+**When** its content definition is registered
 **Then** the application does not require a new activity-specific workflow or special-case learner journey.
 
 ### AC-023-12 — No Personalization
 
-**Given** the expanded activity library  
-**When** activities are presented  
+**Given** the expanded activity library
+**When** activities are presented
 **Then** the application does not recommend, rank, or automatically select activities based on learner history.
 
 ### AC-023-13 — No Gamification
 
-**Given** the expanded library  
-**When** the learner completes activities  
+**Given** the expanded library
+**When** the learner completes activities
 **Then** no score, streak, badge, point, rank, or mastery state is introduced.
 
 ### AC-023-14 — Accessibility
 
-**Given** a learner uses keyboard navigation or assistive technology  
-**When** they browse and enter the expanded activity library  
+**Given** a learner uses keyboard navigation or assistive technology
+**When** they browse and enter the expanded activity library
 **Then** activity selection, prompts, stimuli, responses, and feedback remain accessible.
 
 ### AC-023-15 — Regression Safety
 
-**Given** the existing Fablit test suite  
-**When** SPEC-023 is implemented  
+**Given** the existing Fablit test suite
+**When** SPEC-023 is implemented
 **Then** existing tests continue to pass and new content coverage tests pass.
 
 ---

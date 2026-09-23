@@ -17,6 +17,7 @@ import fablit.application.practice_modes as practice_modes_module
 from fablit.application import (
     DEMO_LEARNER_ID,
     PRACTICE_MODE_CHOICE_QUESTION,
+    SHORT_DRILL_ACTIVITY_TITLES,
     CompletionView,
     DemoEvaluator,
     FeedbackView,
@@ -145,6 +146,10 @@ def test_short_drill_resolves_the_curated_configuration() -> None:
     assert [activity.title for activity in view.activities] == [
         "Memory Drawing Prep — Object & Proportion Detection",
         "Creative Writing — Concept Explanations for Poster Designs",
+        "Observation Drill — Everyday Object Study",
+        "Short Ideation Sprint — Alternative Uses",
+        "Design Articulation — Explain a Poster Concept",
+        "Reflection Prompt — What Did Practice Ask of You?",
     ]
 
 
@@ -157,7 +162,7 @@ def test_short_drill_activities_come_from_configuration_not_title_inference() ->
     eligible_ids = short_drill.eligible_activity_ids
     all_ids = {item.activity.id for item in activities}
     assert set(eligible_ids) <= all_ids
-    assert len(eligible_ids) == 2
+    assert len(eligible_ids) == len(SHORT_DRILL_ACTIVITY_TITLES)
 
 
 def test_full_practice_resolves_the_whole_existing_library() -> None:

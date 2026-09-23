@@ -128,13 +128,13 @@ def third_activity_id(application: PracticeApplication) -> UUID:
     return application.get_dashboard().activities[2].id
 
 
-def test_dashboard_lists_three_to_five_activities() -> None:
+def test_dashboard_lists_the_expanded_activity_library() -> None:
     application, _ = make_application()
 
     view = application.get_dashboard()
 
     assert isinstance(view, PracticeDashboardView)
-    assert 3 <= len(view.activities) <= 5
+    assert 3 <= len(view.activities) <= 12
 
 
 def test_dashboard_summaries_include_skills() -> None:

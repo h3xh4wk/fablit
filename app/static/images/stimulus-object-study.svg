@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-labelledby="title">
+  <title id="title">Fablit object study stimulus</title>
+  <defs>
+    <linearGradient id="backdrop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#efe4d4"/>
+      <stop offset="1" stop-color="#d8c8b0"/>
+    </linearGradient>
+    <linearGradient id="handle" x1="0" y1="0" x2="1" y2="0.3">
+      <stop offset="0" stop-color="#c9a377"/>
+      <stop offset="0.5" stop-color="#a87f52"/>
+      <stop offset="1" stop-color="#8a643e"/>
+    </linearGradient>
+    <linearGradient id="metal" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#e8e3da"/>
+      <stop offset="0.55" stop-color="#b9b0a2"/>
+      <stop offset="1" stop-color="#8f8577"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#backdrop)"/>
+  <!-- a well-used everyday object: a wooden-handled pan, seen close up -->
+  <ellipse cx="400" cy="520" rx="290" ry="34" fill="#b7a68f" fill-opacity="0.5"/>
+  <!-- the worn wooden handle, angled across the frame -->
+  <g transform="rotate(-32 250 200)">
+    <rect x="90" y="165" width="330" height="70" rx="33" fill="url(#handle)"/>
+    <!-- grain lines along the wood -->
+    <path d="M110 190 Q 250 182 400 192" fill="none" stroke="#7a5a38" stroke-width="3" stroke-opacity="0.55"/>
+    <path d="M105 212 Q 240 220 405 210" fill="none" stroke="#6f5233" stroke-width="2" stroke-opacity="0.45"/>
+    <path d="M120 226 Q 260 230 398 224" fill="none" stroke="#7a5a38" stroke-width="1.5" stroke-opacity="0.4"/>
+    <!-- a hanging hole worn smooth at the handle's end -->
+    <circle cx="135" cy="200" r="13" fill="#efe4d4" stroke="#6f5233" stroke-width="3"/>
+    <!-- polish where hands have held it most -->
+    <ellipse cx="330" cy="200" rx="52" ry="24" fill="#ffffff" fill-opacity="0.18"/>
+  </g>
+  <!-- the darkened metal body -->
+  <g transform="rotate(14 520 400)">
+    <ellipse cx="520" cy="410" rx="230" ry="130" fill="url(#metal)"/>
+    <ellipse cx="520" cy="410" rx="150" ry="80" fill="#6f665a"/>
+    <ellipse cx="520" cy="410" rx="150" ry="80" fill="none" stroke="#4f473d" stroke-width="4" stroke-opacity="0.6"/>
+    <!-- use: scratches and a scorch mark -->
+    <path d="M420 380 L 600 352" stroke="#cfc7ba" stroke-width="2.5" stroke-opacity="0.7"/>
+    <path d="M440 440 Q 520 430 610 442" fill="none" stroke="#cfc7ba" stroke-width="1.5" stroke-opacity="0.55"/>
+    <path d="M470 300 Q 530 330 585 302" fill="none" stroke="#3d3730" stroke-width="2" stroke-opacity="0.5"/>
+    <ellipse cx="560" cy="455" rx="46" ry="16" fill="#4a4238" fill-opacity="0.5"/>
+    <!-- a rivet joining handle to body -->
+    <circle cx="352" cy="360" r="11" fill="#d9d3c8" stroke="#7a7265" stroke-width="3"/>
+  </g>
+  <!-- directional light -->
+  <path d="M0 0 L 340 0 L 120 600 L 0 600 Z" fill="#fffdf9" fill-opacity="0.16"/>
+</svg>
