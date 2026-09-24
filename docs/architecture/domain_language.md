@@ -1,9 +1,9 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 1.4.0
+**Version:** 1.5.0
 **Status:** Draft
-**Last Updated:** 2026-09-23
+**Last Updated:** 2026-09-24
 
 ---
 
@@ -769,6 +769,48 @@ and is local to the browser until a future recovery mechanism attaches to it
 | LI-003 | Practice history and review are reachable only through the current learner's identity; crossing the boundary behaves exactly like an unknown record. |
 | LI-004 | The fixed demo learner identity is never used for normal web traffic; demo fixtures stay isolated to application-layer tests. |
 | LI-005 | The learner identity is an internal ownership identifier, never an authentication credential and never learner-visible in pages or URLs. |
+
+## Practice Transition (SPEC-025)
+
+A **Practice Transition** is a content-level relationship from one completed
+Assessment Activity to one authored next practice. It exists to make visible
+that one kind of design thinking can lead naturally into another —
+**Observe → Interpret → Ideate → Articulate → Reflect → practise again** —
+after the learner finishes an activity.
+
+A transition is authored deliberately by Fablit's content/design layer, not
+computed: it never derives from learner history, completion counts,
+evaluations, scores, or inferred behaviour, and it is not a recommendation,
+a mastery signal, or a schedule. The relationship points at an existing
+Assessment Activity; starting it runs the unchanged SPEC-012 journey and the
+resulting practice is ordinary SPEC-021 history under the learner's SPEC-024
+identity. The learner may follow the continuation, return to Explore, or
+simply leave it — the continuation is an invitation, never a forced step.
+
+### Relationship
+
+```
+Completion (SPEC-018)
+    │
+    ▼
+Practice Transition (content configuration, one per source activity)
+    │ names
+    ▼
+existing Assessment Activity → unchanged learner journey (SPEC-012)
+    │
+    ▼
+Practice History (SPEC-021) under the learner's identity (SPEC-024)
+```
+
+### Domain Rules Reference
+
+| Rule | Description |
+|------|-------------|
+| PT-001 | A Practice Transition exists at the content layer and is not a domain model; it names existing Assessment Activities by identity and never re-identifies, wraps, or replaces them. |
+| PT-002 | A source activity has at most one authored transition; the lookup is deterministic for the same content configuration. |
+| PT-003 | A transition is authored, curated content — never derived from learner identity, history, scores, completion counts, or inferred behaviour. |
+| PT-004 | Transition copy makes the relationship between the two practices visible, calmly and editorially, with no “recommended”, “best”, or pressure language. |
+| PT-005 | Following a transition starts the unchanged journey; the target practice is recorded and reviewed like any other completion, and the learner can always ignore the continuation. |
 
 ## Learner Practice Application Flow (SPEC-012)
 

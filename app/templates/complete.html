@@ -5,6 +5,20 @@
   <h1 class="display">✨ That's one done.</h1>
   <p class="completion__note">You noticed. You thought. You found something.</p>
   <p class="completion__detail">{{ view.message }}</p>
+  {% if view.continuation %}
+  <section class="continuation" aria-labelledby="continuation-heading">
+    <h2 class="continuation__heading" id="continuation-heading">
+      {{ continuation_heading }}
+    </h2>
+    <p class="continuation__copy">{{ view.continuation.transition_copy }}</p>
+    <p class="continuation__target">{{ view.continuation.target_title }}</p>
+    <p class="form-actions">
+      <a class="button" href="/activities/{{ view.continuation.target_activity_id }}">
+        {{ continuation_action_label }} <span aria-hidden="true">→</span>
+      </a>
+    </p>
+  </section>
+  {% endif %}
   <p class="form-actions">
     <a class="button" href="/history">See your practice history <span aria-hidden="true">→</span></a>
     <a class="button button--secondary" href="/">Back to explore <span aria-hidden="true">→</span></a>

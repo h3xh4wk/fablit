@@ -38,6 +38,13 @@ from .errors import (
     SubmissionInProgressError,
     UnknownPracticeModeError,
 )
+from .practice_continuity import (
+    CONTINUATION_ACTION_LABEL,
+    CONTINUATION_HEADING,
+    PracticeTransition,
+    build_practice_transition_map,
+    build_practice_transitions,
+)
 from .practice_modes import (
     PracticeMode,
     PracticeModeDefinition,
@@ -57,6 +64,7 @@ from .store import Concept, DemoActivity, LearnerJourneyStore, PracticeCompletio
 from .use_cases import PracticeApplication
 from .view_models import (
     CompletionView,
+    ContinuationView,
     FeedbackView,
     PracticeActivitySummary,
     PracticeActivityView,
@@ -74,6 +82,8 @@ __all__ = [
     "CompletionNotFoundError",
     "CompletionView",
     "Concept",
+    "CONTINUATION_ACTION_LABEL",
+    "CONTINUATION_HEADING",
     "DEMO_LEARNER_ID",
     "DemoActivity",
     "DemoEvaluator",
@@ -87,13 +97,13 @@ __all__ = [
     "InvalidReflectionResponseError",
     "JourneyStateError",
     "LearnerJourneyStore",
-    "PRACTICE_MODE_CHOICE_QUESTION",
     "PRACTICE_CAPABILITIES",
     "PRACTICE_CAPABILITY_ARTICULATE",
     "PRACTICE_CAPABILITY_IDEATE",
     "PRACTICE_CAPABILITY_INTERPRET",
     "PRACTICE_CAPABILITY_OBSERVE",
     "PRACTICE_CAPABILITY_REFLECT",
+    "PRACTICE_MODE_CHOICE_QUESTION",
     "PracticeActivitySummary",
     "PracticeActivityView",
     "PracticeApplication",
@@ -104,6 +114,7 @@ __all__ = [
     "PracticeModeChoiceView",
     "PracticeModeDefinition",
     "PracticeModeOption",
+    "PracticeTransition",
     "REFLECTION_PROMPT",
     "ReflectionView",
     "ResilientStimulusProvider",
@@ -115,10 +126,13 @@ __all__ = [
     "SUPPORTED_PROVIDERS",
     "UnknownPracticeModeError",
     "WikimediaCommonsProvider",
+    "ContinuationView",
     "build_demo_activities",
     "build_demo_activity_map",
     "build_demo_skills",
     "build_fallback_stimuli",
     "build_practice_mode_definitions",
+    "build_practice_transition_map",
+    "build_practice_transitions",
     "build_stimulus_provider",
 ]
