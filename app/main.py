@@ -1,4 +1,4 @@
-"""FastAPI application entry point for the Fablit platform (SPEC-012…022).
+"""FastAPI application entry point for the Fablit platform (SPEC-012…024).
 
 SPEC-014 establishes the learner pilot deployment boundary: the application
 is assembled by ``create_app`` so environment-specific safety settings can be
@@ -8,6 +8,12 @@ page instead of exposing internals.
 
 SPEC-021 adds web routes for practice history and review, allowing learners
 to access their durable practice completion records.
+
+SPEC-024 connects the learner-scoped application boundary to real web
+requests: each anonymous learner's browser receives a unique opaque learner
+identity in a secure cookie, and every request resolves a learner-scoped
+application so journey state and practice history stay private to that
+learner (see ``app.learner_session``).
 """
 
 import logging
@@ -27,24 +33,23 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from app.learner_session import (
+    DemoContent,
+    LearnerApplicationRegistry,
+    learner_identity_middleware,
+    practice_for_request,
+)
 from fablit.application import (
-    DEMO_LEARNER_ID,
     ActivityNotFoundError,
     CompletionNotFoundError,
-    DemoEvaluator,
     EvaluationFailedError,
     FeedbackNotFoundError,
     InvalidPracticeResponseError,
     InvalidReflectionResponseError,
-    LearnerJourneyStore,
     PracticeApplication,
     PracticeMode,
     SubmissionInProgressError,
     UnknownPracticeModeError,
-    build_demo_activities,
-    build_demo_activity_map,
-    build_demo_skills,
-    build_stimulus_provider,
 )
 from fablit.application.persistence import (
     PersistenceError,
@@ -63,40 +68,21 @@ logger = logging.getLogger("fablit.app")
 metrics_registry = MetricsRegistry()
 
 
-def _build_practice_application(app_config: AppConfig) -> PracticeApplication:
-    """Assemble the demo learner application for the first vertical slice.
+def _build_learner_applications(
+    app_config: AppConfig,
+) -> tuple[DemoContent, LearnerApplicationRegistry]:
+    """Assemble the shared demo content and the learner application registry.
 
-    SPEC-015: stimulus resolution goes through the provider abstraction so
-    external image retrieval is isolated and replaceable, and the demo
-    evaluator is wired to the seeded activity content.
-
-    SPEC-021: the application is initialized with a history repository if
-    configured via the app configuration.
+    SPEC-024 §6: demo content, evaluator wiring, and the stimulus provider
+    are identical for every learner and built once; each request resolves its
+    anonymous learner identity to a learner-scoped ``PracticeApplication``
+    via the registry (``app.learner_session``). The history repository
+    (SPEC-021) is shared — it is learner-scoped by contract — and may be
+    ``None`` when persistence is not configured.
     """
-    activities = build_demo_activities()
-    store = LearnerJourneyStore(
-        learner_id=DEMO_LEARNER_ID,
-        activities=activities,
-        skills=build_demo_skills(),
-    )
-
-    # SPEC-021: wire the history repository (may be None for in-memory testing)
+    content = DemoContent.build(app_config)
     history_repository = _build_history_repository(app_config)
-
-    return PracticeApplication(
-        store=store,
-        evaluator=DemoEvaluator(build_demo_activity_map(activities)),
-        stimulus_provider=build_stimulus_provider(
-            activities,
-            provider_name=app_config.stimulus_provider,
-            fallback_image_overrides=app_config.stimulus_fallback_images,
-            wikimedia_endpoint=app_config.wikimedia_endpoint,
-            wikimedia_timeout=app_config.wikimedia_timeout,
-            wikimedia_width=app_config.wikimedia_width,
-            wikimedia_limit=app_config.wikimedia_limit,
-        ),
-        history_repository=history_repository,
-    )
+    return content, LearnerApplicationRegistry(content, history_repository)
 
 
 def _build_history_repository(
@@ -148,14 +134,6 @@ def _build_history_repository(
         return None
 
 
-def _practice(request: Request) -> PracticeApplication:
-    """Return the lifespan-initialised practice application."""
-    practice: PracticeApplication | None = request.app.state.practice
-    if practice is None:
-        raise RuntimeError("practice application is not initialised")
-    return practice
-
-
 def _activity_id(value: str) -> UUID:
     """Parse an activity identity, raising ActivityNotFoundError when invalid."""
     try:
@@ -205,15 +183,12 @@ def _practice_partial(
     return HTMLResponse(content=html)
 
 
-def _feedback_partial(request: Request, practice: object) -> HTMLResponse:
+def _feedback_partial(request: Request, practice: PracticeApplication) -> HTMLResponse:
     """Render the feedback content for HTMX partial swap (SPEC-017).
 
     The feedback view is obtained from the practice application and rendered
     from a partial template that contains no page chrome.
     """
-    from fablit.application import PracticeApplication
-
-    assert isinstance(practice, PracticeApplication)
     view = practice.get_feedback()
     html = templates.env.get_template("_feedback_partial.html").render(
         request=request,
@@ -287,10 +262,13 @@ def create_app(config: AppConfig) -> FastAPI:
         logger.info("application startup", extra={"version": config.version})
         app.state.ready = True
         app.state.config = config
-        app.state.practice = _build_practice_application(config)
+        app.state.demo_content, app.state.learner_applications = (
+            _build_learner_applications(config)
+        )
         yield
         app.state.ready = False
-        app.state.practice = None
+        app.state.demo_content = None
+        app.state.learner_applications = None
         logger.info("application shutdown")
 
     docs_enabled = config.environment != "production"
@@ -306,13 +284,17 @@ def create_app(config: AppConfig) -> FastAPI:
     )
 
     app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+    # SPEC-024: the identity boundary is centralised in middleware rather
+    # than duplicated across routes (§6): every request resolves its
+    # anonymous learner identity before reaching a handler.
+    app.middleware("http")(learner_identity_middleware)
     app.middleware("http")(request_logging_middleware)
     app.add_exception_handler(Exception, _unhandled_exception_handler)
 
     @app.get("/", response_class=HTMLResponse)
     async def dashboard(request: Request) -> Response:
         """Render the learner practice dashboard (UC-001)."""
-        view = _practice(request).get_dashboard()
+        view = practice_for_request(request).get_dashboard()
         return templates.TemplateResponse(request, "dashboard.html", {"view": view})
 
     # SPEC-022: Practice Mode Choice Routes
@@ -325,7 +307,7 @@ def create_app(config: AppConfig) -> FastAPI:
         no mode is pre-selected or recommended, and the normal activity
         library stays reachable without choosing (AC-022-02).
         """
-        view = _practice(request).get_practice_modes()
+        view = practice_for_request(request).get_practice_modes()
         return templates.TemplateResponse(
             request, "practice_mode_choice.html", {"view": view}
         )
@@ -342,7 +324,7 @@ def create_app(config: AppConfig) -> FastAPI:
             mode = _mode_id(mode_id)
         except UnknownPracticeModeError:
             return _error_response(request, "Practice mode not found.")
-        view = _practice(request).get_practice_mode_activities(mode)
+        view = practice_for_request(request).get_practice_mode_activities(mode)
         return templates.TemplateResponse(
             request, "practice_mode_activities.html", {"view": view}
         )
@@ -350,7 +332,7 @@ def create_app(config: AppConfig) -> FastAPI:
     @app.get("/activities/{activity_id}", response_class=HTMLResponse)
     async def practice_page(request: Request, activity_id: str) -> Response:
         """Render the practice activity page (UC-002)."""
-        practice = _practice(request)
+        practice = practice_for_request(request)
         try:
             view = practice.start_practice(_activity_id(activity_id))
         except ActivityNotFoundError:
@@ -370,7 +352,7 @@ def create_app(config: AppConfig) -> FastAPI:
         requests (progressive enhancement, no JavaScript) continue to
         receive a full-page redirect.
         """
-        practice = _practice(request)
+        practice = practice_for_request(request)
         is_htmx = request.headers.get("HX-Request") == "true"
         try:
             activity = _activity_id(activity_id)
@@ -431,7 +413,7 @@ def create_app(config: AppConfig) -> FastAPI:
     @app.get("/feedback", response_class=HTMLResponse)
     async def feedback_page(request: Request) -> Response:
         """Render the learner feedback page (UC-005)."""
-        practice = _practice(request)
+        practice = practice_for_request(request)
         try:
             view = practice.get_feedback()
         except FeedbackNotFoundError:
@@ -441,7 +423,7 @@ def create_app(config: AppConfig) -> FastAPI:
     @app.get("/reflect", response_class=HTMLResponse)
     async def reflection_page(request: Request) -> Response:
         """Render the purposeful reflection prompt (UC-006)."""
-        practice = _practice(request)
+        practice = practice_for_request(request)
         try:
             view = practice.get_reflection()
         except FeedbackNotFoundError:
@@ -458,7 +440,7 @@ def create_app(config: AppConfig) -> FastAPI:
         SPEC-021: if persistence fails, an error is shown and the learner is
         not falsely told the completion was recorded.
         """
-        practice = _practice(request)
+        practice = practice_for_request(request)
         try:
             practice.submit_reflection(content)
         except FeedbackNotFoundError:
@@ -484,7 +466,7 @@ def create_app(config: AppConfig) -> FastAPI:
     @app.get("/complete", response_class=HTMLResponse)
     async def completion_page(request: Request) -> Response:
         """Render the completion confirmation."""
-        practice = _practice(request)
+        practice = practice_for_request(request)
         try:
             view = practice.get_completion()
         except CompletionNotFoundError:
@@ -503,7 +485,7 @@ def create_app(config: AppConfig) -> FastAPI:
         Empty history is a valid state showing a clear empty state explaining
         that completed practice will appear here.
         """
-        practice = _practice(request)
+        practice = practice_for_request(request)
         try:
             view = practice.get_practice_history()
         except PersistenceError as exc:
@@ -533,7 +515,7 @@ def create_app(config: AppConfig) -> FastAPI:
             HTML response with the review, or an error page if the completion
             does not exist or retrieval fails.
         """
-        practice = _practice(request)
+        practice = practice_for_request(request)
         try:
             cid = _completion_id(completion_id)
         except CompletionNotFoundError:

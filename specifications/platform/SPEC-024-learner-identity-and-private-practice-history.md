@@ -1,8 +1,8 @@
 # SPEC-024 — Learner Identity & Private Practice History
 
-**Status:** Proposed  
-**Area:** Platform / Privacy / Practice History  
-**Depends on:** SPEC-021 — Persistent Practice History & Learner Review  
+**Status:** Proposed
+**Area:** Platform / Privacy / Practice History
+**Depends on:** SPEC-021 — Persistent Practice History & Learner Review
 **Related:** SPEC-022 — Optional Practice Modes & Learner Choice, SPEC-023 — Practice Library Expansion & Skill Coverage
 
 ## 1. Objective

@@ -212,14 +212,30 @@ def test_review_of_invalid_completion_id_shows_not_found_error() -> None:
 # --- Failure states (AC-021-09, SPEC-021 §14) -------------------------------------
 
 
+def _sabotage_repositories(client: TestClient, failing: Any) -> list[Any]:
+    """Swap the repository on every built learner application; return originals."""
+    registry = client.app.state.learner_applications  # type: ignore[attr-defined]
+    originals: list[Any] = []
+    for application in registry._applications.values():
+        originals.append(application._history_repository)
+        application._history_repository = failing
+    return originals
+
+
+def _restore_repositories(client: TestClient, originals: list[Any]) -> None:
+    """Restore the original repositories on every built learner application."""
+    registry = client.app.state.learner_applications  # type: ignore[attr-defined]
+    built = list(registry._applications.values())
+    for application, original in zip(built, originals, strict=False):
+        application._history_repository = original
+
+
 def test_history_load_failure_shows_recoverable_error() -> None:
     """A retrieval failure renders an explicit learner-safe error, not silence."""
     test_config = load_config(overrides={"practice_history_repository": "memory"})
     test_app = create_app(test_config)
     with TestClient(test_app) as client:
-        # Reach into the assembled application and sabotage the repository.
-        practice = client.app.state.practice  # type: ignore[attr-defined]
-        original = practice._history_repository
+        client.get("/")  # build this learner's application
 
         class Failing:
             def list_completions(self, learner_id: Any) -> Any:
@@ -228,11 +244,11 @@ def test_history_load_failure_shows_recoverable_error() -> None:
             def has_completed_activity(self, learner_id: Any, activity_id: Any) -> bool:
                 return False
 
-        practice._history_repository = Failing()
+        originals = _sabotage_repositories(client, Failing())
         try:
             response = client.get("/history")
         finally:
-            practice._history_repository = original
+            _restore_repositories(client, originals)
 
     assert response.status_code == 500
     # The learner-facing message is explicit and recoverable, without leaking
@@ -245,18 +261,17 @@ def test_review_load_failure_shows_recoverable_error() -> None:
     test_config = load_config(overrides={"practice_history_repository": "memory"})
     test_app = create_app(test_config)
     with TestClient(test_app) as client:
-        practice = client.app.state.practice  # type: ignore[attr-defined]
+        client.get("/")  # build this learner's application
 
         class Failing:
             def get_completion(self, learner_id: Any, completion_id: Any) -> Any:
                 raise PersistenceError("Failed to retrieve completed practice.")
 
-        original = practice._history_repository
-        practice._history_repository = Failing()
+        originals = _sabotage_repositories(client, Failing())
         try:
             response = client.get(f"/history/{uuid4()}")
         finally:
-            practice._history_repository = original
+            _restore_repositories(client, originals)
 
     assert response.status_code == 500
     assert "couldn" in response.text and "load the practice record" in response.text
@@ -272,9 +287,6 @@ def test_reflection_persistence_failure_does_not_report_completion() -> None:
         href = _first_activity_href(dashboard.text)
         client.post(href + "/submit", data={"response": "A response."})
 
-        practice = client.app.state.practice  # type: ignore[attr-defined]
-        original = practice._history_repository
-
         class Failing:
             def save_completion(self, **kwargs: Any) -> Any:
                 raise PersistenceError("Failed to save completed practice.")
@@ -282,13 +294,13 @@ def test_reflection_persistence_failure_does_not_report_completion() -> None:
             def has_completed_activity(self, learner_id: Any, activity_id: Any) -> bool:
                 return False
 
-        practice._history_repository = Failing()
+        originals = _sabotage_repositories(client, Failing())
         try:
             response = client.post(
                 "/reflect", data={"content": "A reflection."}, follow_redirects=False
             )
         finally:
-            practice._history_repository = original
+            _restore_repositories(client, originals)
 
     # The learner is not redirected to the completion confirmation.
     assert response.status_code == 500

@@ -39,6 +39,11 @@ from .store import Concept, DemoActivity
 # The deterministic demo learner context (SPEC-012 §27). Authentication and
 # real learner identity are out of scope for the vertical slice; a stable
 # identity leaves room for a future authenticated learner context.
+#
+# SPEC-024: this fixed identity is no longer used for normal web traffic —
+# the web layer resolves a unique anonymous learner identity per browser
+# (app.learner_session). It remains demo-content metadata used by
+# application-layer tests to exercise the learner-scoped contracts.
 DEMO_LEARNER_ID = UUID("6f9b1c4e-8a2d-4f3b-9c1e-5d7a2b4c8e10")
 
 REFLECTION_PROMPT = (

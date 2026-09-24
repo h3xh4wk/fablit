@@ -747,6 +747,29 @@ curated list simply names more of them.
 | PCL-004 | Library expansion adds content only: no new activity type, workflow, or journey semantics (the Submission → Evaluation → Feedback → Reflection → Completion flow is unchanged). |
 | PCL-005 | Expanded Short Drill eligibility is explicit content configuration (an extension of PM-003), never history-based. |
 
+## Learner Identity (SPEC-024)
+
+A **Learner Identity** is the anonymous, opaque identifier Fablit uses as
+the ownership key for practice history. Every anonymous learner's browser
+receives a unique identity (a random UUID in a secure cookie); practice
+submissions, completions, history, and review are resolved against that
+identity, so two independent learners never share history.
+
+The identity is deliberately *not* an account: it encodes no personal
+information, is derived from no identifying data, requires no registration,
+and is local to the browser until a future recovery mechanism attaches to it
+(SPEC-024 §5.3, §10). Anonymous does not have to mean shared.
+
+### Domain Rules Reference
+
+| Rule | Description |
+|------|-------------|
+| LI-001 | Every anonymous learner receives a unique, opaque learner identity; it encodes no personal information and is derived from no identifying data. |
+| LI-002 | The identity persists across requests from the same browser; a missing or invalid identity starts a fresh anonymous learner. |
+| LI-003 | Practice history and review are reachable only through the current learner's identity; crossing the boundary behaves exactly like an unknown record. |
+| LI-004 | The fixed demo learner identity is never used for normal web traffic; demo fixtures stay isolated to application-layer tests. |
+| LI-005 | The learner identity is an internal ownership identifier, never an authentication credential and never learner-visible in pages or URLs. |
+
 ## Learner Practice Application Flow (SPEC-012)
 
 SPEC-012 establishes the first **Application Layer** in Fablit: the orchestration that connects user interaction to the existing learning-domain models so a learner can complete a meaningful practice → feedback → reflection cycle.
@@ -796,7 +819,7 @@ Completion Confirmation   UC-007
 
 - The Application Layer orchestrates domain behaviour and prepares **view models**; it contains no HTML and no presentation logic.
 - The Application Layer never redefines domain invariants; Submission, Evaluation, Finding, Feedback, and Reflection are created through the existing domain models.
-- The demo learner context is a stable identity only; no user-management domain model is introduced (SPEC-012 §27).
+- The demo learner context is a stable identity only; no user-management domain model is introduced (SPEC-012 §27). Since SPEC-024, normal web requests resolve a unique anonymous learner identity per browser instead of the fixed demo identity; the fixed identity remains demo-content metadata.
 - The demo evaluator is deterministic and predefined; it requires no AI provider, network service, or asynchronous worker, and can be replaced later without changing learner-facing concepts (SPEC-012 §11–12, §40).
 - The vertical slice preserves the learner journey in memory; persistence remains outside the domain model (SPEC-012 §28).
 - No Progress, mastery, proficiency, scoring, recommendations, authentication, or examination-specific logic is introduced (SPEC-012 §6.2).
