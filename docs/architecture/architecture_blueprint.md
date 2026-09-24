@@ -536,6 +536,46 @@ and remaining gaps are documented in `docs/product/practice_coverage.md`.
 
 ---
 
+## Learner Identity & Private Practice History (SPEC-024)
+
+Anonymous does not have to mean shared. SPEC-024 connects the existing
+learner-scoped persistence boundary (SPEC-021) to real web requests: every
+anonymous learner's browser receives a unique, opaque learner identity in a
+secure cookie, and every request resolves a learner-scoped application.
+
+```text
+HTTP request
+   ↓
+learner identity middleware (cookie, or a newly minted opaque identity)
+   ↓
+learner-scoped PracticeApplication (per-learner LearnerJourneyStore)
+   ↓
+learner-scoped persistence (SPEC-021 history repository, unchanged)
+```
+
+- **Identity primitives** live in `fablit/platform/learner_identity.py`:
+  opaque UUID generation (no personal information, derived from nothing but
+  a secure random source) and secure cookie transport (HttpOnly, SameSite
+  Lax, one-year lifetime, Secure in production).
+- **Resolution is centralised** in `app/learner_session.py`: the identity
+  middleware resolves the identity once per request and the routes obtain the
+  current learner's application through it — the boundary is not duplicated
+  per route (SPEC-024 §6). Demo content, evaluator wiring, and the stimulus
+  provider are learner-independent and built once; only learner-scoped state
+  is per learner.
+- **The fixed demo learner identity is no longer used for normal web
+  requests** (AC-024-08): `DEMO_LEARNER_ID` remains only as seeded demo
+  content metadata for application-layer tests.
+- **Privacy, not accounts** (§1, §4): no registration, email, password, or
+  social login; no cross-device promise — clearing the cookie simply starts a
+  fresh anonymous learner (§5.3). The identity is an internal ownership
+  identifier, never a credential and never rendered in pages or URLs (§9).
+- **Future portability** (§10): a later recovery/sign-in mechanism attaches
+  to the internal `learner_id`; the external identity never becomes the
+  practice-history key.
+
+---
+
 ## Progress
 
 Progress records learner development across Skill Labs.
