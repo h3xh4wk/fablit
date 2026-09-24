@@ -39,6 +39,12 @@ from .errors import (
     SubmissionInProgressError,
     UnknownPracticeModeError,
 )
+from .practice_continuity import (
+    CONTINUATION_ACTION_LABEL,
+    CONTINUATION_HEADING,
+    PracticeTransition,
+    build_practice_transition_map,
+)
 from .practice_modes import (
     PracticeMode,
     PracticeModeDefinition,
@@ -48,6 +54,7 @@ from .stimulus import StimulusProvider
 from .store import DemoActivity, LearnerJourneyStore, PracticeCompletion
 from .view_models import (
     CompletionView,
+    ContinuationView,
     FeedbackView,
     PracticeActivitySummary,
     PracticeActivityView,
@@ -104,6 +111,13 @@ class PracticeApplication:
         # SPEC-022: the supported practice modes and their curated activity
         # eligibility, resolved once from the seeded content configuration.
         self._practice_modes = build_practice_mode_definitions(store.list_activities())
+        # SPEC-025: the authored next-practice transitions, resolved once from
+        # the seeded content configuration. Content-level state only: the map
+        # never consults learner identity, history, scores, or behaviour, so
+        # every learner completing the same activity sees the same continuation.
+        self._practice_transitions = build_practice_transition_map(
+            store.list_activities()
+        )
 
     # SPEC-022 — Practice Mode Choice
 
@@ -470,11 +484,56 @@ class PracticeApplication:
         )
 
     def _completion_view(self) -> CompletionView:
+        """Prepare the completion view with its authored continuation (SPEC-025).
+
+        SPEC-025 §3.1: after successful completion the learner may see a quiet
+        continuation. The transition is looked up from the authored content
+        configuration by the completed activity's identity alone — never from
+        learner history, scores, completion counts, or behaviour (§3.2, AC 4)
+        — and the learner is always free to ignore it (§3.3, AC 7).
+        """
         return CompletionView(
             message=(
                 "You have completed this practice. Your reflection has been recorded."
-            )
+            ),
+            continuation=self._continuation_view(),
         )
+
+    def _continuation_view(self) -> ContinuationView | None:
+        """Resolve the authored continuation for the just-completed activity."""
+        reflection = self._store.last_reflection()
+        if reflection is None:
+            return None
+        feedback = self._store.get_feedback(reflection.feedback_id)
+        evaluation = self._store.get_evaluation(feedback.evaluation_id)
+        submission = self._store.get_submission(evaluation.submission_id)
+        transition = self._practice_transitions.get(submission.activity_id)
+        if transition is None:
+            return None
+        target = self._store.get_activity(transition.target_activity_id)
+        return self._transition_view(transition, target)
+
+    def _transition_view(
+        self,
+        transition: PracticeTransition,
+        target: DemoActivity,
+    ) -> ContinuationView:
+        """Prepare one continuation for presentation (SPEC-025 §3.1, §6)."""
+        return ContinuationView(
+            target_activity_id=target.activity.id,
+            target_title=target.title,
+            transition_copy=transition.transition_copy,
+        )
+
+    @property
+    def continuation_heading(self) -> str:
+        """The learner-facing continuation heading (SPEC-025 §6)."""
+        return CONTINUATION_HEADING
+
+    @property
+    def continuation_action_label(self) -> str:
+        """The learner-facing continuation call to action (SPEC-025 §6)."""
+        return CONTINUATION_ACTION_LABEL
 
     def _skill_names(self, skill_ids: tuple[UUID, ...]) -> tuple[str, ...]:
         return tuple(self._store.get_skill(skill_id).name for skill_id in skill_ids)

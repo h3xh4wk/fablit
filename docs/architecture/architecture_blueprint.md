@@ -1,9 +1,9 @@
 # Fablit Architecture Blueprint
 
 **Document ID:** AB-001
-**Version:** 0.9.0
+**Version:** 0.10.0
 **Status:** Draft
-**Last Updated:** 2026-09-19
+**Last Updated:** 2026-09-24
 
 ---
 
@@ -573,6 +573,43 @@ learner-scoped persistence (SPEC-021 history repository, unchanged)
 - **Future portability** (§10): a later recovery/sign-in mechanism attaches
   to the internal `learner_id`; the external identity never becomes the
   practice-history key.
+
+---
+
+## Curated Practice Continuity (SPEC-025)
+
+SPEC-025 makes the moment after completion educationally meaningful: the
+learner may see one authored next practice, with the relationship between
+the two activities made visible. This is authored content continuity, not
+personalization — the design principle is **connect practices, not
+learners**.
+
+```text
+Completion (SPEC-018)
+        ↓
+Practice transition map (content configuration, practice_continuity.py)
+        ↓ names one existing activity
+Completion view + Continuation view → quiet continuation on /complete
+        ↓ (learner's choice)
+existing practice journey (SPEC-012…018) → SPEC-021 history (SPEC-024 owner)
+```
+
+- **Content configuration, not a recommendation service** (§7): the
+  transition table (`_AUTHORED_TRANSITIONS` in
+  `fablit/application/practice_continuity.py`) pairs source and target
+  activities by title — the same title-keyed convention as the SPEC-022
+  drill list — resolved once to stable activity identities. New transitions
+  are added by editing the table, never application logic.
+- **Deterministic and learner-independent** (AC 2, AC 4): the transition
+  resolves from the completed activity's identity alone; two learners who
+  complete the same activity always receive the same continuation.
+- **Journey and boundaries unchanged** (§3.4): following the continuation
+  runs the existing Submission → Evaluation → Feedback → Reflection →
+  Completion journey, persists under the current learner's identity through
+  the SPEC-021/SPEC-024 boundaries, and repeated practice stays available.
+- **The learner stays in control** (§3.3): the continuation is a quiet,
+  editorial invitation on the completion page — never a forced step; Explore
+  and History navigation remain exactly as before.
 
 ---
 

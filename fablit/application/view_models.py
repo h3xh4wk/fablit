@@ -82,6 +82,24 @@ class CompletionView:
     """The completion confirmation shown after saving a Reflection (UC-007)."""
 
     message: str
+    #: The authored next-practice continuation (SPEC-025 §3.1), when the
+    #: completed activity has one. ``None`` keeps the completion page exactly
+    #: as it was: the continuation is an invitation, never a forced step.
+    continuation: ContinuationView | None = None
+
+
+@dataclass(frozen=True)
+class ContinuationView:
+    """One authored next-practice continuation (SPEC-025 §3.1, §6).
+
+    Presentation data for the quiet completion surface: the target practice
+    and the authored copy that relates it to what the learner just did. It
+    carries no recommendation, ranking, or learner-history signal.
+    """
+
+    target_activity_id: UUID
+    target_title: str
+    transition_copy: str
 
 
 # SPEC-021: Practice History and Review Views

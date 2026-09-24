@@ -215,6 +215,13 @@ class LearnerJourneyStore:
                 "evaluation is not part of the current journey"
             ) from None
 
+    def get_feedback(self, feedback_id: UUID) -> Feedback:
+        """Return a recorded Feedback by identity."""
+        try:
+            return self._feedback[feedback_id]
+        except KeyError:
+            raise FeedbackNotFoundError("Feedback not found.") from None
+
     def current_feedback(self) -> Feedback:
         """Return the feedback currently shown to the learner."""
         if self._current_feedback_id is None:
