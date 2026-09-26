@@ -918,6 +918,30 @@ ol {
 }
 
 /* --------------------------------------------------------------------------
+   Practice exports (SPEC-027)
+
+   Export is a quiet utility attached to existing history/review surfaces,
+   not a new dashboard destination or progress signal.
+   -------------------------------------------------------------------------- */
+.history__export,
+.review__export {
+  margin-top: var(--space-8);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--color-rule);
+}
+
+.history__export p,
+.review__export p {
+  color: var(--color-ink-muted);
+  margin-bottom: var(--space-4);
+}
+
+.history__export .button,
+.review__export .button {
+  font-size: var(--text-small);
+}
+
+/* --------------------------------------------------------------------------
    Responsive behaviour (§25–26): mobile → tablet → desktop
    -------------------------------------------------------------------------- */
 @media (min-width: 40rem) {
