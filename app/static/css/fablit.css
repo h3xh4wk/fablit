@@ -622,6 +622,40 @@ ol {
 }
 
 /* --------------------------------------------------------------------------
+   Metacognitive practice & reflection (SPEC-026)
+   The intention is quiet session context; the reflection panel is an
+   invitation with an explicit skip. Nothing is scored or evaluated.
+   -------------------------------------------------------------------------- */
+.practice__intention {
+  color: var(--color-ink-muted);
+  font-size: var(--text-small);
+  margin-top: var(--space-2);
+}
+
+.intention__prompt {
+  font-size: var(--text-lede, 1.125rem);
+  margin-bottom: var(--space-5);
+}
+
+.feedback-section--reflect .feedback__intention {
+  color: var(--color-ink-muted);
+  font-size: var(--text-small);
+}
+
+.feedback-section--reflect .feedback__reflection-question {
+  color: var(--color-ink-muted);
+}
+
+.inline-form {
+  display: inline;
+}
+
+.review__intention {
+  color: var(--color-ink-muted);
+  font-size: var(--text-small);
+}
+
+/* --------------------------------------------------------------------------
    Header navigation (SPEC-021 §8) — the calm path to previous practice.
    -------------------------------------------------------------------------- */
 .site-header__nav {

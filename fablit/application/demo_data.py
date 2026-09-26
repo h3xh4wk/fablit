@@ -50,6 +50,39 @@ REFLECTION_PROMPT = (
     "What will you try differently the next time you practise this skill?"
 )
 
+#: Learner-facing copy for the optional pre-practice intention prompt
+#: (SPEC-026 §2.1). The intention is an invitation, never a gate: skipping
+#: always leads straight into the unchanged practice journey.
+INTENTION_PROMPT = (
+    "Before you begin, is there a specific focus you'd like to hold for "
+    "this practice? (For example: focus on explicit naming, or check "
+    "boundary cases before submitting.)"
+)
+INTENTION_HEADING = "Set an intention"
+INTENTION_ACTION_LABEL = "Continue with intention"
+INTENTION_SKIP_LABEL = "Skip — go straight to practice"
+
+#: Learner-facing copy for the optional post-evaluation reflection prompts
+#: (SPEC-026 §2.2). Both prompts are optional and purely qualitative: the
+#: system never grades, evaluates, or critiques what the learner writes.
+STRATEGY_ASSESSMENT_PROMPT = (
+    "What strategy or mental model did you use to complete this activity?"
+)
+GAP_ANALYSIS_PROMPT = (
+    "What was the primary friction point or misconception you encountered?"
+)
+REFLECTION_HEADING = "A moment to reflect"
+REFLECTION_SAVE_LABEL = "Save reflection"
+REFLECTION_SKIP_LABEL = "Skip reflection"
+
+#: The structured post-practice reflection prompts, in presentation order.
+#: SPEC-026 composes the single purposeful SPEC-012 reflection prompt with
+#: the two qualitative SPEC-026 prompts on the same panel.
+POST_EVALUATION_PROMPTS: tuple[str, ...] = (
+    STRATEGY_ASSESSMENT_PROMPT,
+    GAP_ANALYSIS_PROMPT,
+)
+
 #: The bundled fallback images served by the application (SPEC-015 §22).
 COMPOSITION_IMAGE = "/static/images/stimulus-composition.svg"
 DETAIL_IMAGE = "/static/images/stimulus-detail.svg"

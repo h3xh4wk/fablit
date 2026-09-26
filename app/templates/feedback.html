@@ -31,11 +31,21 @@
       {% endfor %}
     </ul>
   </section>
-  <section class="feedback-section">
-    <h2>🌱 Reflect</h2>
-    <p>{{ view.reflection_prompt }}</p>
+  <section class="feedback-section feedback-section--reflect" aria-labelledby="reflect-heading">
+    <h2 id="reflect-heading">🌱 {{ reflection_heading }}</h2>
+    <p class="feedback__reflection-prompt">{{ view.reflection_prompt }}</p>
+    {% if view.intention %}
+    <p class="feedback__intention">Your intention for this practice: {{ view.intention }}</p>
+    {% endif %}
+    {% for prompt in view.prompts %}
+    <p class="feedback__reflection-question">{{ prompt }}</p>
+    {% endfor %}
     <p class="form-actions">
-      <a class="button" href="/reflect">Continue <span aria-hidden="true">→</span></a>
+      <a class="button" href="/reflect">{{ reflection_save_label }} <span aria-hidden="true">→</span></a>
+      <form method="post" action="/reflect" class="inline-form">
+        <input type="hidden" name="content" value="">
+        <button type="submit" class="button button--secondary">{{ reflection_skip_label }}</button>
+      </form>
     </p>
   </section>
 </article>

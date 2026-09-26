@@ -320,3 +320,42 @@ def test_submission_is_usable_in_memory_without_infrastructure() -> None:
 
     assert isinstance(submission, Submission)
     assert submission.status is SubmissionStatus.SUBMITTED
+
+
+# ---------------------------------------------------------------------------
+# Pre-practice intention (SPEC-026 §2.1, §3)
+# ---------------------------------------------------------------------------
+
+
+def test_submitted_submission_defaults_to_no_intention() -> None:
+    """The intention is optional: existing Submissions remain valid (§3)."""
+    submission = make_submitted_submission()
+
+    assert submission.pre_practice_intention is None
+
+
+def test_submitted_submission_carries_its_session_intention() -> None:
+    submission = make_submitted_submission(
+        pre_practice_intention="Focus on boundary cases before submitting."
+    )
+
+    assert submission.pre_practice_intention == (
+        "Focus on boundary cases before submitting."
+    )
+
+
+def test_intention_survives_the_submit_transition() -> None:
+    """``submit()`` preserves the captured session intention."""
+    submission = make_submission(
+        pre_practice_intention="Keep variable naming explicit."
+    ).submit(submitted_at=datetime.now(UTC))
+
+    assert submission.status is SubmissionStatus.SUBMITTED
+    assert submission.pre_practice_intention == "Keep variable naming explicit."
+
+
+@pytest.mark.parametrize("intention", ["", "   ", "\n", 42])
+def test_reject_submission_with_invalid_intention(intention: object) -> None:
+    """An intention must be a meaningful string when present (None = absent)."""
+    with pytest.raises(InvalidSubmissionError):
+        make_submission(pre_practice_intention=intention)

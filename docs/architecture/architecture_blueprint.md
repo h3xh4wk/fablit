@@ -1,9 +1,9 @@
 # Fablit Architecture Blueprint
 
 **Document ID:** AB-001
-**Version:** 0.10.0
+**Version:** 0.11.0
 **Status:** Draft
-**Last Updated:** 2026-09-24
+**Last Updated:** 2026-09-26
 
 ---
 
@@ -610,6 +610,49 @@ existing practice journey (SPEC-012…018) → SPEC-021 history (SPEC-024 owner)
 - **The learner stays in control** (§3.3): the continuation is a quiet,
   editorial invitation on the completion page — never a forced step; Explore
   and History navigation remain exactly as before.
+
+---
+
+## Metacognitive Practice & Reflection Integration (SPEC-026)
+
+SPEC-026 weaves metacognition into the existing journey so the learner
+experiences one continuous loop — **set intent → practise → receive
+evaluation feedback → reflect → review the whole artifact** — without new
+domain models, scoring, analytics, or AI analysis.
+
+```text
+Activity selected (SPEC-019 / SPEC-025)
+        ↓
+GET /activities/{id}/intention — optional focus prompt (Continue / Skip)
+        ↓
+Intention attached to the session's Submission at response time
+        ↓
+Evaluation feedback (SPEC-017) with the structured reflection panel
+        ↓ (Save reflection / Skip reflection)
+Completion (SPEC-018) → SPEC-021 review renders the whole artifact
+```
+
+- **Optional intention, never a gate** (§2.1): the single-input prompt is
+  reached from the dashboard and continuation surfaces; direct activity
+  entry still works unchanged, a blank submission is accepted gracefully,
+  and the captured focus is echoed quietly in the workspace and on the
+  reflection page.
+- **Optional structured reflection** (§2.2): the feedback page carries two
+  qualitative prompts — strategy assessment and gap analysis — immediately
+  after the evaluation rendering, with Save and Skip controls. A skipped or
+  blank reflection completes the practice in the journey store without
+  creating a `Reflection` record; durable SPEC-021 history remains
+  reflection-bound (PHR-001), so no history entry is written for a skipped
+  reflection. The completion acknowledgement reflects what actually
+  happened.
+- **Whole-artifact review** (§2.3): the SPEC-021 review renders intention,
+  response, evaluation feedback, and reflection in chronological order. The
+  intention persists inside the stored Submission (both the in-memory and
+  Datastore adapters), with backward-compatible deserialization for records
+  written before SPEC-026.
+- **Reflections stay qualitative** (§4): no metric, mastery level, or
+  completion signal is derived from intention or reflection text, and no
+  automated feedback is produced on it.
 
 ---
 

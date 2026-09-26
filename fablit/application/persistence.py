@@ -88,12 +88,15 @@ class PracticeHistoryRepository(ABC):
 
         SPEC-021 §14: completion persistence must be idempotent/retry-safe and
         must not silently report durable completion when the write fails.
+        Durable history exists only after a saved Reflection (PHR-001):
+        SPEC-026-skipped reflections complete the practice in memory only.
 
         Args:
             learner_id: The learner whose practice is being completed.
             activity_id: The activity that was practiced.
             activity_title: The activity's display title.
-            submission: The learner's response (Submission domain object).
+            submission: The learner's response (Submission domain object); its
+                ``pre_practice_intention`` (SPEC-026) is persisted with it.
             evaluation: The evaluation result (Evaluation domain object).
             feedback: The feedback derived from the evaluation (Feedback).
             reflection: The learner's reflection (Reflection domain object).

@@ -19,7 +19,6 @@ from fablit.application import (
     CompletionNotFoundError,
     DemoActivity,
     DemoEvaluator,
-    InvalidReflectionResponseError,
     LearnerJourneyStore,
     PracticeApplication,
     build_demo_activities,
@@ -356,14 +355,16 @@ def test_completion_persisted_only_after_successful_reflection() -> None:
     assert len(repository.list_completions(LEARNER)) == 1
 
 
-def test_no_completion_persisted_when_reflection_is_rejected() -> None:
+def test_no_history_record_when_reflection_is_skipped() -> None:
+    """SPEC-026 with PHR-001: durable history exists only after a saved
+    Reflection. A skipped reflection completes the practice in memory but
+    never creates a durable history record."""
     repository = InMemoryPracticeHistoryRepository()
     application = make_history_application(repository=repository)
     activity_id = application.get_dashboard().activities[0].id
 
     application.submit_response(activity_id, "A response.")
-    with pytest.raises(InvalidReflectionResponseError):
-        application.submit_reflection("   ")
+    application.submit_reflection(None)
 
     assert repository.list_completions(LEARNER) == ()
 

@@ -235,7 +235,10 @@ def test_feedback_presents_conversational_sections() -> None:
     assert "What you noticed" in response.text
     assert "What to think about" in response.text
     assert "Try this next" in response.text
-    assert "Reflect" in response.text
+    assert "A moment to reflect" in response.text
+    # SPEC-026 §2.2: the structured reflection prompts follow the evaluation.
+    assert "What strategy or mental model did you use" in response.text
+    assert "friction point or misconception" in response.text
     assert "You noticed the contrast in the image" in response.text
 
 
@@ -334,7 +337,9 @@ def test_submit_reflection_redirects_to_completion() -> None:
     assert response.headers["location"] == "/complete"
 
 
-def test_empty_reflection_shows_validation_message() -> None:
+def test_empty_reflection_is_accepted_and_completes() -> None:
+    """SPEC-026 §2.2: submission with empty fields is accepted gracefully —
+    the learner skips the reflection and still reaches completion."""
     with TestClient(app) as client:
         _submit_first_activity(client)
         response = client.post(
@@ -343,8 +348,8 @@ def test_empty_reflection_shows_validation_message() -> None:
             follow_redirects=False,
         )
 
-    assert response.status_code == 200
-    assert "Please enter a reflection before saving." in response.text
+    assert response.status_code == 303
+    assert response.headers["location"] == "/complete"
 
 
 # --- Completion (SPEC-013 §21, SPEC-016 §18) ---------------------------------

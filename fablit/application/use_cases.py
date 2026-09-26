@@ -1,4 +1,4 @@
-"""Application use cases for the learner practice flow (SPEC-012…022).
+"""Application use cases for the learner practice flow (SPEC-012…026).
 
 This module implements UC-001 through UC-007 from SPEC-012 by composing the
 existing learning-domain models, and adds the SPEC-015 stimulus flow: when an
@@ -10,6 +10,12 @@ no HTML and no presentation logic: learner-facing view models
 SPEC-021 extends this with durable practice history and review: completed
 practice is persisted through the PracticeHistoryRepository port, and the
 learner can later retrieve and review specific completions.
+
+SPEC-026 weaves metacognition into the journey: an optional pre-practice
+intention is captured before the active workspace and attached to the
+session, and the post-evaluation reflection becomes optional (§2.1–2.2).
+Reflections remain qualitative learner artifacts: no scoring, analytics,
+or automated feedback is derived from them (§4).
 """
 
 from __future__ import annotations
@@ -29,7 +35,18 @@ from fablit.domain import (
     Submission,
 )
 
-from .demo_data import PRACTICE_MODE_CHOICE_QUESTION, REFLECTION_PROMPT
+from .demo_data import (
+    INTENTION_ACTION_LABEL,
+    INTENTION_HEADING,
+    INTENTION_PROMPT,
+    INTENTION_SKIP_LABEL,
+    POST_EVALUATION_PROMPTS,
+    PRACTICE_MODE_CHOICE_QUESTION,
+    REFLECTION_HEADING,
+    REFLECTION_PROMPT,
+    REFLECTION_SAVE_LABEL,
+    REFLECTION_SKIP_LABEL,
+)
 from .demo_evaluator import Evaluator
 from .errors import (
     CompletionNotFoundError,
@@ -56,6 +73,7 @@ from .view_models import (
     CompletionView,
     ContinuationView,
     FeedbackView,
+    IntentionView,
     PracticeActivitySummary,
     PracticeActivityView,
     PracticeDashboardView,
@@ -208,6 +226,9 @@ class PracticeApplication:
         resolved through the provider abstraction and becomes part of the
         learner's activity instance (§14). The same resolved stimulus is
         reused while the learner is working on this instance (§19).
+
+        SPEC-026 §2.1: a captured pre-practice intention is echoed in the
+        active workspace as quiet context, without blocking or grading it.
         """
         item = self._store.get_activity(activity_id)
         stimulus = self._resolve_stimulus(item)
@@ -218,7 +239,40 @@ class PracticeApplication:
             skills=self._skill_names(item.activity.skill_ids),
             prompt=item.activity.instructions,
             stimulus=self._stimulus_view(stimulus),
+            intention=self._store.pending_intention(activity_id),
         )
+
+    # SPEC-026 §2.1 — Pre-Practice Intention
+
+    def get_intention(self, activity_id: UUID) -> IntentionView:
+        """Prepare the optional pre-practice intention prompt (SPEC-026 §2.1).
+
+        Displayed immediately after the learner selects a practice activity
+        and before entering the active workspace. The prompt is optional and
+        single-input: the view model carries both the ``Continue with
+        Intention`` and ``Skip Intention`` paths, and neither blocks practice.
+        """
+        item = self._store.get_activity(activity_id)
+        return IntentionView(
+            activity_id=item.activity.id,
+            activity_title=item.title,
+            prompt=INTENTION_PROMPT,
+            heading=INTENTION_HEADING,
+            action_label=INTENTION_ACTION_LABEL,
+            skip_label=INTENTION_SKIP_LABEL,
+        )
+
+    def set_intention(self, activity_id: UUID, intention: str | None) -> None:
+        """Capture (or clear) the learner's pre-practice intention (§2.1).
+
+        A blank or whitespace-only string is treated exactly like ``None``:
+        submission with an empty field is accepted gracefully and simply
+        leaves no intention behind. A captured intention is held as pending
+        journey state and attaches to the session at submission.
+        """
+        if intention is None or not intention.strip():
+            return
+        self._store.set_pending_intention(activity_id, intention)
 
     # UC-003/004/005 — Submit Response + Response-Aware Evaluation + Feedback
     def submit_response(self, activity_id: UUID, response: str) -> FeedbackView:
@@ -235,6 +289,12 @@ class PracticeApplication:
             raise InvalidPracticeResponseError(
                 "Please enter a response before submitting."
             )
+        # SPEC-026 §2.1: the learner's pre-practice intention, if one was
+        # stated for this activity, is attached to the journey when the
+        # response is saved. The intention is qualitative session context
+        # only: it is never graded or shown to the evaluator. Consuming it at
+        # save time means an evaluation failure (§64) preserves the intention
+        # for the learner's retry.
         self._begin_submission(activity_id)
         try:
             submitted = Submission(
@@ -270,7 +330,10 @@ class PracticeApplication:
                 content=self._feedback_content(evaluation),
                 created_at=self._clock(),
             )
-            self._store.save_submission(submitted)
+            self._store.save_submission(
+                submitted,
+                intention=self._store.take_intention(activity_id),
+            )
             self._store.save_evaluation(evaluation)
             self._store.save_feedback(feedback)
             self._store.set_current_feedback(feedback.id)
@@ -301,36 +364,79 @@ class PracticeApplication:
 
     # UC-006 — Start Reflection
     def get_reflection(self) -> ReflectionView:
-        """Return the purposeful reflection prompt with feedback context."""
+        """Return the purposeful reflection prompt with feedback context.
+
+        SPEC-026 §2.2: the panel also carries the two structured qualitative
+        prompts (strategy assessment and gap analysis) and echoes the
+        session's pre-practice intention as quiet context. All fields are
+        optional; skipping never blocks completion.
+        """
         feedback = self._store.current_feedback()
         item = self._activity_for_feedback(feedback)
         return ReflectionView(
             activity_title=item.title,
             prompt=REFLECTION_PROMPT,
             context=feedback.content,
+            prompts=POST_EVALUATION_PROMPTS,
+            intention=self._session_intention(feedback),
         )
 
+    def _session_intention(self, feedback: Feedback) -> str | None:
+        """Return the intention captured for the current session, if any."""
+        evaluation = self._store.get_evaluation(feedback.evaluation_id)
+        submission = self._store.get_submission(evaluation.submission_id)
+        return submission.pre_practice_intention
+
     # UC-007 — Submit Reflection
-    def submit_reflection(self, content: str) -> CompletionView:
+    def submit_reflection(self, content: str | None) -> CompletionView:
         """Save the learner's Reflection and return the completion result.
 
-        SPEC-021: after successful reflection, the completion is persisted
+        SPEC-026 §2.2: the reflection is optional. ``None`` (or a blank
+        string — accepted gracefully) skips the reflection: the practice is
+        still completed in the journey store, no ``Reflection`` domain record
+        is created, and nothing is written to durable history. SPEC-021's
+        boundary is unchanged: durable history records exist only after a
+        saved Reflection (PHR-001), so a skipped reflection completes the
+        practice in memory without creating a history record.
+
+        SPEC-021: after a saved reflection, the completion is persisted
         durably through the history repository. If persistence fails, an
         explicit error is raised and the learner is not falsely told the
         completion was recorded (SPEC-021 §14).
         """
         feedback = self._store.current_feedback()
-        if not isinstance(content, str) or not content.strip():
+        if isinstance(content, str):
+            # SPEC-026 §2.2: blank input is an empty submission — accepted
+            # gracefully and treated as skipping the reflection.
+            content = content if content.strip() else None
+        elif content is not None:
             raise InvalidReflectionResponseError(
                 "Please enter a reflection before saving."
             )
+        activity = self._activity_for_feedback(feedback)
+        if content is None:
+            self._store.save_completion(
+                PracticeCompletion(
+                    learner_id=self._store.learner_id,
+                    activity_id=activity.activity.id,
+                    reflection_id=None,
+                    completed_at=self._clock(),
+                )
+            )
+            logger.info(
+                "practice completed without reflection",
+                extra={
+                    "learner_id": str(self._store.learner_id),
+                    "activity_id": str(activity.activity.id),
+                },
+            )
+            return self._completion_view()
         reflection = Reflection(
             feedback_id=feedback.id,
             content=content,
             created_at=self._clock(),
         )
         self._store.save_reflection(reflection)
-        activity = self._activity_for_feedback(feedback)
         self._store.save_completion(
             PracticeCompletion(
                 learner_id=self._store.learner_id,
@@ -367,8 +473,15 @@ class PracticeApplication:
         return self._completion_view()
 
     def get_completion(self) -> CompletionView:
-        """Return the completion confirmation once a Reflection has been saved."""
-        if self._store.last_reflection() is None:
+        """Return the completion confirmation once the journey is complete.
+
+        SPEC-026 §2.2: completion no longer requires a saved Reflection —
+        skipping the reflection completes the practice too. The acknowledgement
+        still requires a recorded practice completion (in-memory journey
+        state), preserving the SPEC-018 boundary that a submitted or
+        evaluated response alone never completes a journey.
+        """
+        if not self._store.recorded_completions():
             raise CompletionNotFoundError("No completed practice yet.")
         return self._completion_view()
 
@@ -452,6 +565,7 @@ class PracticeApplication:
             next_steps=next_steps,
             feedback=completion.feedback.content,
             reflection=completion.reflection.content,
+            pre_practice_intention=completion.submission.pre_practice_intention,
         )
 
     def _resolve_stimulus(self, item: DemoActivity) -> StimulusInstance | None:
@@ -491,11 +605,23 @@ class PracticeApplication:
         configuration by the completed activity's identity alone — never from
         learner history, scores, completion counts, or behaviour (§3.2, AC 4)
         — and the learner is always free to ignore it (§3.3, AC 7).
+
+        SPEC-026 §2.2: the acknowledgement reflects whether the learner saved
+        a reflection for THIS completion; skipping never blocks completion.
         """
-        return CompletionView(
-            message=(
+        feedback = self._store.current_feedback()
+        has_reflection = any(
+            reflection.feedback_id == feedback.id
+            for reflection in self._store.recorded_reflections()
+        )
+        if has_reflection:
+            message = (
                 "You have completed this practice. Your reflection has been recorded."
-            ),
+            )
+        else:
+            message = "You have completed this practice."
+        return CompletionView(
+            message=message,
             continuation=self._continuation_view(),
         )
 
@@ -529,6 +655,21 @@ class PracticeApplication:
     def continuation_heading(self) -> str:
         """The learner-facing continuation heading (SPEC-025 §6)."""
         return CONTINUATION_HEADING
+
+    @property
+    def reflection_heading(self) -> str:
+        """The learner-facing reflection panel heading (SPEC-026 §2.2)."""
+        return REFLECTION_HEADING
+
+    @property
+    def reflection_save_label(self) -> str:
+        """The learner-facing save-reflection action (SPEC-026 §2.2)."""
+        return REFLECTION_SAVE_LABEL
+
+    @property
+    def reflection_skip_label(self) -> str:
+        """The learner-facing skip-reflection action (SPEC-026 §2.2)."""
+        return REFLECTION_SKIP_LABEL
 
     @property
     def continuation_action_label(self) -> str:
@@ -581,6 +722,8 @@ class PracticeApplication:
             improvements=improvements,
             next_steps=next_steps,
             reflection_prompt=REFLECTION_PROMPT,
+            prompts=POST_EVALUATION_PROMPTS,
+            intention=self._session_intention(feedback),
         )
 
     def _categorise(

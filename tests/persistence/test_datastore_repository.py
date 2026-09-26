@@ -417,3 +417,44 @@ def test_entities_are_namespaced_per_learner() -> None:
     assert key.kind == "PracticeCompletion"
     assert key.name == str(completion_id)
     assert key.namespace == f"learner_{LEARNER}"
+
+
+# --- Pre-practice intention persistence (SPEC-026 §2.3) -------------------------
+
+
+def test_intention_round_trips_through_datastore() -> None:
+    repository, _client = make_repository()
+    fixtures = make_stored_fixtures()
+    submission = fixtures["submission"]
+    from dataclasses import replace as dc_replace
+
+    fixtures["submission"] = dc_replace(
+        submission, pre_practice_intention="Focus on the negative space."
+    )
+    completion_id = save_fixture(repository, fixtures)
+
+    retrieved = repository.get_completion(LEARNER, completion_id)
+
+    assert retrieved is not None
+    assert retrieved.submission.pre_practice_intention == (
+        "Focus on the negative space."
+    )
+
+
+def test_records_stored_before_spec_026_deserialize_without_intention() -> None:
+    """Older entities carry no intention key and reconstruct with ``None``."""
+    repository, client = make_repository()
+    fixtures = make_stored_fixtures()
+    completion_id = save_fixture(repository, fixtures)
+
+    # Simulate a pre-SPEC-026 record: strip the key from the stored entity.
+    stored_entity = client._store[
+        ("PracticeCompletion", str(completion_id), f"learner_{LEARNER}")
+    ]
+    assert "pre_practice_intention" in stored_entity["submission"]
+    del stored_entity["submission"]["pre_practice_intention"]
+
+    retrieved = repository.get_completion(LEARNER, completion_id)
+
+    assert retrieved is not None
+    assert retrieved.submission.pre_practice_intention is None

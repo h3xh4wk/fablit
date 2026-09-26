@@ -15,6 +15,7 @@ stimulus that was shown; the store never silently replaces it (§48).
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
@@ -80,11 +81,16 @@ class PracticeCompletion:
 
     Completion deliberately records only the learner, activity, reflection,
     and time. It conveys continuity without inferring achievement or mastery.
+
+    SPEC-026: ``reflection_id`` is ``None`` when the learner skipped the
+    optional post-practice reflection (§2.2): the practice is still complete
+    — skipping must never block completion or history recording in the
+    journey store (§2.2 acceptance criteria).
     """
 
     learner_id: UUID
     activity_id: UUID
-    reflection_id: UUID
+    reflection_id: UUID | None
     completed_at: datetime
 
 
@@ -109,6 +115,11 @@ class LearnerJourneyStore:
         self._feedback: dict[UUID, Feedback] = {}
         self._reflections: dict[UUID, Reflection] = {}
         self._completions: list[PracticeCompletion] = []
+        # SPEC-026 §2.1: the learner's optional pre-practice intention for the
+        # current activity instance. Pending journey state only: it is captured
+        # into the journey at submission (retry-safe) and never blocks practice.
+        self._pending_intention: str | None = None
+        self._pending_intention_activity_id: UUID | None = None
         self._current_stimulus_id: UUID | None = None
         self._current_stimulus_activity_id: UUID | None = None
         self._current_feedback_id: UUID | None = None
@@ -144,6 +155,45 @@ class LearnerJourneyStore:
     def save_stimulus(self, stimulus: StimulusInstance) -> None:
         self._stimuli[stimulus.id] = stimulus
 
+    # SPEC-026 §2.1 — pending pre-practice intention
+
+    def set_pending_intention(self, activity_id: UUID, intention: str) -> None:
+        """Record the learner's pre-practice intention for an activity.
+
+        The intention is held as pending journey state until the learner
+        submits a response for that activity, at which point the application
+        captures it into the journey (``take_intention``). Setting an
+        intention for a different activity replaces the pending one — the
+        learner practises one activity at a time.
+        """
+        self._pending_intention = intention
+        self._pending_intention_activity_id = activity_id
+
+    def pending_intention(self, activity_id: UUID) -> str | None:
+        """Return the pending intention for an activity without consuming it.
+
+        Used to echo the captured focus back in the active workspace
+        (SPEC-026 §2.1) while the learner works on the activity.
+        """
+        if self._pending_intention_activity_id != activity_id:
+            return None
+        return self._pending_intention
+
+    def take_intention(self, activity_id: UUID) -> str | None:
+        """Consume the pending intention when it matches the given activity.
+
+        Called when a response is submitted for ``activity_id``. A pending
+        intention for a different activity (for example an abandoned
+        intention) is left untouched so it cannot leak into another
+        activity's journey.
+        """
+        if self._pending_intention_activity_id != activity_id:
+            return None
+        intention = self._pending_intention
+        self._pending_intention = None
+        self._pending_intention_activity_id = None
+        return intention
+
     def set_current_stimulus(self, stimulus: StimulusInstance) -> None:
         """Record a stimulus as the current one for its activity instance."""
         self._stimuli[stimulus.id] = stimulus
@@ -172,7 +222,20 @@ class LearnerJourneyStore:
                 "stimulus is not part of the current journey"
             ) from None
 
-    def save_submission(self, submission: Submission) -> None:
+    def save_submission(
+        self, submission: Submission, *, intention: str | None = None
+    ) -> None:
+        """Record a Submission, attaching the session's intention (SPEC-026).
+
+        The Submission domain model is immutable, so the captured
+        pre-practice intention is attached by composing a new Submission
+        instance with the same identity: journey records keep the response
+        and its session context together for later review (§2.1, §2.3).
+        """
+        if intention is not None:
+            submission = dataclasses.replace(
+                submission, pre_practice_intention=intention
+            )
         self._submissions[submission.id] = submission
 
     def save_evaluation(self, evaluation: Evaluation) -> None:

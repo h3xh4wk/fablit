@@ -9,6 +9,9 @@
     <p class="practice__invitation" aria-hidden="true">{% if view.stimulus %}👀 Look a little closer{% else %}✍️ Take your time with this one{% endif %}</p>
     <h1 class="practice__title">{{ view.title }}</h1>
     <p class="practice__skill">{{ view.skills|join(", ") }}</p>
+    {% if view.intention %}
+    <p class="practice__intention">🎯 {{ view.intention }}</p>
+    {% endif %}
   </header>
   {% if view.stimulus %}
   <section class="practice__observe" aria-labelledby="observe-heading">

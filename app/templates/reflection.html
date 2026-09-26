@@ -7,7 +7,13 @@
   </nav>
   <h1 class="display">🌱 One last thing</h1>
   <p class="lede">You've had a chance to think about your feedback. One question to carry it forward.</p>
+  {% if view.intention %}
+  <p class="reflection__intention">Your intention for this practice: {{ view.intention }}</p>
+  {% endif %}
   <p class="reflection__prompt">{{ view.prompt }}</p>
+  {% for prompt in view.prompts %}
+  <p class="reflection__question">{{ prompt }}</p>
+  {% endfor %}
   {% if error %}
   <p class="field-error" role="alert">{{ error }}</p>
   {% endif %}

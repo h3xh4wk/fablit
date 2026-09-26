@@ -40,6 +40,10 @@ class Submission:
         status: The lifecycle state of the submission.
         submitted_at: The timezone-aware time of submission. Required for a
             Submitted Submission, absent for a Draft.
+        pre_practice_intention: The learner's optional pre-practice
+            intention for this session (SPEC-026 §2.1, §3), carried as
+            qualitative journey context. Deliberately optional so existing
+            Submissions remain valid; never evaluated or scored (§4).
 
     Raises:
         InvalidSubmissionError: When required domain information is missing
@@ -55,11 +59,20 @@ class Submission:
     id: UUID = field(default_factory=uuid4)
     status: SubmissionStatus = SubmissionStatus.DRAFT
     submitted_at: datetime | None = None
+    pre_practice_intention: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.id, UUID):
             raise InvalidSubmissionError(
                 f"submission must have a valid identity (got {self.id!r})"
+            )
+        if self.pre_practice_intention is not None and (
+            not isinstance(self.pre_practice_intention, str)
+            or not self.pre_practice_intention.strip()
+        ):
+            raise InvalidSubmissionError(
+                "a submission's pre-practice intention must be a meaningful string"
+                f" when present (got {self.pre_practice_intention!r})"
             )
         if not isinstance(self.learner_id, UUID):
             raise InvalidSubmissionError(
@@ -129,4 +142,5 @@ class Submission:
             response=self.response,
             status=SubmissionStatus.SUBMITTED,
             submitted_at=timestamp,
+            pre_practice_intention=self.pre_practice_intention,
         )
