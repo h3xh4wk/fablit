@@ -25,8 +25,8 @@ Designed for human readability, markdown note-taking apps (e.g., Obsidian, Notio
 
 ```markdown
 # Practice Log: [Activity Name]
-**Date:** 2026-09-26 14:30 UTC  
-**Session ID:** `sess_987654321`  
+**Date:** 2026-09-26 14:30 UTC
+**Session ID:** `sess_987654321`
 **Skill Target:** [Skill Domain Name]
 
 ## 1. Pre-Practice Intention
