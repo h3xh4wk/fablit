@@ -329,6 +329,44 @@ def create_app(config: AppConfig) -> FastAPI:
             request, "practice_mode_activities.html", {"view": view}
         )
 
+    @app.get("/activities/{activity_id}/intention", response_class=HTMLResponse)
+    async def intention_page(request: Request, activity_id: str) -> Response:
+        """Render the optional pre-practice intention prompt (SPEC-026 §2.1).
+
+        Shown after the learner selects a practice activity and before the
+        active workspace. The prompt is an invitation, never a gate: the
+        skip path leads straight into the unchanged practice journey.
+        """
+        practice = practice_for_request(request)
+        try:
+            view = practice.get_intention(_activity_id(activity_id))
+        except ActivityNotFoundError:
+            return _error_response(request, "Activity not found.")
+        return templates.TemplateResponse(request, "intention.html", {"view": view})
+
+    @app.post("/activities/{activity_id}/intention", response_class=HTMLResponse)
+    async def submit_intention(
+        request: Request,
+        activity_id: str,
+        intention: Annotated[str, Form()] = "",
+    ) -> Response:
+        """Capture (or skip) the pre-practice intention (SPEC-026 §2.1).
+
+        Both paths proceed to the active workspace: an empty or whitespace-
+        only intention is accepted gracefully and simply leaves no intention
+        behind (§2.1 — submission with empty fields is accepted).
+        """
+        practice = practice_for_request(request)
+        try:
+            activity = _activity_id(activity_id)
+        except ActivityNotFoundError:
+            return _error_response(request, "Activity not found.")
+        try:
+            practice.set_intention(activity, intention)
+        except ActivityNotFoundError:
+            return _error_response(request, "Activity not found.")
+        return RedirectResponse(f"/activities/{activity}", status_code=303)
+
     @app.get("/activities/{activity_id}", response_class=HTMLResponse)
     async def practice_page(request: Request, activity_id: str) -> Response:
         """Render the practice activity page (UC-002)."""
@@ -412,13 +450,27 @@ def create_app(config: AppConfig) -> FastAPI:
 
     @app.get("/feedback", response_class=HTMLResponse)
     async def feedback_page(request: Request) -> Response:
-        """Render the learner feedback page (UC-005)."""
+        """Render the learner feedback page (UC-005).
+
+        SPEC-026 §2.2: the feedback page carries the structured, optional
+        reflection panel (strategy assessment and gap analysis prompts with
+        Save/Skip controls) immediately after the evaluation rendering.
+        """
         practice = practice_for_request(request)
         try:
             view = practice.get_feedback()
         except FeedbackNotFoundError:
             return RedirectResponse("/", status_code=303)
-        return templates.TemplateResponse(request, "feedback.html", {"view": view})
+        return templates.TemplateResponse(
+            request,
+            "feedback.html",
+            {
+                "view": view,
+                "reflection_heading": practice.reflection_heading,
+                "reflection_save_label": practice.reflection_save_label,
+                "reflection_skip_label": practice.reflection_skip_label,
+            },
+        )
 
     @app.get("/reflect", response_class=HTMLResponse)
     async def reflection_page(request: Request) -> Response:
@@ -435,10 +487,13 @@ def create_app(config: AppConfig) -> FastAPI:
         request: Request,
         content: Annotated[str, Form()] = "",
     ) -> Response:
-        """Save the learner's Reflection and show completion (UC-007).
+        """Save (or skip) the learner's Reflection and show completion (UC-007).
 
-        SPEC-021: if persistence fails, an error is shown and the learner is
-        not falsely told the completion was recorded.
+        SPEC-026 §2.2: reflection fields are optional — a blank submission is
+        accepted gracefully and skips the reflection; practice completion and
+        history persistence are never blocked by skipping. SPEC-021: if
+        durable persistence of a saved reflection fails, an error is shown
+        and the learner is not falsely told the completion was recorded.
         """
         practice = practice_for_request(request)
         try:

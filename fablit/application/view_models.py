@@ -47,7 +47,12 @@ class StimulusView:
 
 @dataclass(frozen=True)
 class PracticeActivityView:
-    """An activity prepared for learner practice (UC-002)."""
+    """An activity prepared for learner practice (UC-002).
+
+    ``intention`` (SPEC-026 §2.1) echoes the learner's captured pre-practice
+    focus as quiet session context while they work; ``None`` when they
+    skipped the intention.
+    """
 
     id: UUID
     title: str
@@ -55,26 +60,66 @@ class PracticeActivityView:
     skills: tuple[str, ...]
     prompt: str
     stimulus: StimulusView | None = None
+    intention: str | None = None
 
 
 @dataclass(frozen=True)
 class FeedbackView:
-    """Learner-facing feedback derived from an Evaluation (UC-005)."""
+    """Learner-facing feedback derived from an Evaluation (UC-005).
+
+    SPEC-026 §2.2: the feedback view carries the structured, optional
+    reflection prompts so the panel can appear immediately after the
+    evaluation rendering, plus the session's pre-practice intention as
+    quiet context. All reflection fields remain optional for the learner.
+    """
 
     activity_title: str
     strengths: tuple[str, ...]
     improvements: tuple[str, ...]
     next_steps: tuple[str, ...]
     reflection_prompt: str
+    #: Structured qualitative prompts (SPEC-026 §2.2), in presentation order.
+    prompts: tuple[str, ...] = ()
+    #: The pre-practice intention captured for this session, if any (§2.1).
+    intention: str | None = None
 
 
 @dataclass(frozen=True)
 class ReflectionView:
-    """The purposeful reflection prompt with feedback context (UC-006)."""
+    """The purposeful reflection prompt with feedback context (UC-006).
+
+    SPEC-026 extends the reflection surface with optional, structured
+    qualitative prompts (strategy assessment and gap analysis, §2.2) shown
+    alongside the purposeful SPEC-012 prompt. All fields are optional for
+    the learner: submission with empty fields is accepted gracefully.
+    """
 
     activity_title: str
     prompt: str
     context: str
+    #: Structured qualitative prompts (SPEC-026 §2.2), in presentation order.
+    prompts: tuple[str, ...] = ()
+    #: Whether a pre-practice intention was recorded for this session, shown
+    #: back to the learner as quiet context while reflecting (§2.2).
+    intention: str | None = None
+
+
+@dataclass(frozen=True)
+class IntentionView:
+    """The optional pre-practice intention prompt (SPEC-026 §2.1).
+
+    Shown after a learner selects a practice activity and before entering
+    the active workspace. The intention is an invitation, never a gate:
+    the view carries everything needed to either capture a focus or skip
+    straight into practice.
+    """
+
+    activity_id: UUID
+    activity_title: str
+    prompt: str
+    heading: str = ""
+    action_label: str = ""
+    skip_label: str = ""
 
 
 @dataclass(frozen=True)
@@ -162,7 +207,11 @@ class PracticeReviewView:
     improvements: tuple[str, ...]
     next_steps: tuple[str, ...]
     feedback: str
-    reflection: str
+    reflection: str | None
+    #: The pre-practice intention captured for this session (SPEC-026 §2.1,
+    #: §2.3), rendered before the response in chronological order. ``None``
+    #: when the learner skipped the intention or practised before SPEC-026.
+    pre_practice_intention: str | None = None
 
 
 # SPEC-022: Practice Mode Views

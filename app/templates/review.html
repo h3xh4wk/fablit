@@ -21,6 +21,13 @@
   </section>
   {% endif %}
 
+  {% if view.pre_practice_intention %}
+  <section class="review__section">
+    <h2 class="practice__step">Your intention</h2>
+    <div class="review__evidence">{{ view.pre_practice_intention }}</div>
+  </section>
+  {% endif %}
+
   <section class="review__section">
     <h2 class="practice__step">Your response</h2>
     <div class="review__evidence">{{ view.learner_response }}</div>
@@ -50,10 +57,12 @@
     </div>
   </section>
 
+  {% if view.reflection %}
   <section class="review__section">
     <h2 class="practice__step">Your reflection</h2>
     <div class="review__evidence">{{ view.reflection }}</div>
   </section>
+  {% endif %}
 
   <nav class="review__nav" aria-label="Review navigation">
     <a class="button" href="/history">Back to your practice <span aria-hidden="true">→</span></a>

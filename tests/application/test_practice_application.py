@@ -431,13 +431,31 @@ def test_submit_reflection_creates_reflection_and_completion() -> None:
     assert completions[0].completed_at == _fixed_clock()
 
 
-@pytest.mark.parametrize("content", ["", "   ", "\n"])
-def test_submit_reflection_rejects_blank_content(content: str) -> None:
+@pytest.mark.parametrize("content", ["", "   ", "\n", None])
+def test_skipped_or_blank_reflection_completes_without_a_reflection_record(
+    content: str | None,
+) -> None:
+    """SPEC-026 §2.2: skipping (or submitting empty) never blocks completion."""
+    application, store = make_application()
+
+    application.submit_response(first_activity_id(application), "A response.")
+    view = application.submit_reflection(content)
+
+    assert isinstance(view, CompletionView)
+    assert store.recorded_reflections() == ()
+    completions = store.recorded_completions()
+    assert len(completions) == 1
+    assert completions[0].reflection_id is None
+    # The acknowledgement does not claim a reflection was recorded.
+    assert "reflection has been recorded" not in view.message
+
+
+def test_submit_reflection_still_rejects_non_string_content() -> None:
     application, store = make_application()
 
     application.submit_response(first_activity_id(application), "A response.")
     with pytest.raises(InvalidReflectionResponseError):
-        application.submit_reflection(content)
+        application.submit_reflection(123)  # type: ignore[arg-type]
 
     assert store.recorded_reflections() == ()
     assert store.recorded_completions() == ()

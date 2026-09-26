@@ -1,9 +1,9 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 1.5.0
+**Version:** 1.6.0
 **Status:** Draft
-**Last Updated:** 2026-09-24
+**Last Updated:** 2026-09-26
 
 ---
 
@@ -811,6 +811,29 @@ Practice History (SPEC-021) under the learner's identity (SPEC-024)
 | PT-003 | A transition is authored, curated content — never derived from learner identity, history, scores, completion counts, or inferred behaviour. |
 | PT-004 | Transition copy makes the relationship between the two practices visible, calmly and editorially, with no “recommended”, “best”, or pressure language. |
 | PT-005 | Following a transition starts the unchanged journey; the target practice is recorded and reviewed like any other completion, and the learner can always ignore the continuation. |
+
+## Pre-Practice Intention (SPEC-026)
+
+A **Pre-Practice Intention** is the learner's own optional, qualitative
+statement of focus for the practice they are about to begin — captured after
+selecting an activity and before entering the active workspace, attached to
+the session's Submission, and rendered for review with the completed
+artifact. It exists to support metacognition: naming a focus before
+practising, then seeing that focus again while reflecting.
+
+An intention is never required, never blocks practice, and is never graded,
+analysed, or shown to any evaluator — it is a qualitative learner artifact,
+not an assessment input. A blank or skipped intention simply leaves nothing
+behind.
+
+### Domain Rules Reference
+
+| Rule | Description |
+|------|-------------|
+| PPI-001 | A Pre-Practice Intention is optional; stating or skipping it never blocks entry into practice or completion. |
+| PPI-002 | A captured intention is attached to the session's Submission and remains associated with that attempt only. |
+| PPI-003 | An intention is never graded, analysed, or consumed by evaluation, feedback, or any scoring mechanism. |
+| PPI-004 | A reviewed practice shows the intention captured for that attempt, before the response, when one exists. |
 
 ## Learner Practice Application Flow (SPEC-012)
 

@@ -317,6 +317,9 @@ class DatastorePracticeHistoryRepository(PracticeHistoryRepository):
             "response": submission.response,
             "submitted_at": submission.submitted_at,
             "status": submission.status.value,
+            # SPEC-026 §2.3: the session's optional pre-practice intention is
+            # persisted with the response so review can render it.
+            "pre_practice_intention": submission.pre_practice_intention,
         }
 
     @staticmethod
@@ -331,6 +334,8 @@ class DatastorePracticeHistoryRepository(PracticeHistoryRepository):
             id=UUID(data["id"]),
             submitted_at=data["submitted_at"],
             status=SubmissionStatus(data["status"]),
+            # Records stored before SPEC-026 carry no intention key.
+            pre_practice_intention=data.get("pre_practice_intention"),
         )
 
     @staticmethod

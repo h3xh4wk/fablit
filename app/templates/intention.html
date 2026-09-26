@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}{{ view.heading or "Intention" }}{% endblock %}
+{% block content %}
+<article class="intention">
+  <nav class="subnav" aria-label="Back to the activity list">
+    <a href="/"><span aria-hidden="true">←</span> All activities</a>
+  </nav>
+  <h1 class="display">{{ view.heading }}</h1>
+  <p class="lede">{{ view.activity_title }}</p>
+  <p class="intention__prompt">{{ view.prompt }}</p>
+  <form method="post" action="/activities/{{ view.activity_id }}/intention">
+    <label class="form-label" for="intention">Your intention (optional)</label>
+    <textarea id="intention" name="intention" class="form-control" rows="3"></textarea>
+    <p class="form-actions">
+      <button type="submit" class="button">{{ view.action_label }} <span aria-hidden="true">→</span></button>
+      <button type="submit" name="intention" value="" class="button button--secondary">{{ view.skip_label }}</button>
+    </p>
+  </form>
+</article>
+{% endblock %}
