@@ -17,6 +17,7 @@ learner (see ``app.learner_session``).
 """
 
 import logging
+from dataclasses import asdict, is_dataclass
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -251,6 +252,26 @@ async def request_logging_middleware(
         return response
     finally:
         reset_request_context(token)
+
+
+def _export_record(view: object) -> dict[str, object]:
+    """Prepare a JSON-safe learner practice artifact for SPEC-027."""
+    if not is_dataclass(view):
+        raise TypeError("Practice export requires a dataclass view.")
+    data = asdict(view)
+
+    def normalise(value: object) -> object:
+        if isinstance(value, UUID):
+            return str(value)
+        if hasattr(value, "isoformat") and callable(value.isoformat):
+            return value.isoformat()
+        if isinstance(value, dict):
+            return {str(key): normalise(item) for key, item in value.items()}
+        if isinstance(value, (tuple, list)):
+            return [normalise(item) for item in value]
+        return value
+
+    return normalise(data)  # type: ignore[return-value]
 
 
 def create_app(config: AppConfig) -> FastAPI:
@@ -568,7 +589,18 @@ def create_app(config: AppConfig) -> FastAPI:
                 status_code=500,
                 description=str(exc),
             )
-        return templates.TemplateResponse(request, "history.html", {"view": view})
+        export_records = []
+        for entry in view.entries:
+            try:
+                review = practice.get_practice_review(entry.completion_id)
+            except (CompletionNotFoundError, PersistenceError):
+                continue
+            export_records.append(_export_record(review))
+        return templates.TemplateResponse(
+            request,
+            "history.html",
+            {"view": view, "export_records": export_records},
+        )
 
     @app.get("/history/{completion_id}", response_class=HTMLResponse)
     async def practice_review(request: Request, completion_id: str) -> Response:
@@ -610,7 +642,11 @@ def create_app(config: AppConfig) -> FastAPI:
                 description=str(exc),
             )
 
-        return templates.TemplateResponse(request, "review.html", {"view": view})
+        return templates.TemplateResponse(
+            request,
+            "review.html",
+            {"view": view, "export_record": _export_record(view)},
+        )
 
     @app.get("/health")
     async def health() -> dict[str, str]:
