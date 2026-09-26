@@ -16,7 +16,10 @@ from app.main import app
 
 
 def _activity_hrefs(dashboard_html: str) -> list[str]:
-    return re.findall(r'href="(/activities/[0-9a-f-]+)"', dashboard_html)
+    """Activity hrefs on a page. Card actions lead to the SPEC-026 intention
+    prompt (`/activities/<id>/intention`); the journeys here drive the
+    activity itself, so only the activity path prefix is returned."""
+    return re.findall(r'href="(/activities/[0-9a-f-]+)', dashboard_html)
 
 
 def _first_activity_href(client: TestClient) -> str:
@@ -94,7 +97,11 @@ def test_htmx_submission_returns_feedback_content_in_place() -> None:
     assert response.status_code == 200
     assert "What you noticed" in response.text
     assert "Try this next" in response.text
-    assert "Continue" in response.text
+    # SPEC-026 §2.2: the HTMX partial carries the same structured reflection
+    # panel as the full feedback page — Save and Skip controls, not the old
+    # single Continue link.
+    assert "Save reflection" in response.text
+    assert "Skip reflection" in response.text
 
 
 # --- AC-017-03: Duplicate prevention -------------------------------------------

@@ -24,7 +24,15 @@ def _client() -> TestClient:
 
 
 def _first_activity_href(dashboard_html: str) -> str:
-    return "/activities/" + dashboard_html.split('href="/activities/')[1].split('"')[0]
+    href = "/activities/" + dashboard_html.split('href="/activities/')[1].split('"')[0]
+    # Card actions lead through the SPEC-026 intention prompt; the journeys
+    # here drive the practice activity itself, so drop the intention suffix.
+    return href.removesuffix("/intention")
+
+
+def _card_action_href(page_html: str) -> str:
+    """The first card's action href — leads through the intention prompt."""
+    return "/activities/" + page_html.split('href="/activities/')[1].split('"')[0]
 
 
 def _submit_first_activity(client: TestClient) -> str:
@@ -256,3 +264,115 @@ def test_no_scores_or_evaluation_language_on_metacognitive_surfaces() -> None:
         assert "score" not in lowered
         assert "points" not in lowered
         assert "mastery" not in lowered
+
+
+# --- Journey wiring (#92): selecting an activity leads through the prompt ---------
+
+
+def test_dashboard_activity_cards_lead_to_the_intention_prompt() -> None:
+    """AC 1: selecting an activity from Explore shows the intention prompt."""
+    with _client() as client:
+        dashboard = client.get("/")
+        card_href = _card_action_href(dashboard.text)
+        intention = client.get(card_href)
+
+    assert card_href.endswith("/intention")
+    assert intention.status_code == 200
+    assert "Set an intention" in intention.text
+    assert "Continue with intention" in intention.text
+    assert "Skip" in intention.text
+
+
+def test_practice_mode_activity_cards_lead_to_the_intention_prompt() -> None:
+    """AC 1: the SPEC-022 entry shows the intention prompt before practice."""
+    with _client() as client:
+        mode_page = client.get("/practice/short-drill")
+        card_href = _card_action_href(mode_page.text)
+        intention = client.get(card_href)
+
+    assert card_href.endswith("/intention")
+    assert intention.status_code == 200
+    assert "Set an intention" in intention.text
+
+
+def test_completion_continuation_leads_to_the_intention_prompt() -> None:
+    """AC 1: the SPEC-025 continuation enters practice through the prompt."""
+    with _client() as client:
+        _submit_first_activity(client)
+        client.post("/reflect", data={"content": "I will look for balance."})
+        completion = client.get("/complete")
+        section = completion.text.split('class="continuation"')[1]
+        continuation_href = next(
+            line.split('href="')[1].split('"')[0]
+            for line in section.splitlines()
+            if 'href="/activities/' in line
+        )
+        intention = client.get(continuation_href)
+
+    assert continuation_href.endswith("/intention")
+    assert intention.status_code == 200
+    assert "Set an intention" in intention.text
+
+
+def test_clicking_a_card_then_skipping_reaches_practice_without_an_intention() -> None:
+    """AC 2 + AC 5: the card path reaches practice; skipping is never a gate."""
+    with _client() as client:
+        dashboard = client.get("/")
+        card_href = _card_action_href(dashboard.text)
+        activity_href = card_href.removesuffix("/intention")
+        response = client.post(
+            card_href, data={"intention": ""}, follow_redirects=False
+        )
+        practice = client.get(activity_href)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == activity_href
+    assert practice.status_code == 200
+    assert "Your task" in practice.text
+    assert "practice__intention" not in practice.text
+
+
+# --- Journey wiring (#92): the HTMX feedback path carries the full panel ----------
+
+
+def test_htmx_feedback_shows_structured_reflection_prompts_and_controls() -> None:
+    """AC 3: the default (HTMX) flow shows the panel, as the full page does."""
+    with _client() as client:
+        dashboard = client.get("/")
+        href = _first_activity_href(dashboard.text)
+        response = client.post(
+            href + "/submit",
+            data={"response": "The contrast is striking."},
+            headers={"HX-Request": "true"},
+        )
+
+    assert response.status_code == 200
+    assert "A moment to reflect" in response.text
+    assert (
+        "What strategy or mental model did you use to complete this activity?"
+        in response.text
+    )
+    assert "What was the primary friction point or misconception you encountered?" in (
+        response.text
+    )
+    assert "Save reflection" in response.text
+    assert "Skip reflection" in response.text
+
+
+def test_htmx_feedback_echoes_a_stated_intention() -> None:
+    """AC 4: the intention echo appears in the swapped-in feedback panel."""
+    with _client() as client:
+        dashboard = client.get("/")
+        href = _first_activity_href(dashboard.text)
+        client.post(
+            href + "/intention", data={"intention": "Watch the negative space."}
+        )
+        response = client.post(
+            href + "/submit",
+            data={"response": "The contrast is striking."},
+            headers={"HX-Request": "true"},
+        )
+
+    assert response.status_code == 200
+    assert "Watch the negative space." in response.text
+    assert "Your intention for this practice" in response.text

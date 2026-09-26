@@ -37,7 +37,7 @@
       <p class="card__invitation">{{ activity.description }}</p>
       <div class="card__footer">
         <p class="card__skill">{{ activity.skills|join(", ") }}</p>
-        <a class="card__action" href="/activities/{{ activity.id }}">Explore <span aria-hidden="true">→</span></a>
+        <a class="card__action" href="/activities/{{ activity.id }}/intention">Explore <span aria-hidden="true">→</span></a>
       </div>
     </li>
     {% endfor %}

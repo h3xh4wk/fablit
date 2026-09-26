@@ -26,7 +26,10 @@ def _mode_choice(client: TestClient) -> str:
 
 
 def _activity_hrefs(html: str) -> list[str]:
-    return re.findall(r'href="(/activities/[0-9a-f-]+)"', html)
+    """Activity hrefs on a page. Card actions lead to the SPEC-026 intention
+    prompt (`/activities/<id>/intention`); the journeys here drive the
+    activity itself, so only the activity path prefix is returned."""
+    return re.findall(r'href="(/activities/[0-9a-f-]+)', html)
 
 
 # --- Mode chooser rendering (AC-022-01) ----------------------------------------

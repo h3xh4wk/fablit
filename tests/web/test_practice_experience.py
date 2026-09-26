@@ -22,7 +22,10 @@ from app.main import app
 
 
 def _activity_hrefs(dashboard_html: str) -> list[str]:
-    return re.findall(r'href="(/activities/[0-9a-f-]+)"', dashboard_html)
+    """Activity hrefs on a page. Card actions lead to the SPEC-026 intention
+    prompt (`/activities/<id>/intention`); the journeys here drive the
+    activity itself, so only the activity path prefix is returned."""
+    return re.findall(r'href="(/activities/[0-9a-f-]+)', dashboard_html)
 
 
 def _first_activity_href(client: TestClient) -> str:

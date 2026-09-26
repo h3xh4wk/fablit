@@ -25,7 +25,10 @@ def _client() -> TestClient:
 
 
 def _first_activity_href(dashboard_html: str) -> str:
-    return "/activities/" + dashboard_html.split('href="/activities/')[1].split('"')[0]
+    href = "/activities/" + dashboard_html.split('href="/activities/')[1].split('"')[0]
+    # Card actions lead through the SPEC-026 intention prompt; the journeys
+    # here drive the practice activity itself, so drop the intention suffix.
+    return href.removesuffix("/intention")
 
 
 def _activity_href_by_title(dashboard_html: str, title_fragment: str) -> str:
@@ -36,7 +39,8 @@ def _activity_href_by_title(dashboard_html: str, title_fragment: str) -> str:
     """
     for chunk in dashboard_html.split('class="card"'):
         if title_fragment in chunk:
-            return "/activities/" + chunk.split('href="/activities/')[1].split('"')[0]
+            href = "/activities/" + chunk.split('href="/activities/')[1].split('"')[0]
+            return href.removesuffix("/intention")
     raise AssertionError(f"no dashboard card found for: {title_fragment}")
 
 
@@ -56,11 +60,16 @@ def _complete_first_practice(client: TestClient, response: str) -> str:
 
 
 def _continuation_href(completion_html: str) -> str:
-    """Extract the continuation's activity href from the completion page."""
+    """Extract the continuation's activity href from the completion page.
+
+    The continuation action leads through the SPEC-026 intention prompt;
+    return the bare activity href so journeys can drive either surface.
+    """
     section = completion_html.split('class="continuation"')[1]
     for line in section.splitlines():
         if 'href="/activities/' in line:
-            return line.split('href="')[1].split('"')[0]
+            href = line.split('href="')[1].split('"')[0]
+            return href.removesuffix("/intention")
     raise AssertionError("no continuation link found on the completion page")
 
 

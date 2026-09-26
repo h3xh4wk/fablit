@@ -17,6 +17,11 @@ Local constraints:
   wanted: ``uv run playwright install chromium`` (or point
   ``PLAYWRIGHT_EXECUTABLE_PATH`` at an existing Chromium/Chrome binary).
   Root containers may also need ``PLAYWRIGHT_NO_SANDBOX=1``.
+
+SPEC-026 (#92): the journey now walks the wired metacognitive flow —
+activity selection leads through the optional intention prompt, and the
+HTMX feedback panel carries the structured reflection prompts with Save
+and Skip controls, matching the full feedback page.
 """
 
 from __future__ import annotations
@@ -119,8 +124,20 @@ def _run_journey(page: Page, base_url: str) -> None:
     ).to_be_visible()
     expect(page.get_by_role("link", name="Explore").first).to_be_visible()
 
+    # SPEC-026 §2.1: selecting an activity leads through the optional
+    # intention prompt before the active workspace (issue #92 wiring).
     page.get_by_role("link", name="Explore").first.click()
+    expect(
+        page.get_by_role("heading", name="Set an intention", exact=True)
+    ).to_be_visible()
+    page.get_by_label("Your intention (optional)").fill(
+        "Focus on how two elements interact."
+    )
+    page.get_by_role("button", name="Continue with intention").click()
+
     expect(page.get_by_label("What's your reading of it?")).to_be_visible()
+    # The stated intention is echoed quietly in the active workspace.
+    expect(page.get_by_text("Focus on how two elements interact.")).to_be_visible()
     # The practice page is visually quieter than the dashboard (SPEC-013 §14).
     expect(page.get_by_role("link", name="Explore")).to_have_count(0)
     # SPEC-015 §71: the learner sees the resolved image before responding.
@@ -145,7 +162,25 @@ def _run_journey(page: Page, base_url: str) -> None:
     # SPEC-015 §71: the feedback reflects the learner's actual response.
     expect(page.get_by_text("You noticed the contrast in the image")).to_be_visible()
 
-    page.get_by_role("link", name="Continue").click()
+    # SPEC-026 §2.2: the HTMX-swapped feedback carries the full structured
+    # reflection panel — the same one the no-JS feedback page renders.
+    expect(page.get_by_text("A moment to reflect")).to_be_visible()
+    expect(
+        page.get_by_text(
+            "What strategy or mental model did you use to complete this activity?"
+        )
+    ).to_be_visible()
+    expect(
+        page.get_by_text(
+            "What was the primary friction point or misconception you encountered?"
+        )
+    ).to_be_visible()
+    # The intention echo travels into the reflection panel as quiet context.
+    expect(
+        page.get_by_text("Your intention for this practice: Focus on how two")
+    ).to_be_visible()
+
+    page.get_by_role("link", name="Save reflection").click()
     expect(
         page.get_by_text(
             "What will you try differently the next time you practise this skill?"
@@ -171,6 +206,26 @@ def test_learner_journey_in_browser() -> None:
         browser: Browser = playwright.chromium.launch(**_launch_options())
         try:
             _run_journey(browser.new_page(), base_url)
+        finally:
+            browser.close()
+
+
+def test_intention_skip_path_in_browser() -> None:
+    """Skipping the intention goes straight to practice, never a gate."""
+    with _running_server() as base_url, sync_playwright() as playwright:
+        browser: Browser = playwright.chromium.launch(**_launch_options())
+        try:
+            page = browser.new_page()
+            page.goto(base_url)
+            page.get_by_role("link", name="Explore").first.click()
+            expect(
+                page.get_by_role("heading", name="Set an intention", exact=True)
+            ).to_be_visible()
+            page.get_by_role("button", name="Skip — go straight to practice").click()
+
+            expect(page.get_by_label("What's your reading of it?")).to_be_visible()
+            # No intention was stated, so no echo is rendered.
+            expect(page.locator(".practice__intention")).to_have_count(0)
         finally:
             browser.close()
 

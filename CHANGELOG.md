@@ -17,6 +17,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 See [SPEC-026](specifications/platform/SPEC-026-metacognitive-practice-and-reflection-integration.md) — issue [#90](https://github.com/h3xh4wk/fablit/issues/90) — for details.
 
+### Fixed
+
+- **SPEC-026 wiring ([issue #92](https://github.com/h3xh4wk/fablit/issues/92))**: the metacognitive surfaces were implemented but unreachable in the normal learner journey — the intention prompt had no inbound links, and the default HTMX feedback path rendered a pre-SPEC-026 minimal reflection section.
+  - Activity selection now leads through the optional intention prompt: Explore dashboard cards, practice-mode activity cards, and the SPEC-025 completion continuation all point to `/activities/{id}/intention` before the active workspace. Direct activity entry still works unchanged; skipping stays an invitation, never a gate.
+  - The HTMX feedback partial (`_feedback_partial.html`) now matches the full feedback page: structured strategy-assessment and gap-analysis prompts, the intention echo when one was stated, and explicit Save/Skip reflection controls (labels passed from the application in `_feedback_partial` rendering).
+  - Web tests (6 new) cover intention-first navigation from all three entry surfaces and HTMX feedback parity; the Playwright browser journey walks the wired flow end to end (intention → practice → HTMX feedback panel → reflection → completion) and a new browser test covers the skip path. Existing journey tests updated for the card-href change.
+
 - **SPEC-025 — Curated Practice Continuity**: completing a practice can now offer a deliberately curated next practice, making the movement between kinds of design thinking visible — Observe → Interpret → Ideate → Articulate → Reflect → practise again. Authored content continuity, not personalization: connect practices, not learners.
   - A quiet continuation appears on the completion page when the completed activity has an authored transition: the relationship in one or two editorial sentences ("You just observed an object closely. Now try turning that observation into a design idea."), the next practice's title, and a single calm call to action. No recommendation, ranking, pressure, or gamified language.
   - The transition table is explicit content configuration (`fablit/application/practice_continuity.py`, `_AUTHORED_TRANSITIONS`), pairing seven of the twelve library activities with a curated next practice — checked against the actual activity content so each demonstrates meaningful movement between capabilities, not a shared label. New transitions are added by editing the table, never application logic; drifted titles are skipped safely.

@@ -187,12 +187,17 @@ def _feedback_partial(request: Request, practice: PracticeApplication) -> HTMLRe
     """Render the feedback content for HTMX partial swap (SPEC-017).
 
     The feedback view is obtained from the practice application and rendered
-    from a partial template that contains no page chrome.
+    from a partial template that contains no page chrome. SPEC-026: the
+    partial carries the same structured reflection panel as the full page,
+    so the HTMX path matches the no-JS path.
     """
     view = practice.get_feedback()
     html = templates.env.get_template("_feedback_partial.html").render(
         request=request,
         view=view,
+        reflection_heading=practice.reflection_heading,
+        reflection_save_label=practice.reflection_save_label,
+        reflection_skip_label=practice.reflection_skip_label,
     )
     return HTMLResponse(content=html)
 
