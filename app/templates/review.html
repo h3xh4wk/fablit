@@ -64,6 +64,13 @@
   </section>
   {% endif %}
 
+  <section class="review__export" aria-labelledby="review-export-heading">
+    <h2 id="review-export-heading" class="practice__step">Keep a copy</h2>
+    <p>Export this practice as a Markdown note.</p>
+    <button class="button button--secondary js-export-session" type="button">Export this practice</button>
+    <script type="application/json" id="fablit-session-export-data">{{ export_record|tojson }}</script>
+  </section>
+
   <nav class="review__nav" aria-label="Review navigation">
     <a class="button" href="/history">Back to your practice <span aria-hidden="true">→</span></a>
     <a class="button button--secondary" href="/">Go to explore <span aria-hidden="true">→</span></a>
