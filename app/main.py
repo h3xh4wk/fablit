@@ -17,9 +17,9 @@ learner (see ``app.learner_session``).
 """
 
 import logging
-from dataclasses import asdict, is_dataclass
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Annotated
 from uuid import UUID, uuid4
@@ -267,7 +267,7 @@ def _export_record(view: object) -> dict[str, object]:
             return value.isoformat()
         if isinstance(value, dict):
             return {str(key): normalise(item) for key, item in value.items()}
-        if isinstance(value, (tuple, list)):
+        if isinstance(value, tuple | list):
             return [normalise(item) for item in value]
         return value
 
