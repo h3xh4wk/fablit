@@ -32,6 +32,15 @@
   </ul>
   {% endif %}
 
+  {% if not view.is_empty %}
+  <section class="history__export" aria-labelledby="history-export-heading">
+    <h2 id="history-export-heading">Keep a copy</h2>
+    <p>Export your practice history for your own notes or study archive.</p>
+    <button class="button button--secondary js-export-history" type="button">Export history as JSON</button>
+    <script type="application/json" id="fablit-history-export-data">{{ export_records|tojson }}</script>
+  </section>
+  {% endif %}
+
   <nav class="subnav" aria-label="History navigation">
     <a href="/">Back to explore</a>
   </nav>
