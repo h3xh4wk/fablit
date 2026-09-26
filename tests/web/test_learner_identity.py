@@ -40,7 +40,10 @@ def _app_client() -> TestClient:
 
 
 def _first_activity_href(dashboard_html: str) -> str:
-    return "/activities/" + dashboard_html.split('href="/activities/')[1].split('"')[0]
+    href = "/activities/" + dashboard_html.split('href="/activities/')[1].split('"')[0]
+    # Card actions lead through the SPEC-026 intention prompt; the journeys
+    # here drive the practice activity itself, so drop the intention suffix.
+    return href.removesuffix("/intention")
 
 
 def _complete_practice(client: TestClient, response: str, reflection: str) -> str:

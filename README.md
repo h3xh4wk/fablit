@@ -198,7 +198,7 @@ You can also run the consolidated developer workflow:
 make check
 ```
 
-Playwright is included in the development toolchain for browser-level checks. The browser journey test (`tests/e2e`) drives the full learner flow — including the SPEC-015 visual stimulus and response-aware feedback — in Chromium, but it is **skipped in the local environment by default**: it only runs when `RUN_BROWSER_TESTS=1` is set, and the CI workflow runs it in a dedicated browser job (`uv run playwright install --with-deps chromium`). Normal local runs (`make check`, `pytest`) stay green without any browser installed.
+Playwright is included in the development toolchain for browser-level checks. The browser journey test (`tests/e2e`) drives the full learner flow — including the SPEC-026 intention prompt, the SPEC-015 visual stimulus, response-aware feedback with the structured reflection panel, and the skip path — in Chromium, but it is **skipped in the local environment by default**: it only runs when `RUN_BROWSER_TESTS=1` is set, and the CI workflow runs it in a dedicated browser job (`uv run playwright install --with-deps chromium`). Normal local runs (`make check`, `pytest`) stay green without any browser installed.
 
 Because many local environments have constraints (no Playwright browser download, no display, or sandbox restrictions — root containers in particular), browser tests are not supported locally: keep them skipped and let the CI browser job cover them. Only opt in locally when a compatible browser is genuinely available:
 
