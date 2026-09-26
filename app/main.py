@@ -253,10 +253,9 @@ async def request_logging_middleware(
     finally:
         reset_request_context(token)
 
-
 def _export_record(view: object) -> dict[str, object]:
     """Prepare a JSON-safe learner practice artifact for SPEC-027."""
-    if not is_dataclass(view):
+    if not is_dataclass(view) or isinstance(view, type):
         raise TypeError("Practice export requires a dataclass view.")
     data = asdict(view)
 
@@ -272,7 +271,6 @@ def _export_record(view: object) -> dict[str, object]:
         return value
 
     return normalise(data)  # type: ignore[return-value]
-
 
 def create_app(config: AppConfig) -> FastAPI:
     """Assemble the Fablit FastAPI application for the given configuration.
