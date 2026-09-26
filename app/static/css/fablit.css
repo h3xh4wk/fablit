@@ -554,6 +554,35 @@ ol {
 }
 
 /* --------------------------------------------------------------------------
+   Completion continuation (SPEC-025 §6)
+   Calm and editorial: the relationship to the completed activity is made
+   visible, with no pressure language and no recommendation claims. The
+   existing navigation below remains the learner's other paths.
+   -------------------------------------------------------------------------- */
+.continuation {
+  border-top: 1px solid var(--color-rule);
+  margin: 0 0 var(--space-6);
+  padding-top: var(--space-5);
+}
+
+.continuation__heading {
+  font-family: var(--font-display);
+  font-size: var(--text-title);
+  line-height: var(--leading-tight);
+  margin-bottom: var(--space-2);
+}
+
+.continuation__copy {
+  color: var(--color-ink-muted);
+  margin-bottom: var(--space-2);
+}
+
+.continuation__target {
+  font-family: var(--font-display);
+  margin-bottom: var(--space-4);
+}
+
+/* --------------------------------------------------------------------------
    Submission processing states (SPEC-017)
    -------------------------------------------------------------------------- */
 

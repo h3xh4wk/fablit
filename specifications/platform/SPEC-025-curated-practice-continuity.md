@@ -1,7 +1,7 @@
 # SPEC-025 — Curated Practice Continuity
 
-**Status:** Proposed  
-**Area:** Practice / Learner Journey  
+**Status:** Proposed
+**Area:** Practice / Learner Journey
 **Depends on:** SPEC-018 — Learner Practice Continuity & Progress Foundation, SPEC-021 — Persistent Practice History & Learner Review, SPEC-022 — Optional Practice Modes & Learner Choice, SPEC-023 — Practice Library Expansion & Skill Coverage, SPEC-024 — Learner Identity & Private Practice History
 
 ## 1. Objective

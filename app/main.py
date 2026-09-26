@@ -465,13 +465,26 @@ def create_app(config: AppConfig) -> FastAPI:
 
     @app.get("/complete", response_class=HTMLResponse)
     async def completion_page(request: Request) -> Response:
-        """Render the completion confirmation."""
+        """Render the completion confirmation with its continuation (SPEC-025).
+
+        The continuation is authored content resolved by the completed
+        activity alone — never learner state — and is an invitation, not a
+        forced next step: Explore and History stay reachable as before.
+        """
         practice = practice_for_request(request)
         try:
             view = practice.get_completion()
         except CompletionNotFoundError:
             return RedirectResponse("/", status_code=303)
-        return templates.TemplateResponse(request, "complete.html", {"view": view})
+        return templates.TemplateResponse(
+            request,
+            "complete.html",
+            {
+                "view": view,
+                "continuation_heading": practice.continuation_heading,
+                "continuation_action_label": practice.continuation_action_label,
+            },
+        )
 
     # SPEC-021: Practice History and Review Routes
 
