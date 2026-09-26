@@ -20,7 +20,7 @@
     const lines = [
       "# Practice Log: " + (record.activity_title || "Untitled practice"),
       "**Date:** " + (record.completed_at || ""),
-      "**Session ID:** " + (record.activity_id || ""), ""
+      "**Activity ID:** " + (record.activity_id || ""), ""
     ];
     if (record.pre_practice_intention) lines.push("## 1. Pre-Practice Intention", "> " + record.pre_practice_intention, "");
     lines.push("## 2. Submitted Artifact", "", "```", record.learner_response || "", "```", "");
