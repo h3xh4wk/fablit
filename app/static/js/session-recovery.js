@@ -7,6 +7,8 @@
   const TTL = 24 * 60 * 60 * 1000;
   const scopeKey = "fablit_recovery_scope";
   const safe = (fn) => { try { return fn(); } catch (_) { return null; } };
+  const sessionGet = (name) => safe(() => sessionStorage.getItem(name));
+  const sessionSet = (name, value) => { safe(() => sessionStorage.setItem(name, value)); };
   const getScope = () => safe(() => {
     let value = localStorage.getItem(scopeKey);
     if (!value) {
@@ -88,6 +90,11 @@
   const nowDraft = (key, id, fields, prior) => Object.assign({}, prior || {}, fields, {
     key, activityId: id, updatedAt: Date.now()
   });
+  // Submit-time writes are async; the post-submission cleanup must land
+  // after them or the write would resurrect the draft it just saved.
+  // Keyed by activity ID: after a successful swap the submitting form is
+  // already detached, so it cannot carry the association itself.
+  const pendingWrites = new Map();
   const bindField = (form, field, key, id, name, initial) => {
     let timer;
     const save = () => {
@@ -109,11 +116,13 @@
   const initIntention = async (form) => {
     if (form.dataset.recoveryReady) return;
     const id = activityId(form, "intention");
-    const field = form.elements.namedItem("intention");
+    // querySelector, not elements.namedItem: the skip button shares the
+    // "intention" name, which would return a RadioNodeList, not the field.
+    const field = form.querySelector('textarea[name="intention"]');
     if (!id || !field) return;
     form.dataset.recoveryReady = "1";
     const key = keyFor(id);
-    try { sessionStorage.setItem("fablit_active_activity", id); } catch (_) {}
+    sessionSet("fablit_active_activity", id);
     const draft = await read(key);
     if (draft && Date.now() - draft.updatedAt < TTL) field.value = draft.intention || "";
     bindField(form, field, key, id, "intention");
@@ -121,10 +130,10 @@
   const initPractice = async (form) => {
     if (form.dataset.recoveryReady) return;
     const id = activityId(form, "submit");
-    const field = form.elements.namedItem("response");
+    const field = form.querySelector('textarea[name="response"]');
     if (!id || !field) return;
     form.dataset.recoveryReady = "1";
-    sessionStorage.setItem("fablit_active_activity", id);
+    sessionSet("fablit_active_activity", id);
     const key = keyFor(id);
     const draft = await read(key);
     if (draft && Date.now() - draft.updatedAt < TTL && (draft.response || draft.intention || draft.reflection)) {
@@ -147,33 +156,50 @@
     }
     bindField(form, field, key, id, "response");
     form.addEventListener("submit", () => {
-      const pending = read(key).then((previous) => write(nowDraft(key, id, {response: field.value}, previous)));
-      form.dataset.recoveryPending = "1";
-      void pending;
+      pendingWrites.set(
+        id,
+        read(key).then((previous) => write(nowDraft(key, id, {response: field.value}, previous)))
+      );
     });
-    document.body.addEventListener("htmx:afterRequest", async (event) => {
-      if (event.detail && event.detail.elt === form && event.detail.successful) {
-        const target = document.querySelector("#submission-area");
-        if (target && !target.querySelector('textarea[name="response"]')) await remove(key);
-      }
-    });
+  };
+  // htmx fires afterRequest on the requesting element, but a successful
+  // submission detaches the form, so the event is re-fired on the nearest
+  // still-connected ancestor instead. Identify the request by its path.
+  const clearDraftAfterSubmission = async (event) => {
+    const detail = event.detail;
+    if (!detail || !detail.successful) return;
+    const path = (detail.pathInfo && detail.pathInfo.requestPath)
+      || (detail.requestConfig && detail.requestConfig.path) || "";
+    const match = path.match(/\/activities\/([0-9a-f-]+)\/submit/i);
+    if (!match) return;
+    const id = match[1];
+    const pending = pendingWrites.get(id);
+    if (pending) await pending;
+    pendingWrites.delete(id);
+    // Only clear when the swap really replaced the response form; a failed
+    // validation swap re-renders the textarea and the draft stays useful.
+    const target = document.querySelector("#submission-area");
+    if (target && !target.querySelector('textarea[name="response"]')) {
+      await remove(keyFor(id));
+    }
   };
   const initReflection = async (form) => {
     if (form.dataset.recoveryReady) return;
-    const id = sessionStorage.getItem("fablit_active_activity");
-    const field = form.elements.namedItem("content");
+    const id = sessionGet("fablit_active_activity");
+    // querySelector guarantees the textarea itself — the feedback page's
+    // inline skip form also has a (hidden) "content" input that must not
+    // be bound or restored.
+    const field = form.querySelector('textarea[name="content"]');
     if (!id || !field) return;
     form.dataset.recoveryReady = "1";
     const key = keyFor(id);
     const draft = await read(key);
     if (draft && Date.now() - draft.updatedAt < TTL && draft.reflection) field.value = draft.reflection;
     bindField(form, field, key, id, "reflection");
-
   };
   const cleanupCompleted = async () => {
     if (location.pathname !== "/feedback" && location.pathname !== "/complete") return;
-    let id;
-    try { id = sessionStorage.getItem("fablit_active_activity"); } catch (_) { return; }
+    const id = sessionGet("fablit_active_activity");
     if (id) await remove(keyFor(id));
   };
   const init = () => {
@@ -181,6 +207,7 @@
     document.querySelectorAll('form[action*="/submit"]').forEach(initPractice);
     document.querySelectorAll('form[action="/reflect"]').forEach(initReflection);
   };
-  purge().finally(() => { void cleanupCompleted(); init(); });
+  document.body.addEventListener("htmx:afterRequest", clearDraftAfterSubmission);
   document.body.addEventListener("htmx:afterSwap", init);
+  purge().finally(() => { void cleanupCompleted(); init(); });
 })();

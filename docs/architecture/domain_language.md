@@ -1,9 +1,9 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 1.6.0
+**Version:** 1.7.0
 **Status:** Draft
-**Last Updated:** 2026-09-26
+**Last Updated:** 2026-09-27
 
 ---
 
@@ -834,6 +834,32 @@ behind.
 | PPI-002 | A captured intention is attached to the session's Submission and remains associated with that attempt only. |
 | PPI-003 | An intention is never graded, analysed, or consumed by evaluation, feedback, or any scoring mechanism. |
 | PPI-004 | A reviewed practice shows the intention captured for that attempt, before the response, when one exists. |
+
+## Local Practice Draft (SPEC-028)
+
+A **Local Practice Draft** is the learner's uncommitted, in-progress input —
+the response being written, the pre-practice intention being phrased, or the
+reflection being considered — held transiently in the learner's own browser
+so an accidental reload or tab closure does not lose work. It is a
+device-local convenience artifact, not a platform record: it never reaches
+the server, is never scored, analysed, or graded, and is removed once the
+real artifact (a `Submission`, an intention attached to the journey, or a
+`Reflection`) is committed, or after 24 hours.
+
+The draft layer is deliberately absent from the domain and application
+layers — it lives entirely in a client module (`app/static/js/session-
+recovery.js`). A draft that never became a submission leaves no trace
+anywhere but the learner's device.
+
+### Domain Rules Reference
+
+| Rule | Description |
+|------|-------------|
+| LPD-001 | A Local Practice Draft exists only in the learner's browser storage (IndexedDB primary, `localStorage` fallback) and is never transmitted to the server. |
+| LPD-002 | A draft is keyed by browser scope and activity identity; the SPEC-024 learner cookie stays HttpOnly and is never exposed to the draft layer. |
+| LPD-003 | A draft is an offer, never a gate: resuming or discarding is always the learner's choice, and missing storage degrades to standard practice. |
+| LPD-004 | A draft is removed when the corresponding artifact commits (successful submission) or after 24 hours, so no stale state outlives its usefulness. |
+| LPD-005 | A draft is never scored, analysed, or graded; recovery copy stays calm and factual, with no urgency or progress language. |
 
 ## Learner Practice Application Flow (SPEC-012)
 
