@@ -1,9 +1,9 @@
 # Fablit Architecture Blueprint
 
 **Document ID:** AB-001
-**Version:** 0.11.0
+**Version:** 0.12.0
 **Status:** Draft
-**Last Updated:** 2026-09-26
+**Last Updated:** 2026-09-27
 
 ---
 
@@ -653,6 +653,45 @@ Completion (SPEC-018) → SPEC-021 review renders the whole artifact
 - **Reflections stay qualitative** (§4): no metric, mastery level, or
   completion signal is derived from intention or reflection text, and no
   automated feedback is produced on it.
+
+---
+
+## Session Resilience & Local Practice Recovery (SPEC-028)
+
+SPEC-028 protects active practice against accidental reloads, tab closures,
+and transient input loss with a client-side transient storage layer. The
+server application is unchanged: the entire layer is a static module
+(`app/static/js/session-recovery.js`) wired once in `base.html`, and no
+draft ever reaches the network.
+
+```text
+Learner typing (intention / response / reflection)
+        ↓ 3s debounce or field blur
+IndexedDB (primary) → localStorage (fallback) → silent no-op (§3)
+        ↓ reload / return to the activity
+Recovery banner (response): Resume Draft / Discard Draft
+Quiet restore (intention, reflection)
+        ↓ successful submission
+Draft key removed immediately; 24h purge on launch
+```
+
+- **Storage key format** (§3): `fablit_draft_<scope>_<activity_id>`. The
+  SPEC-024 learner cookie is deliberately HttpOnly — unreadable by client
+  script — so the client layer maintains its own opaque, anonymous scope
+  persisted in `localStorage`. Isolation is per browser, equivalent in
+  intent to the spec's learner key, without exposing identity to
+  JavaScript.
+- **Tracked state** (§2.1): active activity ID, draft pre-practice
+  intention, active response draft, draft post-practice reflection, and the
+  timestamp of the last local mutation (driving the 24-hour expiry, §2.3).
+- **Graceful degradation** (§3): when storage is disabled or quota is
+  exceeded, every write/read becomes a silent no-op and standard
+  uninterrupted practice continues — recovery is an enhancement, never a
+  dependency.
+- **Boundaries unchanged** (§3.4): drafts are transient convenience state;
+  the durable artifact remains the SPEC-021 history record written after
+  successful reflection. Drafts are never scored, analysed, or graded, and
+  the recovery copy stays calm and factual.
 
 ---
 

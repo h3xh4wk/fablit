@@ -130,6 +130,7 @@ SPEC-012 introduces the first application layer under `fablit.application`, sepa
 - Learner identity boundary (SPEC-024) — `fablit/platform/learner_identity.py` provides the opaque identity and secure cookie primitives, and `app/learner_session.py` centralises per-request identity resolution and learner-scoped application wiring; the fixed demo learner identity is no longer used for normal web traffic, and two anonymous learners never share history
 - Practice transition configuration (SPEC-025) — `fablit/application/practice_continuity.py` holds the authored source → target transition table (title-keyed, resolved to stable activity identities) and the `ContinuationView` view model surfaces it on completion; the continuation resolves from the completed activity alone and never from learner state
 - Pre-practice intention (SPEC-026) — an optional, qualitative focus statement captured before the active workspace (`get_intention`/`set_intention`), held as pending journey state in `LearnerJourneyStore`, attached to the session's `Submission` (`pre_practice_intention`) at response time, persisted with history, and rendered in review; it is never graded or consumed by evaluation
+- Session recovery layer (SPEC-028) — `app/static/js/session-recovery.js`, a client-only static module that auto-saves the active response, intention, and reflection drafts to browser storage (IndexedDB primary, `localStorage` fallback) on a 3-second debounce or blur, offers a quiet Resume/Discard banner for uncommitted response drafts, purges drafts after successful submission and after 24 hours, and degrades gracefully when storage is unavailable; drafts never reach the server
 
 The vertical slice introduces no authentication, scoring, Progress, mastery, recommendations, gamification, or examination-specific logic.
 
@@ -159,6 +160,15 @@ After completing a practice, the learner may see a quiet continuation: one autho
 - **Connect practices, not learners:** transitions are authored content configuration (`_AUTHORED_TRANSITIONS` in `fablit/application/practice_continuity.py`), checked against the actual activity content so each demonstrates meaningful movement between capabilities. Seven of the twelve activities carry an initial transition.
 - **Deterministic and learner-independent:** the continuation resolves from the completed activity's identity alone — never history, scores, completion counts, or behaviour — so every learner completing the same activity sees the same continuation.
 - **An invitation, never a forced step:** the completion page presents the relationship calmly and editorially, with no recommendation, ranking, or pressure language; Explore and History navigation are unchanged, and starting the next practice runs the existing journey into the SPEC-021 history.
+
+## Session resilience and local practice recovery (SPEC-028)
+
+An accidental reload or closed tab no longer loses work in progress — uncommitted drafts survive entirely on the learner's device.
+
+- **Client-only by design:** drafts live in the browser (IndexedDB primary, `localStorage` fallback); no auto-save request is ever sent to the server, and the Python application is unaware of the layer.
+- **Quiet recovery:** returning to an activity with an uncommitted response draft shows an understated banner with **Resume Draft** and **Discard Draft**; intention and reflection drafts restore quietly on their own pages. Recovery is always an offer, never a gate.
+- **Self-cleaning:** a successful submission removes the draft key immediately, and drafts older than 24 hours are purged on launch. If storage is disabled or quota is exceeded, standard uninterrupted practice continues.
+- **No pressure, no scores:** the recovery copy describes what was saved on the device — no urgency, streak, or progress language, and drafts are never analysed or scored.
 
 ## Metacognitive practice and reflection (SPEC-026)
 
@@ -198,7 +208,7 @@ You can also run the consolidated developer workflow:
 make check
 ```
 
-Playwright is included in the development toolchain for browser-level checks. The browser journey test (`tests/e2e`) drives the full learner flow — including the SPEC-026 intention prompt, the SPEC-015 visual stimulus, response-aware feedback with the structured reflection panel, and the skip path — in Chromium, but it is **skipped in the local environment by default**: it only runs when `RUN_BROWSER_TESTS=1` is set, and the CI workflow runs it in a dedicated browser job (`uv run playwright install --with-deps chromium`). Normal local runs (`make check`, `pytest`) stay green without any browser installed.
+Playwright is included in the development toolchain for browser-level checks. The browser journey test (`tests/e2e`) drives the full learner flow — including the SPEC-026 intention prompt, the SPEC-015 visual stimulus, response-aware feedback with the structured reflection panel, and the skip path — and `test_session_recovery.py` drives the SPEC-028 draft recovery lifecycle (auto-save, reload, resume/discard, clear-on-submit) against real browser storage, in Chromium, but they are **skipped in the local environment by default**: they only run when `RUN_BROWSER_TESTS=1` is set, and the CI workflow runs them in a dedicated browser job (`uv run playwright install --with-deps chromium`). Normal local runs (`make check`, `pytest`) stay green without any browser installed.
 
 Because many local environments have constraints (no Playwright browser download, no display, or sandbox restrictions — root containers in particular), browser tests are not supported locally: keep them skipped and let the CI browser job cover them. Only opt in locally when a compatible browser is genuinely available:
 
