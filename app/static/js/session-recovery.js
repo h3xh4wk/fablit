@@ -113,7 +113,7 @@
     if (!id || !field) return;
     form.dataset.recoveryReady = "1";
     const key = keyFor(id);
-    sessionStorage.setItem("fablit_active_activity", id);
+    try { sessionStorage.setItem("fablit_active_activity", id); } catch (_) {}
     const draft = await read(key);
     if (draft && Date.now() - draft.updatedAt < TTL) field.value = draft.intention || "";
     bindField(form, field, key, id, "intention");
@@ -168,13 +168,19 @@
     const draft = await read(key);
     if (draft && Date.now() - draft.updatedAt < TTL && draft.reflection) field.value = draft.reflection;
     bindField(form, field, key, id, "reflection");
-    form.addEventListener("submit", () => { void remove(key); });
+
+  };
+  const cleanupCompleted = async () => {
+    if (location.pathname !== "/feedback" && location.pathname !== "/complete") return;
+    let id;
+    try { id = sessionStorage.getItem("fablit_active_activity"); } catch (_) { return; }
+    if (id) await remove(keyFor(id));
   };
   const init = () => {
     document.querySelectorAll('form[action*="/intention"]').forEach(initIntention);
     document.querySelectorAll('form[action*="/submit"]').forEach(initPractice);
     document.querySelectorAll('form[action="/reflect"]').forEach(initReflection);
   };
-  purge().finally(init);
+  purge().finally(() => { void cleanupCompleted(); init(); });
   document.body.addEventListener("htmx:afterSwap", init);
 })();
