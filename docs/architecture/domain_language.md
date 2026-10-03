@@ -1,7 +1,7 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 1.8.0
+**Version:** 1.9.0
 **Status:** Draft
 **Last Updated:** 2026-10-03
 
@@ -399,6 +399,39 @@ Feedback is not a score or a label. It is the explanatory bridge between what th
 | DR-008 | Feedback should be concise enough to remain useful without adding length for its own sake. |
 
 The application layer preserves this boundary by rendering structured strengths, improvement guidance, and next steps from Evaluation findings without introducing a new learner-ranking or recommendation mechanism.
+
+---
+
+## Sketchbook Reflection Practice (SPEC-031)
+
+SPEC-031 introduces a lightweight sketchbook bridge for the practice journey: learners can bring work they have already created outside Fablit into a short reflection practice that helps them notice what their own work taught them.
+
+### Relationship
+
+```
+Sketchbook Work
+      ↓
+Sketchbook Reflection
+      ↓
+Feedback
+      ↓
+Notice for Next Time
+```
+
+The sketch remains learner-owned context. The reflection is the primary evaluable response, and the system does not treat the sketch as a drawing-quality object to be scored.
+
+### Domain Rules Reference
+
+| Rule | Description |
+|------|-------------|
+| DR-001 | A sketchbook reflection practice is optional and remains a short drill in the existing practice journey. |
+| DR-002 | The learner-provided sketch or image is contextual evidence for reflection, not the evaluative object itself. |
+| DR-003 | The reflection prompt focuses on process, observation, and decisions rather than visual quality or aesthetic judgement. |
+| DR-004 | Feedback should remain grounded in the learner's written reflection and the stated practice purpose. |
+| DR-005 | The practice must remain within the learner-scoped private history boundary and never introduce a parallel public gallery or social artifact stream. |
+| DR-006 | The sketchbook path uses the existing `Submission → Evaluation → Feedback → Reflection → Completion` flow without introducing a separate scoring or ranking model. |
+
+The feature remains intentionally lightweight: it complements the learner's sketchbook routine rather than requiring a full digital sketchbook or a new public artifact model.
 
 ---
 

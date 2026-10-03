@@ -125,7 +125,7 @@ SHORT_DRILL_ACTIVITY_TITLES: tuple[str, ...] = (
     "Observation Drill — Everyday Object Study",
     "Short Ideation Sprint — Alternative Uses",
     "Design Articulation — Explain a Poster Concept",
-    "Reflection Prompt — What Did Practice Ask of You?",
+    "Sketchbook Reflection — Notice What Your Work Taught You",
 )
 
 # --- Practice coverage lens (SPEC-023 §2, §5) -----------------------------------
@@ -1233,26 +1233,28 @@ _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
         secondary_capabilities=(PRACTICE_CAPABILITY_IDEATE,),
     ),
     DemoActivityDefinition(
-        title="Reflection Prompt — What Did Practice Ask of You?",
-        description="A short reflective pause after practice.",
+        title="Sketchbook Reflection — Notice What Your Work Taught You",
+        description=(
+            "Bring something you already practised. Notice what your own work can "
+            "teach you."
+        ),
         activity_type=ActivityType.REFLECTION,
         prompt=(
-            "Think about the last practice activity you completed. What kind of "
-            "thinking did it ask of you, and what would make your next attempt "
-            "stronger?"
+            "Practised something in your sketchbook? Reflect on it. Describe one "
+            "decision, observation, or challenge in your own work and what it "
+            "taught you about your process."
         ),
         skill_names=("Critical Observation",),
         strength=(
-            "You named what the practice asked of you and stayed grounded in the "
-            "task itself."
+            "You connected a concrete decision or observation in your work to "
+            "what it taught you about your process."
         ),
         improvement=(
-            "Your reflection could point to one specific moment or decision that "
-            "made the task difficult."
+            "Your reflection could tie one observation or decision more directly "
+            "to the evidence in the sketch or the problem you were solving."
         ),
         next_step=(
-            "Write one sentence about the moment you would want to approach "
-            "differently next time."
+            "Write one sentence about what you would notice or change next time."
         ),
         primary_capability=PRACTICE_CAPABILITY_REFLECT,
     ),

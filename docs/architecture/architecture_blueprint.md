@@ -1,7 +1,7 @@
 # Fablit Architecture Blueprint
 
 **Document ID:** AB-001
-**Version:** 0.13.0
+**Version:** 0.14.0
 **Status:** Draft
 **Last Updated:** 2026-10-03
 
@@ -204,6 +204,31 @@ Feedback prioritizes learning over grading.
 SPEC-008 implements the Feedback concept as an in-memory learning-domain model (`fablit.domain`), independent of the Platform Core. Feedback references the Evaluation by stable identity (SPEC-007), carries a single general learner-facing content field, records a timezone-aware creation timestamp, and is immutable after creation. Scoring, Reflection, feedback-generation mechanisms, AI providers, and persistence are deliberately excluded from the model.
 
 SPEC-030 defines the learner-facing quality boundary for this feedback: the application layer translates Evaluation findings into grounded strengths, improvement advice, and next-step guidance that stay faithful to the practice purpose and the evidence available in the learner's response. Feedback therefore remains a learning aid, not a score, ranking, label, or recommendation engine.
+
+---
+
+## Sketchbook Reflection (SPEC-031)
+
+SPEC-031 adds a lightweight optional practice entry point that brings learner-owned sketchbook work into the existing deliberate-practice loop without creating another drawing product or a public gallery.
+
+The architecture keeps the sketch as context, while the learner's written reflection remains the primary evaluable response. The application layer treats the uploaded image as private practice material, not as a scored artifact or a separate persistent record type. It uses the same `Practice → Submission → Evaluation → Feedback → Reflection → Completion` path as other activities, preserving the same learner-scoped history boundary and completion flow.
+
+### Relationship
+
+```
+Learner sketchbook work
+          │
+          ▼
+    Sketchbook Reflection
+          │
+          ▼
+    Feedback + next action
+          │
+          ▼
+    Return to sketching / another practice
+```
+
+The use of an image is intentionally contextual and secondary: it helps the learner connect their work to a small, meaningful reflection, while the platform remains focused on the growth of the learner's reflective process rather than on judging the drawing itself.
 
 ---
 

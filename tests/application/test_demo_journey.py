@@ -37,7 +37,7 @@ NEW_ACTIVITY_TITLES = (
     "Design Ideation — Transform the Object",
     "Composition Detective — What Holds This Together?",
     "Design Articulation — Explain a Poster Concept",
-    "Reflection Prompt — What Did Practice Ask of You?",
+    "Sketchbook Reflection — Notice What Your Work Taught You",
 )
 
 
@@ -164,8 +164,9 @@ def test_new_reflection_activity_completes_the_existing_journey() -> None:
 
     _run_journey(
         application,
-        "Reflection Prompt — What Did Practice Ask of You?",
-        "The last activity asked me to slow down and name details precisely.",
+        "Sketchbook Reflection — Notice What Your Work Taught You",
+        "The sketch showed me where my proportion choices broke down, and I "
+        "will look closer next time.",
     )
 
 

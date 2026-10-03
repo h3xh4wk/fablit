@@ -77,9 +77,9 @@ _AUTHORED_TRANSITIONS: tuple[tuple[str, str, str], ...] = (
         "Now try explaining a concept so someone else can see it.",
     ),
     (
-        "Reflection Prompt — What Did Practice Ask of You?",
+        "Sketchbook Reflection — Notice What Your Work Taught You",
         "Observation Drill — Everyday Object Study",
-        "You just paused to look at your own practice. "
+        "You just paused to look at your own sketchbook work. "
         "Now return to slow, deliberate looking.",
     ),
 )

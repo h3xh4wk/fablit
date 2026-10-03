@@ -149,7 +149,7 @@ def test_short_drill_resolves_the_curated_configuration() -> None:
         "Observation Drill — Everyday Object Study",
         "Short Ideation Sprint — Alternative Uses",
         "Design Articulation — Explain a Poster Concept",
-        "Reflection Prompt — What Did Practice Ask of You?",
+        "Sketchbook Reflection — Notice What Your Work Taught You",
     ]
 
 

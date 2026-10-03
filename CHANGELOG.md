@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **SPEC-031 — Sketchbook-to-Practice Reflection**: a new short-drill reflection practice lets learners bring existing sketchbook work into Fablit and reflect on what their own work taught them, without turning the sketch into an evaluative artifact or replacing the practice with a full drawing app.
+  - The demo practice library now includes a single short-drill reflection activity whose description, prompt, and feedback emphasise process, evidence, and the next learning move rather than drawing quality.
+  - The curated short-drill configuration and continuation wiring keep the practice embedded in the normal `Submission → Evaluation → Feedback → Reflection → Completion` flow.
+
+See [SPEC-031](specifications/platform/SPEC-031-sketchbook-to-practice-reflection.md) — issue [#100](https://github.com/h3xh4wk/fablit/issues/100) — for details.
+
 - **SPEC-030 — Practice Feedback Quality**: the learner-facing feedback boundary is now defined as evidence-based guidance rather than a hidden scoring system. Practice feedback stays grounded in the actual attempt, explains why the evidence matters, gives specific improvement guidance, provides a practical next step where appropriate, and hands off to Reflection without learner labelling or mastery language.
   - The application layer preserves the existing `Evaluation → Feedback → Reflection` journey and presents strengths, improvement guidance, and next steps as a structured, learner-readable contract rather than a new domain model.
   - This keeps evaluation flexible for future richer mechanisms while keeping the current learner-facing boundary stable and reviewable.
