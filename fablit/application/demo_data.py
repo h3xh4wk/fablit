@@ -24,7 +24,7 @@ no fake user-management model.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from uuid import UUID
 
 from fablit.domain import (
@@ -34,7 +34,7 @@ from fablit.domain import (
     Skill,
 )
 
-from .store import Concept, DemoActivity
+from .store import Concept, DemoActivity, PracticeContentContract
 
 # The deterministic demo learner context (SPEC-012 §27). Authentication and
 # real learner identity are out of scope for the vertical slice; a stable
@@ -164,9 +164,17 @@ class DemoActivityDefinition:
     strength: str
     improvement: str
     next_step: str
+    content_contract: PracticeContentContract = field(
+        default_factory=lambda: PracticeContentContract.from_activity(
+            title="",
+            description="",
+            prompt="",
+            primary_capability="",
+        )
+    )
     #: The activity's primary practice capability (SPEC-023 §5, AC-023-03):
     #: an internal content-design label, never learner-facing.
-    primary_capability: str
+    primary_capability: str = ""
     stimulus_context: ActivityStimulusContext | None = None
     concepts: tuple[Concept, ...] = ()
     fallback_image: str | None = None
@@ -174,6 +182,50 @@ class DemoActivityDefinition:
     #: Capabilities the activity genuinely exercises beyond its primary one
     #: (SPEC-023 §5); empty when the activity is single-focused.
     secondary_capabilities: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "content_contract",
+            PracticeContentContract.from_activity(
+                title=self.title,
+                description=self.description,
+                prompt=self.prompt,
+                primary_capability=self.primary_capability,
+            ),
+        )
+
+    @property
+    def purpose(self) -> str:
+        return self.content_contract.purpose
+
+    @property
+    def task(self) -> str:
+        return self.content_contract.task
+
+    @property
+    def expected_thinking(self) -> str:
+        return self.content_contract.expected_thinking
+
+    @property
+    def response_contract(self) -> str:
+        return self.content_contract.response_contract
+
+    @property
+    def evaluation_intent(self) -> str:
+        return self.content_contract.evaluation_intent
+
+    @property
+    def feedback_intent(self) -> str:
+        return self.content_contract.feedback_intent
+
+    @property
+    def reflection_intent(self) -> str:
+        return self.content_contract.reflection_intent
+
+    @property
+    def continuation_intent(self) -> str:
+        return self.content_contract.continuation_intent
 
 
 _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
@@ -1232,6 +1284,7 @@ def build_demo_activities() -> tuple[DemoActivity, ...]:
             strength=definition.strength,
             improvement=definition.improvement,
             next_step=definition.next_step,
+            content_contract=definition.content_contract,
             concepts=definition.concepts,
             fallback_image=definition.fallback_image,
             fallback_alt=definition.fallback_alt,

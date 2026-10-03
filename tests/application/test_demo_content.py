@@ -77,6 +77,19 @@ def test_every_activity_has_required_content_fields() -> None:
         assert item.next_step.strip()
 
 
+def test_every_activity_exposes_the_practice_content_contract() -> None:
+    """Each practice documents the purpose, task, and intent required by SPEC-029."""
+    for item in build_demo_activities():
+        assert item.purpose.strip()
+        assert item.task.strip()
+        assert item.expected_thinking.strip()
+        assert item.response_contract.strip()
+        assert item.evaluation_intent.strip()
+        assert item.feedback_intent.strip()
+        assert item.reflection_intent.strip()
+        assert item.continuation_intent.strip()
+
+
 def test_every_activity_references_valid_skill_identities() -> None:
     """Each activity's Skill references resolve to seeded demo Skills (§19)."""
     valid_skill_ids = {skill.id for skill in build_demo_skills()}
