@@ -24,7 +24,7 @@ no fake user-management model.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from uuid import UUID
 
 from fablit.domain import (
@@ -164,14 +164,11 @@ class DemoActivityDefinition:
     strength: str
     improvement: str
     next_step: str
-    content_contract: PracticeContentContract = field(
-        default_factory=lambda: PracticeContentContract.from_activity(
-            title="",
-            description="",
-            prompt="",
-            primary_capability="",
-        )
-    )
+    #: The practice's authored SPEC-029 content contract (issue #111).
+    #: Curated practices author all eight fields against their own task,
+    #: thinking demand, and intents; ``None`` only for ad-hoc definitions,
+    #: which fall back to the generic derivation (see :attr:`contract`).
+    content_contract: PracticeContentContract | None = None
     #: The activity's primary practice capability (SPEC-023 §5, AC-023-03):
     #: an internal content-design label, never learner-facing.
     primary_capability: str = ""
@@ -183,49 +180,54 @@ class DemoActivityDefinition:
     #: (SPEC-023 §5); empty when the activity is single-focused.
     secondary_capabilities: tuple[str, ...] = ()
 
-    def __post_init__(self) -> None:
-        object.__setattr__(
-            self,
-            "content_contract",
-            PracticeContentContract.from_activity(
-                title=self.title,
-                description=self.description,
-                prompt=self.prompt,
-                primary_capability=self.primary_capability,
-            ),
+    @property
+    def contract(self) -> PracticeContentContract:
+        """This practice's SPEC-029 content contract, authored or derived.
+
+        The authored contract is returned untouched — generic derivation
+        never overwrites practice-specific intent (issue #111). Only a
+        definition that supplies no contract receives the fallback.
+        """
+        if self.content_contract is not None:
+            return self.content_contract
+        return PracticeContentContract.from_activity(
+            title=self.title,
+            description=self.description,
+            prompt=self.prompt,
+            primary_capability=self.primary_capability,
         )
 
     @property
     def purpose(self) -> str:
-        return self.content_contract.purpose
+        return self.contract.purpose
 
     @property
     def task(self) -> str:
-        return self.content_contract.task
+        return self.contract.task
 
     @property
     def expected_thinking(self) -> str:
-        return self.content_contract.expected_thinking
+        return self.contract.expected_thinking
 
     @property
     def response_contract(self) -> str:
-        return self.content_contract.response_contract
+        return self.contract.response_contract
 
     @property
     def evaluation_intent(self) -> str:
-        return self.content_contract.evaluation_intent
+        return self.contract.evaluation_intent
 
     @property
     def feedback_intent(self) -> str:
-        return self.content_contract.feedback_intent
+        return self.contract.feedback_intent
 
     @property
     def reflection_intent(self) -> str:
-        return self.content_contract.reflection_intent
+        return self.contract.reflection_intent
 
     @property
     def continuation_intent(self) -> str:
-        return self.content_contract.continuation_intent
+        return self.contract.continuation_intent
 
 
 _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
@@ -248,6 +250,49 @@ _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
         next_step=(
             "Choose two elements and describe how their relationship "
             "affects the composition."
+        ),
+        content_contract=PracticeContentContract(
+            purpose=(
+                "Examine how the dominant visual elements of a photograph's "
+                "composition work together, and explain their combined effect "
+                "on where the viewer's attention goes."
+            ),
+            task=(
+                "Analyse the provided photograph: identify its dominant visual "
+                "elements and explain how they work together to hold the "
+                "composition."
+            ),
+            expected_thinking=(
+                "The learner moves from naming visible elements to explaining "
+                "the relationships between them — an element is tied to how it "
+                "directs attention or anchors the composition, not listed in "
+                "isolation."
+            ),
+            response_contract=(
+                "A short analytical written response: a paragraph or two that "
+                "names the main elements and explains at least one relationship "
+                "between them. No structure beyond clear sentences; a list of "
+                "elements with no relationships does not answer the task."
+            ),
+            evaluation_intent=(
+                "Look for specific visual elements named as evidence, at least "
+                "one explained relationship between them, and claims that stay "
+                "inside what the photograph actually shows."
+            ),
+            feedback_intent=(
+                "Feedback should take one composition relationship the learner "
+                "actually described, explain how it shapes where the eye goes, "
+                "and point to one further relationship worth examining."
+            ),
+            reflection_intent=(
+                "Invite the learner to notice which element they treated as the "
+                "anchor of the composition, and what made it read that way."
+            ),
+            continuation_intent=(
+                "A natural next step is reading a whole scene for what might be "
+                "happening — moving from how a composition works to what a "
+                "composition is telling the viewer."
+            ),
         ),
         stimulus_context=ActivityStimulusContext(
             learning_focus="Composition",
@@ -401,6 +446,48 @@ _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
             "Rewrite one sentence so the idea is tied to a visible example that a "
             "reader can picture."
         ),
+        content_contract=PracticeContentContract(
+            purpose=(
+                "Practise explaining a complex idea in plain language so a "
+                "newcomer can follow it — choosing structure and a concrete "
+                "anchor over jargon or compressed summary."
+            ),
+            task=(
+                "Explain a complex idea clearly enough that a reader who has "
+                "never encountered it can follow it from the words alone."
+            ),
+            expected_thinking=(
+                "The learner breaks the idea into a shape a reader can follow — "
+                "what it is, why it matters, one concrete anchor — rather than "
+                "compressing everything into an abstract summary."
+            ),
+            response_contract=(
+                "A short explanatory piece — a few sentences to a short "
+                "paragraph — that stands on its own for a reader who does not "
+                "already know the idea. Clarity and one worked example matter "
+                "more than covering every facet."
+            ),
+            evaluation_intent=(
+                "Look for a clear central point, plain language throughout, and "
+                "at least one concrete example or comparison the reader can "
+                "picture."
+            ),
+            feedback_intent=(
+                "Feedback should name where the explanation became clear for a "
+                "reader, where it leaned on abstraction, and one sentence worth "
+                "grounding in an example."
+            ),
+            reflection_intent=(
+                "Invite the learner to notice which part of the idea was hardest "
+                "to say simply, and what that difficulty suggests about their "
+                "own understanding of it."
+            ),
+            continuation_intent=(
+                "A natural next step is explaining a design decision in "
+                "convincing language — the same clarity put in service of a "
+                "choice rather than only an idea."
+            ),
+        ),
     ),
     DemoActivityDefinition(
         title="Memory Drawing Prep — Object & Proportion Detection",
@@ -420,6 +507,47 @@ _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
         ),
         next_step=(
             "Re-examine the image and find one detail you overlooked the first time."
+        ),
+        content_contract=PracticeContentContract(
+            purpose=(
+                "Practise noticing meaningful visual detail and stating what "
+                "each detail suggests — the careful looking that drawing from "
+                "observation depends on."
+            ),
+            task=(
+                "Describe the key visual details you notice in the image, "
+                "including what each one suggests about the subject."
+            ),
+            expected_thinking=(
+                "The learner moves from the obvious to the specific: a small or "
+                "overlooked detail is named first, then paired with a plausible "
+                "reading of what it suggests, rather than restating the "
+                "subject of the image."
+            ),
+            response_contract=(
+                "A short observational response: several concrete details, "
+                "each with a brief note on what it suggests. Detail before "
+                "interpretation; covering the whole image is not required."
+            ),
+            evaluation_intent=(
+                "Look for concreteness over general impression, variety across "
+                "the image rather than one favoured area, and at least one "
+                "detail paired with a plausible reading of it."
+            ),
+            feedback_intent=(
+                "Feedback should pick out a detail the learner actually "
+                "noticed, say what it opened up, and point to one overlooked "
+                "region worth a closer look on the next attempt."
+            ),
+            reflection_intent=(
+                "Invite the learner to notice which detail they reached for "
+                "first, and which one only appeared after they slowed down."
+            ),
+            continuation_intent=(
+                "A natural next step is turning one noticed detail into many "
+                "possibilities — moving from detecting what is there to "
+                "imagining what else it could become."
+            ),
         ),
         stimulus_context=ActivityStimulusContext(
             learning_focus="Detail",
@@ -541,6 +669,47 @@ _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
             "Write one sentence about the moment or detail that made the task feel "
             "hardest."
         ),
+        content_contract=PracticeContentContract(
+            purpose=(
+                "Practise examining your own recent practice process — "
+                "locating where difficulty actually came from instead of "
+                "reporting it in general terms."
+            ),
+            task=(
+                "Think about your most recent practice session, name what you "
+                "found most challenging, and explain why it was hard."
+            ),
+            expected_thinking=(
+                "The learner traces a stated difficulty back to a particular "
+                "demand of the task — naming the moment and the friction, not "
+                "only the general feeling of having found it difficult."
+            ),
+            response_contract=(
+                "A concise reflective response: one challenge, one reason why. "
+                "Primarily reflective in nature and written for yourself; "
+                "defending or rating the work is not the task."
+            ),
+            evaluation_intent=(
+                "Look for a concrete challenge connected to a specific part of "
+                "the task, rather than a general statement about practice being "
+                "hard in the abstract."
+            ),
+            feedback_intent=(
+                "Feedback should mirror the learner's own words with "
+                "specificity — one place the difficulty was pinned down, and "
+                "one question that would make the account sharper."
+            ),
+            reflection_intent=(
+                "Invite the learner to notice what describing the difficulty "
+                "changed about it, and what they want to bring to the next "
+                "session."
+            ),
+            continuation_intent=(
+                "A natural next step is a focused observation drill: a bounded "
+                "task where attention works on the material in front of you "
+                "rather than on memory."
+            ),
+        ),
     ),
     DemoActivityDefinition(
         title="Color Theory — Mood & Atmosphere Interpretation",
@@ -562,6 +731,49 @@ _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
             "the viewer's attention."
         ),
         next_step=("Describe how a single colour directs your eye through the image."),
+        content_contract=PracticeContentContract(
+            purpose=(
+                "Examine how specific colour relationships contribute to the "
+                "mood of a visual composition, and how colour directs the "
+                "viewer's attention through it."
+            ),
+            task=(
+                "Analyse how colour contributes to the mood of the provided "
+                "image, referring to specific colours and where they send the "
+                "eye."
+            ),
+            expected_thinking=(
+                "The learner names particular colours or tones and traces their "
+                "effect on mood and attention — from what is visible to how it "
+                "is experienced — rather than labelling the whole image warm "
+                "or cool."
+            ),
+            response_contract=(
+                "An interpretive written response of a short paragraph that "
+                "anchors every claim about mood in a named colour; at least two "
+                "distinct colours keep the analysis grounded."
+            ),
+            evaluation_intent=(
+                "Look for specific colours cited as evidence, an explicit link "
+                "from colour to felt mood, and — where present — how a colour "
+                "guides the eye through the image."
+            ),
+            feedback_intent=(
+                "Feedback should take one colour the learner read well, explain "
+                "how that reading holds up against the image, and offer one "
+                "further colour relationship to examine."
+            ),
+            reflection_intent=(
+                "Invite the learner to notice which colour they responded to "
+                "before analysing it, and whether the analysis changed their "
+                "reading of the mood."
+            ),
+            continuation_intent=(
+                "A natural next step is putting a design's colour and mood "
+                "choices into words — moving from reading mood to "
+                "deliberately setting it."
+            ),
+        ),
         stimulus_context=ActivityStimulusContext(
             learning_focus="Colour and mood",
             stimulus_context="Warm and cool toned landscapes",
@@ -697,6 +909,48 @@ _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
             "Pick the smallest detail you can find and describe what it tells you "
             "about the object."
         ),
+        content_contract=PracticeContentContract(
+            purpose=(
+                "Practise slow, deliberate looking at a single object — "
+                "reading surface, edge, and wear as evidence of how the object "
+                "has actually been used."
+            ),
+            task=(
+                "Describe the object's surfaces, edges, and details, and say "
+                "what the wear and material suggest about how it has been "
+                "used."
+            ),
+            expected_thinking=(
+                "The learner looks long enough for detail to become evidence: "
+                "a scratch read as history, a finish read as material — each "
+                "description moving from what is seen to what it suggests."
+            ),
+            response_contract=(
+                "A short observational response built from concrete surface "
+                "descriptions. A few specific details with their suggestions "
+                "beat a complete survey of the object."
+            ),
+            evaluation_intent=(
+                "Look for concrete surface detail, material and wear read as "
+                "evidence of use, and at least one connection between two "
+                "details — not merely an inventory of what the object has."
+            ),
+            feedback_intent=(
+                "Feedback should name one detail described well and what it "
+                "revealed, then point to one surface or edge passed over in the "
+                "first pass."
+            ),
+            reflection_intent=(
+                "Invite the learner to notice when naming became reading — the "
+                "moment a detail started to suggest something — and how to "
+                "reach that point sooner next time."
+            ),
+            continuation_intent=(
+                "A natural next step is transforming the observed object into "
+                "a design possibility — carrying what careful looking revealed "
+                "into something new."
+            ),
+        ),
         primary_capability=PRACTICE_CAPABILITY_OBSERVE,
         secondary_capabilities=(PRACTICE_CAPABILITY_INTERPRET,),
         stimulus_context=ActivityStimulusContext(
@@ -828,6 +1082,47 @@ _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
         next_step=(
             "Choose one detail in the scene and describe two different things it "
             "could mean."
+        ),
+        content_contract=PracticeContentContract(
+            purpose=(
+                "Practise building a plausible reading of a busy scene from "
+                "visual evidence, keeping interpretation accountable to what "
+                "is actually visible."
+            ),
+            task=(
+                "Read what might be happening in the street scene, supporting "
+                "your reading with at least two specific visual details."
+            ),
+            expected_thinking=(
+                "The learner forms a reading and then tests it against the "
+                "image — choosing details that support the reading and dropping "
+                "claims the scene does not show."
+            ),
+            response_contract=(
+                "An interpretive written response: a short paragraph offering "
+                "a possible reading, with at least two specific visual details "
+                "cited as its support."
+            ),
+            evaluation_intent=(
+                "Look for claims tied to visible details, at least two distinct "
+                "pieces of evidence, and honest boundaries — reading that knows "
+                "where the image stops supporting it."
+            ),
+            feedback_intent=(
+                "Feedback should take the strongest evidence-and-reading pair, "
+                "explain why it works, and challenge one claim that goes beyond "
+                "what the scene shows."
+            ),
+            reflection_intent=(
+                "Invite the learner to notice which detail their reading began "
+                "from, and whether a different starting detail would have led "
+                "to a different story."
+            ),
+            continuation_intent=(
+                "A natural next step is an articulation practice: putting an "
+                "evidenced reading into clear, justified language for someone "
+                "else to follow."
+            ),
         ),
         primary_capability=PRACTICE_CAPABILITY_INTERPRET,
         secondary_capabilities=(
@@ -963,6 +1258,46 @@ _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
             "Take your strongest idea and write two sentences on why it could "
             "actually work."
         ),
+        content_contract=PracticeContentContract(
+            purpose=(
+                "Practise generating a range of possibilities from an ordinary "
+                "object quickly, then choosing one deliberately instead of "
+                "settling on the first idea."
+            ),
+            task=(
+                "List as many unusual uses as you can for an everyday object, "
+                "then mark the one you would develop further."
+            ),
+            expected_thinking=(
+                "The learner produces variety before judgement: uses that "
+                "genuinely depart from the object's usual role come first, and "
+                "the final choice is made on merit rather than by default."
+            ),
+            response_contract=(
+                "A short generative list — each use a phrase or sentence — "
+                "plus one marked choice. Range and distance from the usual "
+                "role matter more than polish or completeness."
+            ),
+            evaluation_intent=(
+                "Look for a real spread of different possibilities rather than "
+                "variations on one, at least one use far from the object's "
+                "usual function, and a chosen idea worth developing."
+            ),
+            feedback_intent=(
+                "Feedback should contrast two of the learner's uses to show "
+                "where the range is widest, and push the closest variation one "
+                "step further from the usual role."
+            ),
+            reflection_intent=(
+                "Invite the learner to notice which use they were tempted to "
+                "stop at, and what made the chosen one worth developing."
+            ),
+            continuation_intent=(
+                "A natural next step is putting one idea into clear, "
+                "convincing language — moving from generating possibilities "
+                "to articulating a single one."
+            ),
+        ),
         primary_capability=PRACTICE_CAPABILITY_IDEATE,
         secondary_capabilities=(PRACTICE_CAPABILITY_ARTICULATE,),
     ),
@@ -984,6 +1319,48 @@ _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
         ),
         next_step=(
             "Name one feature of the original object your design keeps, and why."
+        ),
+        content_contract=PracticeContentContract(
+            purpose=(
+                "Practise transforming an observed object into a new design "
+                "possibility, grounding the idea in what was actually seen "
+                "rather than inventing in a vacuum."
+            ),
+            task=(
+                "Transform the object in the image into something new, then "
+                "describe the result and explain the reasoning behind it."
+            ),
+            expected_thinking=(
+                "The learner works from observation to transformation: a real "
+                "feature of the object is carried, changed, or deliberately "
+                "dropped — and the choice is explained, not just presented."
+            ),
+            response_contract=(
+                "A generative written response with an explanatory core: what "
+                "the new design is, plus reasoning that connects it back to the "
+                "object's actual form. Two well-developed ideas beat a long "
+                "list."
+            ),
+            evaluation_intent=(
+                "Look for a transformation grounded in observed features, an "
+                "explanation that ties design choices to the source object, "
+                "and awareness of form, material, or user."
+            ),
+            feedback_intent=(
+                "Feedback should identify one design choice that clearly grows "
+                "from observation, explain why that connection strengthens the "
+                "concept, and name one feature left unexplained."
+            ),
+            reflection_intent=(
+                "Invite the learner to notice which observed feature they could "
+                "not let go of, and what keeping or changing it cost the "
+                "design."
+            ),
+            continuation_intent=(
+                "A natural next step is explaining the concept in convincing "
+                "language — so someone else can see the design without seeing "
+                "the object it came from."
+            ),
         ),
         primary_capability=PRACTICE_CAPABILITY_IDEATE,
         secondary_capabilities=(
@@ -1099,6 +1476,47 @@ _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
         next_step=(
             "Describe one change to the arrangement that would make the composition "
             "calmer."
+        ),
+        content_contract=PracticeContentContract(
+            purpose=(
+                "Practise finding the structure inside an arrangement — "
+                "tracing where the eye lands first and what keeps it moving "
+                "through the whole composition."
+            ),
+            task=(
+                "Identify what holds the arrangement together: where your eye "
+                "lands first, and what keeps it moving through the image."
+            ),
+            expected_thinking=(
+                "The learner treats their own looking as evidence — recording "
+                "the path the eye actually takes and naming the devices "
+                "(balance, repetition, contrast) responsible for that path."
+            ),
+            response_contract=(
+                "An observational response that traces movement through the "
+                "arrangement: a first landing point, at least one device, and "
+                "how they work together — not a glossary of devices."
+            ),
+            evaluation_intent=(
+                "Look for attention traced rather than merely named: a claimed "
+                "focal point, a described path, and an explicit link between "
+                "two devices working together."
+            ),
+            feedback_intent=(
+                "Feedback should confirm the path the learner described using "
+                "the arrangement's own evidence, and offer one device they did "
+                "not connect to it."
+            ),
+            reflection_intent=(
+                "Invite the learner to notice whether their eye went where "
+                "they expected, and what that says about how the arrangement "
+                "holds together."
+            ),
+            continuation_intent=(
+                "A natural next step is analysing a real photograph's "
+                "composition — carrying the structural reading from an abstract "
+                "arrangement into an image with a subject."
+            ),
         ),
         primary_capability=PRACTICE_CAPABILITY_OBSERVE,
         secondary_capabilities=(PRACTICE_CAPABILITY_INTERPRET,),
@@ -1229,6 +1647,48 @@ _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
         next_step=(
             "Rewrite one sentence so it links a design choice directly to the cause."
         ),
+        content_contract=PracticeContentContract(
+            purpose=(
+                "Practise explaining design choices in convincing language — "
+                "linking image, words, and mood to the cause each choice is "
+                "meant to serve."
+            ),
+            task=(
+                "Describe a poster for a cause you care about — its image, "
+                "words, and mood — and explain why each choice serves that "
+                "cause."
+            ),
+            expected_thinking=(
+                "The learner moves from choice to reason: each visual or "
+                "verbal decision is stated together with the argument for it, "
+                "rather than described and left there."
+            ),
+            response_contract=(
+                "A short explanatory response covering image, words, and mood, "
+                "with the reasoning for at least one choice made explicit. "
+                "Conviction matters more than covering every element."
+            ),
+            evaluation_intent=(
+                "Look for choices paired with reasons, a connection back to the "
+                "cause itself, and language vivid enough for a reader to "
+                "picture the poster."
+            ),
+            feedback_intent=(
+                "Feedback should take one choice the learner justified well, "
+                "say why the reasoning holds, and press for the missing reason "
+                "behind another choice."
+            ),
+            reflection_intent=(
+                "Invite the learner to notice which choice came easiest to "
+                "justify, and which one their reasoning was still circling "
+                "without landing."
+            ),
+            continuation_intent=(
+                "A natural next step is an ideation practice: generating "
+                "several concepts first, so articulation has more than one "
+                "idea to choose between."
+            ),
+        ),
         primary_capability=PRACTICE_CAPABILITY_ARTICULATE,
         secondary_capabilities=(PRACTICE_CAPABILITY_IDEATE,),
     ),
@@ -1255,6 +1715,48 @@ _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
         ),
         next_step=(
             "Write one sentence about what you would notice or change next time."
+        ),
+        content_contract=PracticeContentContract(
+            purpose=(
+                "Practise reading your own sketchbook work for what it reveals "
+                "about your process — treating your own pages as material to "
+                "observe, not to judge."
+            ),
+            task=(
+                "Describe one decision, observation, or challenge in your own "
+                "work, and what it taught you about how you work."
+            ),
+            expected_thinking=(
+                "The learner moves from a concrete moment in their own work to "
+                "a statement about how they work — a specific page, mark, or "
+                "problem producing a genuine observation about process."
+            ),
+            response_contract=(
+                "A concise reflective response: one moment from your own work "
+                "and one thing it taught you. A sketchbook image may support "
+                "it if you have one, but the written notice is the substance; "
+                "rating the drawing is not the task."
+            ),
+            evaluation_intent=(
+                "Look for a concrete anchor in the learner's own work and a "
+                "genuine observation about process — never a verdict on the "
+                "quality of the work itself."
+            ),
+            feedback_intent=(
+                "Feedback should reflect one specific observation back to the "
+                "learner, connect it to the work it came from, and pose one "
+                "question that would extend it — never judge the artwork."
+            ),
+            reflection_intent=(
+                "Invite the learner to notice what looking back at their own "
+                "work changed: which assumption about their process the "
+                "example confirmed or unsettled."
+            ),
+            continuation_intent=(
+                "A natural next step is returning to slow, deliberate looking — "
+                "taking the attention just used on your own work back to a "
+                "single external object."
+            ),
         ),
         primary_capability=PRACTICE_CAPABILITY_REFLECT,
     ),
