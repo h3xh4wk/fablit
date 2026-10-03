@@ -434,4 +434,3 @@ The artifact is private learner context throughout this journey.
 The original implementation work for SPEC-033 was tracked through GitHub Issue #109 and merged in PR #110.
 
 Subsequent hardening work is tracked separately so that storage-boundary and retry semantics can be implemented and reviewed without obscuring the core feature specification.
-

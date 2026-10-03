@@ -441,15 +441,18 @@ class PracticeApplication:
                 "Please enter a reflection before saving."
             )
         activity = self._activity_for_feedback(feedback)
-        artifact_ref = self._store_pending_artifact_ref(activity.activity.id)
         if content is None:
+            # SPEC-026 §2.2: skipping the reflection writes nothing to durable
+            # history, so the sketch cannot be persisted either. Discard it
+            # rather than leaving private bytes behind with no record.
+            self._store.clear_pending_artifact(activity.activity.id)
             self._store.save_completion(
                 PracticeCompletion(
                     learner_id=self._store.learner_id,
                     activity_id=activity.activity.id,
                     reflection_id=None,
                     completed_at=self._clock(),
-                    artifact=artifact_ref,
+                    artifact=None,
                 )
             )
             logger.info(
@@ -466,6 +469,21 @@ class PracticeApplication:
             created_at=self._clock(),
         )
         self._store.save_reflection(reflection)
+
+        # SPEC-033 / issue #113: stage the private bytes only when they can
+        # become part of durable history, and keep the pending artifact pending
+        # until the write goes through so a retry can still use the learner's
+        # sketch. Storage is keyed by the artifact identity, so a retry
+        # re-stages the same object rather than duplicating it.
+        pending_artifact = self._store.pending_artifact(activity.activity.id)
+        artifact_ref = (
+            pending_artifact.as_ref()
+            if pending_artifact is not None and self._history_repository is not None
+            else None
+        )
+        if pending_artifact is not None and artifact_ref is not None:
+            self._artifact_storage.save(artifact_ref, pending_artifact.data)
+
         self._store.save_completion(
             PracticeCompletion(
                 learner_id=self._store.learner_id,
@@ -476,46 +494,68 @@ class PracticeApplication:
             )
         )
 
-        # SPEC-021: persist the completion durably if a repository is configured.
-        # Older repositories may not yet accept the optional sketch artifact
-        # parameter; keep this compatibility path for those implementations.
-        if self._history_repository is not None:
-            evaluation = self._store.get_evaluation(feedback.evaluation_id)
-            submission = self._store.get_submission(evaluation.submission_id)
-            stimulus = self._store.current_stimulus(activity.activity.id)
-            try:
-                self._history_repository.save_completion(
-                    learner_id=self._store.learner_id,
-                    activity_id=activity.activity.id,
-                    activity_title=activity.title,
-                    submission=submission,
-                    evaluation=evaluation,
-                    feedback=feedback,
-                    reflection=reflection,
-                    stimulus=stimulus,
-                    artifact=artifact_ref,
-                )
-            except TypeError as exc:
-                if "artifact" not in str(exc):
-                    raise
-                self._history_repository.save_completion(
-                    learner_id=self._store.learner_id,
-                    activity_id=activity.activity.id,
-                    activity_title=activity.title,
-                    submission=submission,
-                    evaluation=evaluation,
-                    feedback=feedback,
-                    reflection=reflection,
-                    stimulus=stimulus,
-                )
-            logger.info(
-                "practice completion persisted",
-                extra={
-                    "learner_id": str(self._store.learner_id),
-                    "activity_id": str(activity.activity.id),
-                    "reflection_id": str(reflection.id),
-                },
+        if self._history_repository is None:
+            # No durable history: the sketch has nowhere to live, so do not
+            # leave it pending for a completion that will never be stored.
+            self._store.clear_pending_artifact(activity.activity.id)
+            return self._completion_view()
+
+        # SPEC-021: persist the completion durably. Older repositories may not
+        # yet accept the optional sketch artifact parameter; keep this
+        # compatibility path for those implementations.
+        evaluation = self._store.get_evaluation(feedback.evaluation_id)
+        submission = self._store.get_submission(evaluation.submission_id)
+        stimulus = self._store.current_stimulus(activity.activity.id)
+        artifact_persisted = True
+        try:
+            self._history_repository.save_completion(
+                learner_id=self._store.learner_id,
+                activity_id=activity.activity.id,
+                activity_title=activity.title,
+                submission=submission,
+                evaluation=evaluation,
+                feedback=feedback,
+                reflection=reflection,
+                stimulus=stimulus,
+                artifact=artifact_ref,
             )
+        except TypeError as exc:
+            if "artifact" not in str(exc):
+                self._discard_staged_artifact(artifact_ref)
+                raise
+            # The repository cannot persist the reference at all, so the
+            # staged bytes must not be left orphaned.
+            self._discard_staged_artifact(artifact_ref)
+            artifact_persisted = False
+        except Exception:
+            # Issue #113: a failed durable write must not strand or lose the
+            # learner's sketch. Roll the staged bytes back (the retry re-stages
+            # the same pending artifact under the same identity) and re-raise so
+            # the failure stays explicit and is never reported as durable.
+            self._discard_staged_artifact(artifact_ref)
+            raise
+
+        if not artifact_persisted:
+            self._history_repository.save_completion(
+                learner_id=self._store.learner_id,
+                activity_id=activity.activity.id,
+                activity_title=activity.title,
+                submission=submission,
+                evaluation=evaluation,
+                feedback=feedback,
+                reflection=reflection,
+                stimulus=stimulus,
+            )
+
+        self._store.clear_pending_artifact(activity.activity.id)
+        logger.info(
+            "practice completion persisted",
+            extra={
+                "learner_id": str(self._store.learner_id),
+                "activity_id": str(activity.activity.id),
+                "reflection_id": str(reflection.id),
+            },
+        )
 
         return self._completion_view()
 
@@ -655,19 +695,15 @@ class PracticeApplication:
         """
         return self._artifact_storage.get(artifact_id)
 
-    def _store_pending_artifact_ref(self, activity_id: UUID) -> ArtifactRef | None:
-        """Move pending sketchbook bytes into private storage (SPEC-033).
+    def _discard_staged_artifact(self, ref: ArtifactRef | None) -> None:
+        """Remove staged private bytes so a failed write leaves no orphan media.
 
-        The bytes are written once to the artifact-storage boundary and only
-        the metadata reference is retained for the in-memory completion and
-        the durable history record, so history never carries the payload.
+        Issue #113: staging is reversible. After a rollback the pending artifact
+        remains available, so a retry re-stages the same bytes under the same
+        artifact identity.
         """
-        artifact = self._store.take_pending_artifact(activity_id)
-        if artifact is None:
-            return None
-        ref = artifact.as_ref()
-        self._artifact_storage.save(ref, artifact.data)
-        return ref
+        if ref is not None:
+            self._artifact_storage.delete(ref.artifact_id)
 
     def _resolve_stimulus(self, item: DemoActivity) -> StimulusInstance | None:
         """Resolve (or reuse) the stimulus for an activity instance, if required.
