@@ -388,13 +388,18 @@ _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
             "never encountered it before."
         ),
         skill_names=("Written Communication",),
-        strength="Your response explains the idea in clear, accessible language.",
+        strength=(
+            "Your explanation gives the idea a clear structure and keeps the reader "
+            "oriented to the central point."
+        ),
         primary_capability=PRACTICE_CAPABILITY_ARTICULATE,
         improvement=(
-            "Your explanation could include a concrete example to anchor the idea."
+            "The idea is clear, but the explanation could anchor it in one concrete "
+            "example or comparison."
         ),
         next_step=(
-            "Rewrite one sentence with a specific example that illustrates the idea."
+            "Rewrite one sentence so the idea is tied to a visible example that a "
+            "reader can picture."
         ),
     ),
     DemoActivityDefinition(
@@ -523,10 +528,19 @@ _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
             "challenging, and why?"
         ),
         skill_names=("Critical Observation",),
-        strength="You identified a specific challenge from your practice.",
+        strength=(
+            "You identified a specific challenge and named the demand the practice "
+            "made on you."
+        ),
         primary_capability=PRACTICE_CAPABILITY_REFLECT,
-        improvement=("Your reflection describes the challenge but not what caused it."),
-        next_step=("Write one sentence about what you think caused the challenge."),
+        improvement=(
+            "Your reflection names the challenge, but it could explain which part of "
+            "the task created the friction."
+        ),
+        next_step=(
+            "Write one sentence about the moment or detail that made the task feel "
+            "hardest."
+        ),
     ),
     DemoActivityDefinition(
         title="Color Theory — Mood & Atmosphere Interpretation",
@@ -1228,12 +1242,17 @@ _DEMO_ACTIVITIES: tuple[DemoActivityDefinition, ...] = (
             "stronger?"
         ),
         skill_names=("Critical Observation",),
-        strength="You looked honestly at what the practice demanded of you.",
+        strength=(
+            "You named what the practice asked of you and stayed grounded in the "
+            "task itself."
+        ),
         improvement=(
-            "Your reflection stays general; name the specific moment that was hardest."
+            "Your reflection could point to one specific moment or decision that "
+            "made the task difficult."
         ),
         next_step=(
-            "Write one sentence you would want to read before your next attempt."
+            "Write one sentence about the moment you would want to approach "
+            "differently next time."
         ),
         primary_capability=PRACTICE_CAPABILITY_REFLECT,
     ),

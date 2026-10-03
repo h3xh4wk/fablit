@@ -207,6 +207,40 @@ def test_every_activity_defines_feedback_and_next_step_content() -> None:
         assert item.next_step.strip()
 
 
+def test_feedback_copy_is_grounded_and_actionable() -> None:
+    """Practice feedback stays concrete, evidence-aware, and actionable (SPEC-030)."""
+    for item in build_demo_activities():
+        combined = " ".join((item.strength, item.improvement, item.next_step)).lower()
+        assert "good job" not in combined
+        assert "great work" not in combined
+        assert "excellent" not in combined
+        assert any(
+            term in combined
+            for term in (
+                "you ",
+                "your ",
+                "notice",
+                "connect",
+                "describe",
+                "choose",
+                "write",
+                "explain",
+            )
+        )
+        assert any(
+            term in combined
+            for term in (
+                "try",
+                "describe",
+                "write",
+                "choose",
+                "name",
+                "rewrite",
+                "pick",
+            )
+        )
+
+
 def test_stimulus_activities_define_response_aware_concepts() -> None:
     """Response-aware evaluation stays grounded: concepts and alt text present."""
     for item in build_demo_activities():

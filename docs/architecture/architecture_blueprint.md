@@ -1,9 +1,9 @@
 # Fablit Architecture Blueprint
 
 **Document ID:** AB-001
-**Version:** 0.12.0
+**Version:** 0.13.0
 **Status:** Draft
-**Last Updated:** 2026-09-27
+**Last Updated:** 2026-10-03
 
 ---
 
@@ -194,15 +194,16 @@ Feedback provides guidance for improvement.
 
 Feedback may include:
 
-- strengths
-- improvement suggestions
-- rubric scoring
-- learning recommendations
-- follow-up activities
+- strengths grounded in observation
+- specific improvement suggestions
+- practical next-step guidance
+- a handoff into Reflection
 
 Feedback prioritizes learning over grading.
 
 SPEC-008 implements the Feedback concept as an in-memory learning-domain model (`fablit.domain`), independent of the Platform Core. Feedback references the Evaluation by stable identity (SPEC-007), carries a single general learner-facing content field, records a timezone-aware creation timestamp, and is immutable after creation. Scoring, Reflection, feedback-generation mechanisms, AI providers, and persistence are deliberately excluded from the model.
+
+SPEC-030 defines the learner-facing quality boundary for this feedback: the application layer translates Evaluation findings into grounded strengths, improvement advice, and next-step guidance that stay faithful to the practice purpose and the evidence available in the learner's response. Feedback therefore remains a learning aid, not a score, ranking, label, or recommendation engine.
 
 ---
 

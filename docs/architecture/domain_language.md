@@ -1,9 +1,9 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 1.7.0
+**Version:** 1.8.0
 **Status:** Draft
-**Last Updated:** 2026-09-27
+**Last Updated:** 2026-10-03
 
 ---
 
@@ -358,6 +358,47 @@ The following rules are enforced by the SPEC-008 domain model:
 | DR-010 | Feedback must not depend on a specific generation mechanism. |
 | DR-011 | Feedback must not require persistence infrastructure. |
 | DR-012 | Feedback must not contain examination-specific concepts. |
+
+---
+
+## Feedback Quality Contract (SPEC-030)
+
+SPEC-030 defines the learner-facing quality contract for feedback produced after an Evaluation.
+
+The implementation stays at the application/content boundary rather than introducing a new domain model: the existing `Feedback` record remains a stable domain object, while the practice content and application layer determine how evidence, improvement guidance, and next-step direction are presented to the learner.
+
+### Relationship
+
+```
+Practice Purpose
+      ↓
+Learner Attempt
+      ↓
+Evaluation
+      ↓
+Evidence-based Feedback
+      ↓
+Reflection
+      ↓
+Another Attempt
+```
+
+Feedback is not a score or a label. It is the explanatory bridge between what the learner did and what they can do next.
+
+### Quality Rules
+
+| Rule | Description |
+|------|-------------|
+| DR-001 | Feedback should be grounded in observable evidence when the evaluation provides it. |
+| DR-002 | Feedback should relate directly to the practice purpose and the task asked of the learner. |
+| DR-003 | Improvement guidance should identify a concrete thing the learner can notice, test, compare, or explain. |
+| DR-004 | Next-step guidance should be practical and proportionate to the task. |
+| DR-005 | Feedback should avoid learner labelling and unsupported inference about effort, intelligence, motivation, or future performance. |
+| DR-006 | Feedback should not introduce hidden scoring, mastery, or ranking semantics. |
+| DR-007 | Feedback should leave the learner with a meaningful Reflection handoff. |
+| DR-008 | Feedback should be concise enough to remain useful without adding length for its own sake. |
+
+The application layer preserves this boundary by rendering structured strengths, improvement guidance, and next steps from Evaluation findings without introducing a new learner-ranking or recommendation mechanism.
 
 ---
 
