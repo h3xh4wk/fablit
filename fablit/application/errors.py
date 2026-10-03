@@ -43,5 +43,9 @@ class SubmissionInProgressError(ApplicationError):
     """Raised when an activity already has a submission being evaluated (SPEC-017)."""
 
 
+class InvalidContentContractError(ApplicationError):
+    """Raised when a Practice Content Contract has a blank field (SPEC-029)."""
+
+
 class UnknownPracticeModeError(ApplicationError):
     """Raised when a requested practice mode does not exist (SPEC-022)."""

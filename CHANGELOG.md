@@ -38,6 +38,14 @@ See [SPEC-028](specifications/platform/SPEC-028-session-resilience-and-local-pra
 
 See [SPEC-026](specifications/platform/SPEC-026-metacognitive-practice-and-reflection-integration.md) — issue [#90](https://github.com/h3xh4wk/fablit/issues/90) — for details.
 
+### Changed
+
+- **Strengthened Practice Content Contracts ([issue #111](https://github.com/h3xh4wk/fablit/issues/111))**: the SPEC-029 contract is now authored practice-by-practice instead of derived generically from each activity's title, description, and prompt.
+  - All twelve curated practices carry a written, practice-specific contract — purpose, task, expected thinking, response contract, evaluation intent, feedback intent, reflection intent, and continuation intent — describing that practice's own cognitive demand and aligned with its authored SPEC-025 continuation where one exists.
+  - An authored contract is never overwritten: generic derivation (`PracticeContentContract.from_activity`) survives only as the documented fallback for definitions that author no contract, and blank contract fields are rejected at construction (`InvalidContentContractError`).
+  - New contract tests guard specificity: no curated field may equal generic derivation output for its own or any other practice, contract fields must differ across practices, and no scoring, mastery, streak, or urgency language may appear.
+  - The learner-facing practice flow and copy are unchanged, and the internal Observe / Interpret / Ideate / Articulate / Reflect lens stays an internal review aid; the authored contract is the quality boundary SPEC-032 AI-assisted authoring will validate candidates against.
+
 ### Fixed
 
 - **Export on first page load ([issue #97](https://github.com/h3xh4wk/fablit/issues/97))**: the "Export this practice" and "Export history as JSON" buttons did nothing until a full page refresh.

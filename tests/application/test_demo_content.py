@@ -37,6 +37,7 @@ from fablit.application import (
     build_demo_skills,
 )
 from fablit.application.demo_data import DemoActivityDefinition
+from fablit.application.store import PracticeContentContract
 from fablit.domain import ActivityType
 from tests.domain.helpers import make_stimulus, make_submitted_submission
 
@@ -88,6 +89,102 @@ def test_every_activity_exposes_the_practice_content_contract() -> None:
         assert item.feedback_intent.strip()
         assert item.reflection_intent.strip()
         assert item.continuation_intent.strip()
+
+
+#: The eight SPEC-029 contract fields every curated practice defines.
+_CONTRACT_FIELDS: tuple[str, ...] = (
+    "purpose",
+    "task",
+    "expected_thinking",
+    "response_contract",
+    "evaluation_intent",
+    "feedback_intent",
+    "reflection_intent",
+    "continuation_intent",
+)
+
+
+def test_curated_contracts_are_authored_not_generic_derivation() -> None:
+    """SPEC-029 §4 (issue #111): no curated practice ships derived boilerplate.
+
+    Each field must differ from the generic text ``from_activity`` would
+    derive for that same activity — the derivation is a fallback, never
+    the contract of a curated practice.
+    """
+    for item in build_demo_activities():
+        generic = PracticeContentContract.from_activity(
+            title=item.title,
+            description=item.description,
+            prompt=item.activity.instructions,
+            primary_capability=item.primary_capability,
+        )
+        assert item.content_contract is not None
+        for name in _CONTRACT_FIELDS:
+            authored = getattr(item.contract, name)
+            assert authored.strip(), (item.title, name)
+            assert authored != getattr(generic, name), (item.title, name)
+
+
+def test_generic_fallback_text_never_becomes_a_curated_contract() -> None:
+    """Generic text must not stand in for an unrelated practice either.
+
+    The derivation templates are capability-interpolated, so generic text
+    produced for *any* seeded activity must appear in *no* curated
+    contract field — the guard against fallback silently becoming content.
+    """
+    generic_values: set[str] = set()
+    for item in build_demo_activities():
+        generic = PracticeContentContract.from_activity(
+            title=item.title,
+            description=item.description,
+            prompt=item.activity.instructions,
+            primary_capability=item.primary_capability,
+        )
+        for name in _CONTRACT_FIELDS:
+            generic_values.add(getattr(generic, name))
+
+    for item in build_demo_activities():
+        for name in _CONTRACT_FIELDS:
+            assert getattr(item.contract, name) not in generic_values, (
+                item.title,
+                name,
+            )
+
+
+def test_contract_fields_differ_across_practices() -> None:
+    """Practices that demand different thinking carry different contracts.
+
+    Shared fields across twelve practices would mean the contract describes
+    Fablit practices in general rather than each practice's own intent —
+    exactly the shallow contract SPEC-032 must be able to trust.
+    """
+    activities = build_demo_activities()
+    for name in _CONTRACT_FIELDS:
+        values = [getattr(item.contract, name) for item in activities]
+        assert len(values) == len(set(values)), name
+
+
+@pytest.mark.parametrize(
+    "term",
+    [
+        "score",
+        "grade",
+        "mastery",
+        "streak",
+        "urgency",
+        "ranked",
+        "leaderboard",
+        "badge",
+    ],
+)
+def test_contracts_introduce_no_scoring_or_mastery_language(term: str) -> None:
+    """Contracts protect specificity, never learner measurement (issue #111)."""
+    for item in build_demo_activities():
+        for name in _CONTRACT_FIELDS:
+            assert term not in getattr(item.contract, name).lower(), (
+                item.title,
+                name,
+            )
 
 
 def test_every_activity_references_valid_skill_identities() -> None:

@@ -16,7 +16,7 @@ stimulus that was shown; the store never silently replaces it (§48).
 from __future__ import annotations
 
 import dataclasses
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
@@ -32,7 +32,12 @@ from fablit.domain import (
 )
 
 from .artifacts import SketchbookArtifact
-from .errors import ActivityNotFoundError, FeedbackNotFoundError, JourneyStateError
+from .errors import (
+    ActivityNotFoundError,
+    FeedbackNotFoundError,
+    InvalidContentContractError,
+    JourneyStateError,
+)
 
 
 @dataclass(frozen=True)
@@ -57,6 +62,13 @@ class PracticeContentContract:
     task, expected thinking, response requirements, and evaluation/feedback/
     reflection/continuation intent. This metadata remains application-level
     content configuration and never becomes a learner-progress model.
+
+    Every curated practice authors its contract explicitly in its own
+    definition (SPEC-029 §4, issue #111): the fields must capture that
+    practice's educational intent, not a template derived from the activity's
+    title, description, or prompt. :meth:`from_activity` survives only as a
+    generic fallback for definitions that author no contract; tests guard
+    that its text never stands in for a curated practice's contract.
     """
 
     purpose: str
@@ -68,6 +80,16 @@ class PracticeContentContract:
     reflection_intent: str
     continuation_intent: str
 
+    def __post_init__(self) -> None:
+        """Reject blank fields — an incomplete contract is not a contract."""
+        for spec in dataclasses.fields(self):
+            value = getattr(self, spec.name)
+            if not isinstance(value, str) or not value.strip():
+                raise InvalidContentContractError(
+                    f"practice content contract field {spec.name!r} must be "
+                    f"non-blank text, got {value!r}"
+                )
+
     @classmethod
     def from_activity(
         cls,
@@ -77,7 +99,13 @@ class PracticeContentContract:
         prompt: str,
         primary_capability: str,
     ) -> PracticeContentContract:
-        """Build a usable, reviewable content contract from the activity."""
+        """Derive a generic content contract from the activity's own content.
+
+        Fallback only (SPEC-029 §4, issue #111): curated practices author
+        their contract so it captures that practice's own thinking demand.
+        The text produced here is deliberately generic, and tests assert it
+        never becomes the contract of a curated practice.
+        """
         capability = primary_capability.lower()
         if description.strip():
             purpose = (
@@ -135,6 +163,9 @@ class DemoActivity:
     ``primary_capability`` and ``secondary_capabilities`` are internal
     content-design metadata (SPEC-023 §5): a review lens over the library,
     never learner-facing copy and never a selection or ordering signal.
+
+    ``content_contract`` is the practice's authored SPEC-029 content
+    contract (issue #111); see :attr:`contract` for the fallback rule.
     """
 
     activity: AssessmentActivity
@@ -143,63 +174,64 @@ class DemoActivity:
     strength: str
     improvement: str
     next_step: str
-    content_contract: PracticeContentContract = field(
-        default_factory=lambda: PracticeContentContract.from_activity(
-            title="",
-            description="",
-            prompt="",
-            primary_capability="",
-        )
-    )
+    #: The practice's authored SPEC-029 content contract (issue #111).
+    #: ``None`` only for definitions that author none; the generic
+    #: :meth:`PracticeContentContract.from_activity` derivation then serves
+    #: as the documented fallback. An authored contract is never overwritten.
+    content_contract: PracticeContentContract | None = None
     primary_capability: str = ""
     concepts: tuple[Concept, ...] = ()
     fallback_image: str | None = None
     fallback_alt: str | None = None
     secondary_capabilities: tuple[str, ...] = ()
 
-    def __post_init__(self) -> None:
-        object.__setattr__(
-            self,
-            "content_contract",
-            PracticeContentContract.from_activity(
-                title=self.title,
-                description=self.description,
-                prompt=self.activity.instructions,
-                primary_capability=self.primary_capability,
-            ),
+    @property
+    def contract(self) -> PracticeContentContract:
+        """This practice's SPEC-029 content contract, authored or derived.
+
+        Curated practices author their contract in their definition; the
+        generic derivation is consulted only when none was supplied.
+        """
+        if self.content_contract is not None:
+            return self.content_contract
+        return PracticeContentContract.from_activity(
+            title=self.title,
+            description=self.description,
+            prompt=self.activity.instructions,
+            primary_capability=self.primary_capability,
         )
 
     @property
     def purpose(self) -> str:
-        return self.content_contract.purpose
+        return self.contract.purpose
 
     @property
     def task(self) -> str:
-        return self.content_contract.task
+        return self.contract.task
 
     @property
     def expected_thinking(self) -> str:
-        return self.content_contract.expected_thinking
+        return self.contract.expected_thinking
 
     @property
     def response_contract(self) -> str:
-        return self.content_contract.response_contract
+        return self.contract.response_contract
 
     @property
     def evaluation_intent(self) -> str:
-        return self.content_contract.evaluation_intent
+        return self.contract.evaluation_intent
 
     @property
     def feedback_intent(self) -> str:
-        return self.content_contract.feedback_intent
+        return self.contract.feedback_intent
 
     @property
     def reflection_intent(self) -> str:
-        return self.content_contract.reflection_intent
+        return self.contract.reflection_intent
 
     @property
     def continuation_intent(self) -> str:
-        return self.content_contract.continuation_intent
+        return self.contract.continuation_intent
 
     @property
     def stimulus_context(self) -> ActivityStimulusContext | None:

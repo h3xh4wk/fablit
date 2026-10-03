@@ -80,6 +80,8 @@ Improvement
 
 Every curated Assessment Activity intended for the Fablit practice library must have the following content definition.
 
+The contract is **authored content, per practice**: each curated practice's own definition carries a written contract describing that practice's purpose, thinking demand, and intents — not text derived generically from the activity's title, description, or prompt. A generic derivation may exist as a fallback for definitions that have not authored a contract, but it must never stand in for a curated practice's contract. Automated tests enforce this boundary so generic fallback text cannot silently become practice content.
+
 ### 4.1 Identity
 
 A practice must have:
