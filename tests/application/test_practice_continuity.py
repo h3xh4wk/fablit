@@ -70,7 +70,7 @@ EXPECTED_TRANSITION_PAIRS: tuple[tuple[str, str], ...] = (
         "Design Articulation — Explain a Poster Concept",
     ),
     (
-        "Reflection Prompt — What Did Practice Ask of You?",
+        "Sketchbook Reflection — Notice What Your Work Taught You",
         "Observation Drill — Everyday Object Study",
     ),
 )
