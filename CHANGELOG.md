@@ -47,6 +47,14 @@ See [SPEC-026](specifications/platform/SPEC-026-metacognitive-practice-and-refle
   - Records written before this change still load (their embedded `data` key is ignored); no automated migration is performed, so legacy bytes are not retrievable through the review, and a review renders normally when an artifact's bytes are missing.
   - Upload validation is unchanged (PNG/JPEG/WebP, 5 MB) and non-sketchbook practices are unaffected. New tests cover reference-only history persistence, Datastore serialization without bytes, legacy-record loading, storage round trips/missing/deletion, learner isolation, format and size rejection, and graceful handling of missing bytes.
 
+### Fixed
+
+- **Sketchbook artifact persistence hardened (issue #113, FIX-3 against SPEC-033)**: private sketchbook artifact persistence is now retry-safe and MIME-consistent so a failed durable write cannot strand or lose a learner's sketch, and so the stored media type always matches the validated image bytes.
+  - Upload validation now treats the detected image format as authoritative: the stored `content_type` is the signature-detected type, and a declared MIME type or filename extension that disagrees with the detected format is rejected rather than silently stored.
+  - Pending artifacts survive in the journey store until durable persistence succeeds (`pending_artifact` / `clear_pending_artifact`), so a failed write can be retried without losing the sketch; on failure the staged bytes are rolled back (`_discard_staged_artifact`) so no orphan media is left behind.
+  - `submit_reflection` durable persistence is wrapped in an explicit stage/commit/rollback path: a failed write can never report durable completion, and a skipped reflection discards the pending sketch rather than leaving private bytes behind with no history record.
+  - New regression tests cover upload validation consistency, retry-safe pending artifacts, staged-byte rollback on failure, corruption/isolation (stored bytes match the upload; distinct artifacts keep distinct identities), and learner-scoped pending-artifact isolation.
+
 - **Strengthened Practice Content Contracts ([issue #111](https://github.com/h3xh4wk/fablit/issues/111))**: the SPEC-029 contract is now authored practice-by-practice instead of derived generically from each activity's title, description, and prompt.
   - All twelve curated practices carry a written, practice-specific contract — purpose, task, expected thinking, response contract, evaluation intent, feedback intent, reflection intent, and continuation intent — describing that practice's own cognitive demand and aligned with its authored SPEC-025 continuation where one exists.
   - An authored contract is never overwritten: generic derivation (`PracticeContentContract.from_activity`) survives only as the documented fallback for definitions that author no contract, and blank contract fields are rejected at construction (`InvalidContentContractError`).

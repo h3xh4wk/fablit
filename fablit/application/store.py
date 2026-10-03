@@ -425,11 +425,25 @@ class LearnerJourneyStore:
         """Hold a private sketchbook artifact while the activity is submitted."""
         self._pending_artifacts[activity_id] = artifact
 
-    def take_pending_artifact(self, activity_id: UUID) -> SketchbookArtifact | None:
-        """Consume the private sketchbook artifact for this activity."""
-        artifact = self._pending_artifacts.pop(activity_id, None)
+    def pending_artifact(self, activity_id: UUID) -> SketchbookArtifact | None:
+        """Return the pending private sketchbook artifact without consuming it.
+
+        Issue #113: the artifact stays pending until the completion is durably
+        persisted, so a failed write can be retried without losing the sketch.
+        """
+        artifact = self._pending_artifacts.get(activity_id)
         if artifact is not None and artifact.learner_id != self._learner_id:
             return None
+        return artifact
+
+    def clear_pending_artifact(self, activity_id: UUID) -> None:
+        """Discard the pending sketchbook artifact once its outcome is settled."""
+        self._pending_artifacts.pop(activity_id, None)
+
+    def take_pending_artifact(self, activity_id: UUID) -> SketchbookArtifact | None:
+        """Consume the private sketchbook artifact for this activity."""
+        artifact = self.pending_artifact(activity_id)
+        self.clear_pending_artifact(activity_id)
         return artifact
 
     def save_completion(self, completion: PracticeCompletion) -> None:

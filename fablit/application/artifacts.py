@@ -20,6 +20,37 @@ SUPPORTED_SKETCHBOOK_ARTIFACT_TYPES = {
     "image/webp",
 }
 
+#: Signature → effective content type. The bytes are the source of truth for
+#: what an upload actually is, so nothing supported can be stored or served
+#: under a media type that disagrees with its payload.
+_IMAGE_SIGNATURES: tuple[tuple[bytes, str], ...] = (
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"\xff\xd8\xff", "image/jpeg"),
+)
+
+#: Filename extension → content type (both JPEG spellings map to image/jpeg).
+_EXTENSION_CONTENT_TYPES: dict[str, str] = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+}
+
+
+def detect_image_type(data: bytes) -> str | None:
+    """Return the content type of supported sketch bytes, or ``None``.
+
+    Detection is based on the file signature rather than the declared MIME
+    type or filename, so a mislabelled or disguised upload cannot claim a
+    media type its bytes do not match.
+    """
+    for signature, content_type in _IMAGE_SIGNATURES:
+        if data.startswith(signature):
+            return content_type
+    if data.startswith(b"RIFF") and len(data) >= 12 and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
 
 @dataclass(frozen=True)
 class ArtifactRef:
@@ -64,7 +95,15 @@ class SketchbookArtifact:
         content_type: str | None,
         data: bytes,
     ) -> SketchbookArtifact:
-        """Validate uploaded bytes and construct a private sketch artifact."""
+        """Validate uploaded bytes and construct a private sketch artifact.
+
+        The image format detected from the bytes is authoritative, and the
+        stored ``content_type`` is always that detected type. Any declared
+        media type or filename extension that disagrees with the detected
+        format is rejected deterministically, so the media metadata can never
+        silently disagree with the payload that is stored and served
+        (issue #113).
+        """
         if not data:
             raise ValueError("Please choose an image to upload.")
         if len(data) > MAX_SKETCHBOOK_ARTIFACT_BYTES:
@@ -72,25 +111,40 @@ class SketchbookArtifact:
                 "Sketch uploads must be 5MB or smaller. Please choose a smaller image."
             )
 
-        resolved_type = (content_type or "").lower()
-        if resolved_type and resolved_type not in SUPPORTED_SKETCHBOOK_ARTIFACT_TYPES:
+        # An unsupported declaration is rejected before byte inspection so the
+        # learner gets the actionable "supported formats" message.
+        declared_type = _normalise_content_type(content_type)
+        if (
+            declared_type is not None
+            and declared_type not in SUPPORTED_SKETCHBOOK_ARTIFACT_TYPES
+        ):
             raise ValueError("Please upload a PNG, JPG, or WebP image.")
 
         safe_name = (filename or "sketch.png").strip() or "sketch.png"
         extension = PurePosixPath(safe_name).suffix.lower()
-        if extension not in {".png", ".jpg", ".jpeg", ".webp"}:
+        extension_type = _EXTENSION_CONTENT_TYPES.get(extension)
+        if extension_type is None:
             raise ValueError("Please upload a PNG, JPG, or WebP image.")
 
-        if not _looks_like_supported_image(data):
+        detected_type = detect_image_type(data)
+        if detected_type is None:
             raise ValueError(
                 "The uploaded image could not be read. Please try another file."
             )
+
+        # The detected format is authoritative: a declared media type or
+        # filename extension naming a different supported format cannot be
+        # trusted, so it is rejected rather than silently stored.
+        if declared_type is not None and declared_type != detected_type:
+            raise ValueError("Please upload a PNG, JPG, or WebP image.")
+        if extension_type != detected_type:
+            raise ValueError("Please upload a PNG, JPG, or WebP image.")
 
         return cls(
             learner_id=learner_id,
             activity_id=activity_id,
             filename=safe_name,
-            content_type=resolved_type or _infer_content_type(extension),
+            content_type=detected_type,
             size_bytes=len(data),
             data=data,
         )
@@ -112,22 +166,9 @@ class SketchbookArtifact:
         )
 
 
-def _looks_like_supported_image(data: bytes) -> bool:
-    """Validate the first bytes so the upload is not a disguised file."""
-    if data.startswith(b"\x89PNG\r\n\x1a\n"):
-        return True
-    if data.startswith(b"\xff\xd8\xff"):
-        return True
-    if data.startswith((b"GIF87a", b"GIF89a")):
-        return True
-    return data.startswith(b"RIFF") and len(data) >= 12 and data[8:12] == b"WEBP"
-
-
-def _infer_content_type(extension: str) -> str:
-    mapping = {
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".webp": "image/webp",
-    }
-    return mapping.get(extension, "image/png")
+def _normalise_content_type(content_type: str | None) -> str | None:
+    """Normalise a declared media type, dropping any parameters."""
+    if not content_type:
+        return None
+    normalised = content_type.split(";", 1)[0].strip().lower()
+    return normalised or None
