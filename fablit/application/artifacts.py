@@ -84,11 +84,7 @@ def _looks_like_supported_image(data: bytes) -> bool:
         return True
     if data.startswith((b"GIF87a", b"GIF89a")):
         return True
-    return (
-        data.startswith(b"RIFF")
-        and len(data) >= 12
-        and data[8:12] == b"WEBP"
-    )
+    return data.startswith(b"RIFF") and len(data) >= 12 and data[8:12] == b"WEBP"
 
 
 def _infer_content_type(extension: str) -> str:
