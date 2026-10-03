@@ -33,17 +33,27 @@
     if (record.reflection) lines.push("## 4. Learner Reflection", "", record.reflection, "");
     return lines.join("\n");
   };
-  const session = readJson("fablit-session-export-data");
-  document.querySelector(".js-export-session")?.addEventListener("click", () => {
+  const exportSession = () => {
+    const session = readJson("fablit-session-export-data");
     if (!session) return;
     const timestamp = (session.completed_at || new Date().toISOString()).replace(/[:.]/g, "-");
     download(formatMarkdown(session), "fablit-session-" + (session.activity_id || "practice") + "-" + timestamp + ".md", "text/markdown;charset=utf-8");
-  });
-  const history = readJson("fablit-history-export-data");
-  document.querySelector(".js-export-history")?.addEventListener("click", () => {
+  };
+  const exportHistory = () => {
+    const history = readJson("fablit-history-export-data");
     if (!Array.isArray(history)) return;
     const payload = { specVersion: "027", exportedAt: new Date().toISOString(), records: history };
     const date = new Date().toISOString().slice(0, 10);
     download(JSON.stringify(payload, null, 2), "fablit-history-export-private-learner-" + date + ".json", "application/json;charset=utf-8");
+  };
+  // The body uses hx-boost, so navigating swaps page content without
+  // re-running the head scripts: listeners bound at load time would miss
+  // buttons that arrive later (issue #97). Delegate clicks on the document
+  // and read the export data at click time so the current page's record
+  // is always what gets exported.
+  document.addEventListener("click", (event) => {
+    if (!(event.target instanceof Element)) return;
+    if (event.target.closest(".js-export-session")) exportSession();
+    else if (event.target.closest(".js-export-history")) exportHistory();
   });
 })();
