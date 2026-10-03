@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **SPEC-030 — Practice Feedback Quality**: the learner-facing feedback boundary is now defined as evidence-based guidance rather than a hidden scoring system. Practice feedback stays grounded in the actual attempt, explains why the evidence matters, gives specific improvement guidance, provides a practical next step where appropriate, and hands off to Reflection without learner labelling or mastery language.
+  - The application layer preserves the existing `Evaluation → Feedback → Reflection` journey and presents strengths, improvement guidance, and next steps as a structured, learner-readable contract rather than a new domain model.
+  - This keeps evaluation flexible for future richer mechanisms while keeping the current learner-facing boundary stable and reviewable.
+
+See [SPEC-030](specifications/platform/SPEC-030-practice-feedback-quality.md) — issue [#99](https://github.com/h3xh4wk/fablit/issues/99) — for details.
+
 - **SPEC-028 — Session Resilience & Local Practice Recovery**: active practice is now protected against accidental reloads and tab closures by a client-side draft layer. Draft state lives exclusively on the learner's device — no server footprint, no background auto-save network requests (SPEC-028 §3).
   - While practising, the response, the pre-practice intention, and the reflection text are saved to browser storage (IndexedDB primary, `localStorage` fallback) on a 3-second debounce or field blur (§2.1), alongside the active activity ID and the timestamp of the last local mutation.
   - Returning to an activity with an uncommitted response draft shows a quiet recovery banner with **Resume Draft** (restores the exact pre-reload response) and **Discard Draft** (purges the local entry) controls (§2.2). Intention and reflection drafts restore quietly on their own pages — recovery is an offer, never a gate.
