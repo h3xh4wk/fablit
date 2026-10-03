@@ -18,6 +18,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from fablit.application import ArtifactRef
 from fablit.application.persistence import PersistenceError
 from fablit.domain import (
     Evaluation,
@@ -187,6 +188,7 @@ def save_fixture(
     fixtures: dict[str, Any],
     *,
     activity_title: str = "CAT Practice — 2D & 3D Composition Analysis",
+    artifact: ArtifactRef | None = None,
 ) -> UUID:
     stored = repository.save_completion(
         learner_id=LEARNER,
@@ -197,6 +199,7 @@ def save_fixture(
         feedback=fixtures["feedback"],
         reflection=fixtures["reflection"],
         stimulus=fixtures["stimulus"],
+        artifact=artifact,
     )
     return stored.completion_id
 
@@ -439,6 +442,78 @@ def test_intention_round_trips_through_datastore() -> None:
     assert retrieved.submission.pre_practice_intention == (
         "Focus on the negative space."
     )
+
+
+# --- Private sketchbook artifact references (SPEC-033) ------------------------
+
+
+def make_artifact_ref() -> ArtifactRef:
+    """Build a metadata-only artifact reference for a reflection practice."""
+    return ArtifactRef(
+        artifact_id=uuid4(),
+        learner_id=LEARNER,
+        activity_id=ACTIVITY,
+        filename="my-sketch.png",
+        content_type="image/png",
+        size_bytes=4,
+        created_at=datetime.now(UTC),
+    )
+
+
+def test_artifact_reference_round_trips_without_bytes() -> None:
+    """AC: history entities hold the reference/metadata, never raw bytes."""
+    repository, client = make_repository()
+    fixtures = make_stored_fixtures()
+    ref = make_artifact_ref()
+
+    completion_id = save_fixture(repository, fixtures, artifact=ref)
+
+    entity = client._store[
+        ("PracticeCompletion", str(completion_id), f"learner_{LEARNER}")
+    ]
+    assert "data" not in entity["artifact"]
+    assert entity["artifact"]["artifact_id"] == str(ref.artifact_id)
+    assert entity["artifact"]["filename"] == "my-sketch.png"
+
+    retrieved = repository.get_completion(LEARNER, completion_id)
+    assert retrieved is not None
+    assert retrieved.artifact == ref
+
+
+def test_completion_without_artifact_has_no_artifact_key() -> None:
+    repository, client = make_repository()
+    fixtures = make_stored_fixtures()
+
+    completion_id = save_fixture(repository, fixtures)
+
+    entity = client._store[
+        ("PracticeCompletion", str(completion_id), f"learner_{LEARNER}")
+    ]
+    assert entity["artifact"] is None
+    retrieved = repository.get_completion(LEARNER, completion_id)
+    assert retrieved is not None
+    assert retrieved.artifact is None
+
+
+def test_legacy_artifact_entity_with_embedded_bytes_deserializes_to_ref() -> None:
+    """Records saved before SPEC-033 still load, but expose metadata only."""
+    repository, client = make_repository()
+    fixtures = make_stored_fixtures()
+    ref = make_artifact_ref()
+    completion_id = save_fixture(repository, fixtures, artifact=ref)
+
+    # Simulate a legacy entity: the artifact payload still embeds ``data``.
+    entity = client._store[
+        ("PracticeCompletion", str(completion_id), f"learner_{LEARNER}")
+    ]
+    entity["artifact"]["data"] = b"\x89PNG legacy embedded bytes"
+
+    retrieved = repository.get_completion(LEARNER, completion_id)
+
+    assert retrieved is not None
+    assert isinstance(retrieved.artifact, ArtifactRef)
+    assert retrieved.artifact.artifact_id == ref.artifact_id
+    assert not hasattr(retrieved.artifact, "data")
 
 
 def test_records_stored_before_spec_026_deserialize_without_intention() -> None:

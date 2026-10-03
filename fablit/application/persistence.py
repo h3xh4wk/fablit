@@ -21,8 +21,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from fablit.application.artifact_storage import ArtifactRef
 from fablit.domain import Evaluation, Feedback, Reflection, StimulusInstance, Submission
+
+from .artifacts import ArtifactRef
 
 
 @dataclass(frozen=True)

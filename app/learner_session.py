@@ -36,6 +36,7 @@ from uuid import UUID, uuid4
 from fastapi import Request, Response
 
 from fablit.application import (
+    ArtifactStorage,
     DemoEvaluator,
     LearnerJourneyStore,
     PracticeApplication,
@@ -118,9 +119,11 @@ class LearnerApplicationRegistry:
         self,
         content: DemoContent,
         history_repository: PracticeHistoryRepository | None,
+        artifact_storage: ArtifactStorage | None = None,
     ) -> None:
         self._content = content
         self._history_repository = history_repository
+        self._artifact_storage = artifact_storage
         self._applications: dict[UUID, PracticeApplication] = {}
         self._lock = Lock()
 
@@ -148,6 +151,7 @@ class LearnerApplicationRegistry:
             evaluator=content.evaluator,
             stimulus_provider=content.stimulus_provider,
             history_repository=self._history_repository,
+            artifact_storage=self._artifact_storage,
         )
 
 

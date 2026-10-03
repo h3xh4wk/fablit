@@ -10,15 +10,19 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
 
 from fablit.application import (
     DEMO_LEARNER_ID,
+    ArtifactRef,
+    ArtifactStorage,
     CompletionNotFoundError,
     DemoActivity,
     DemoEvaluator,
+    FileArtifactStorage,
     LearnerJourneyStore,
     PracticeApplication,
     SketchbookArtifact,
@@ -35,6 +39,7 @@ from fablit.application.persistence import (
 )
 from fablit.application.repositories import InMemoryPracticeHistoryRepository
 from fablit.domain import (
+    ActivityType,
     Evaluation,
     EvaluationFinding,
     Feedback,
@@ -51,6 +56,7 @@ def make_history_application(
     repository: PracticeHistoryRepository | None = None,
     clock: Callable[[], datetime] | None = None,
     activities: tuple[DemoActivity, ...] | None = None,
+    artifact_storage: ArtifactStorage | None = None,
 ) -> PracticeApplication:
     """Build a practice application wired to the given history repository."""
     activities = activities if activities is not None else build_demo_activities()
@@ -64,6 +70,7 @@ def make_history_application(
         evaluator=DemoEvaluator(build_demo_activity_map(activities)),
         stimulus_provider=build_stimulus_provider(activities, provider_name="builtin"),
         history_repository=repository,
+        artifact_storage=artifact_storage,
         clock=clock,
     )
 
@@ -523,7 +530,7 @@ class FailingRepository(InMemoryPracticeHistoryRepository):
         feedback: Feedback,
         reflection: Reflection,
         stimulus: StimulusInstance | None,
-        artifact: SketchbookArtifact | None = None,
+        artifact: ArtifactRef | None = None,
     ) -> StoredPracticeCompletion:
         if self.fail_next_save:
             raise PersistenceError("Failed to save completed practice.")
@@ -620,3 +627,127 @@ def test_application_layer_never_imports_datastore() -> None:
     assert "datastore" not in source.replace("history_repository", "").replace(
         "PracticeHistoryRepository", ""
     )
+
+
+# --- SPEC-033: history keeps only the private artifact reference ---------------
+
+#: A minimal payload that passes the upload sniffing (PNG signature + body).
+PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"fake-image-body"
+
+
+def reflection_activity_id(activities: tuple[DemoActivity, ...]) -> UUID:
+    """Return the reflection activity's identity within one seeded set.
+
+    Demo activity identities are generated per :func:`build_demo_activities`
+    call, so callers must resolve the identity from the same activity set the
+    application was built with.
+    """
+    for item in activities:
+        if item.activity.activity_type is ActivityType.REFLECTION:
+            return item.activity.id
+    raise AssertionError("demo content has no reflection activity")
+
+
+def make_sketch(activity_id: UUID) -> SketchbookArtifact:
+    """Build a validated private sketch artifact for a reflection practice."""
+    return SketchbookArtifact.from_upload(
+        learner_id=LEARNER,
+        activity_id=activity_id,
+        filename="my-sketch.png",
+        content_type="image/png",
+        data=PNG_BYTES,
+    )
+
+
+def test_history_persists_artifact_reference_without_private_bytes(
+    tmp_path: Path,
+) -> None:
+    """SPEC-033: history records carry only the artifact reference."""
+    repository = InMemoryPracticeHistoryRepository()
+    storage = FileArtifactStorage(str(tmp_path / "artifacts"))
+    activities = build_demo_activities()
+    application = make_history_application(
+        repository=repository,
+        artifact_storage=storage,
+        activities=activities,
+    )
+    activity_id = reflection_activity_id(activities)
+    sketch = make_sketch(activity_id)
+
+    application.submit_response(activity_id, "A response.", artifact=sketch)
+    application.submit_reflection("I noticed where my line weight broke down.")
+
+    summaries = repository.list_completions(LEARNER)
+    assert len(summaries) == 1
+    stored = repository.get_completion(LEARNER, summaries[0].completion_id)
+    assert stored is not None
+
+    ref = stored.artifact
+    assert isinstance(ref, ArtifactRef)
+    assert ref.filename == "my-sketch.png"
+    assert ref.content_type == "image/png"
+    assert ref.size_bytes == len(PNG_BYTES)
+    assert not hasattr(ref, "data")
+    # The stored history record must not embed the raw image bytes at all.
+    assert PNG_BYTES.decode("latin-1") not in repr(stored)
+    # The private bytes live behind the storage boundary, keyed by artifact id.
+    assert storage.get(ref.artifact_id) == PNG_BYTES
+
+
+def test_review_renders_artifact_reference_and_bytes(tmp_path: Path) -> None:
+    """SPEC-033: review and retrieval expose the reference, not the payload."""
+    repository = InMemoryPracticeHistoryRepository()
+    storage = FileArtifactStorage(str(tmp_path / "artifacts"))
+    activities = build_demo_activities()
+    application = make_history_application(
+        repository=repository,
+        artifact_storage=storage,
+        activities=activities,
+    )
+    activity_id = reflection_activity_id(activities)
+    sketch = make_sketch(activity_id)
+
+    application.submit_response(activity_id, "A response.", artifact=sketch)
+    application.submit_reflection("Reflection text.")
+    completion_id = repository.list_completions(LEARNER)[0].completion_id
+
+    review = application.get_practice_review(completion_id)
+    assert review.artifact is not None
+    assert review.artifact.artifact_id == sketch.artifact_id
+    assert review.artifact.image_url == f"/history/{completion_id}/artifact"
+
+    ref = application.get_artifact_ref_for_completion(completion_id)
+    assert ref is not None
+    assert ref.artifact_id == sketch.artifact_id
+    assert application.get_artifact_bytes(ref.artifact_id) == PNG_BYTES
+
+
+def test_artifact_lookup_is_unlisted_for_unknown_completion(
+    tmp_path: Path,
+) -> None:
+    """SPEC-033: unknown completions yield no reference and no bytes."""
+    application = make_history_application(
+        repository=InMemoryPracticeHistoryRepository(),
+        artifact_storage=FileArtifactStorage(str(tmp_path / "artifacts")),
+    )
+
+    assert application.get_artifact_ref_for_completion(uuid4()) is None
+    assert application.get_artifact_bytes(uuid4()) is None
+
+
+def test_practice_without_artifact_persists_no_reference(tmp_path: Path) -> None:
+    """SPEC-033: a practice with no sketch records no artifact reference."""
+    repository = InMemoryPracticeHistoryRepository()
+    application = make_history_application(
+        repository=repository,
+        artifact_storage=FileArtifactStorage(str(tmp_path / "artifacts")),
+    )
+
+    complete_first_practice(application)
+
+    completion_id = repository.list_completions(LEARNER)[0].completion_id
+    stored = repository.get_completion(LEARNER, completion_id)
+    assert stored is not None
+    assert stored.artifact is None
+    assert application.get_practice_review(completion_id).artifact is None
+    assert application.get_artifact_ref_for_completion(completion_id) is None

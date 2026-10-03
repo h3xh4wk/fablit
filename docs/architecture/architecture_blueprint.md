@@ -498,6 +498,42 @@ rankings, streaks, or recommendations. Per-learner Datastore key namespaces
 keep learner context explicit for future authentication/ownership work without
 redesigning the stored evidence.
 
+### Private Sketchbook Artifact Storage
+
+The sketchbook reflection practice can attach a private learner image, but the
+binary payload is deliberately excluded from the practice-history record. The
+boundary is layered as:
+
+```text
+Review route (learner-scoped)
+        ↓
+Application / Use Cases (PracticeApplication)
+        ↓
+Artifact Storage Port (ArtifactStorage)
+        ↓
+File-Backed Private Store (fablit.application.artifact_storage)
+```
+
+`StoredPracticeCompletion.artifact` is an `ArtifactRef` — metadata only — so the
+Datastore `PracticeCompletion` entity never carries image bytes, and the
+SPEC-021 port and application layer stay independent of any storage mechanism.
+The in-memory adapter stores the same reference. Upload validation
+(PNG/JPEG/WebP, 5 MB) is unchanged and remains an application-boundary concern.
+
+Ownership and access control are enforced at the application boundary, not by
+obscurity: the review route resolves the artifact reference through the
+requesting learner's own completion (SPEC-024 identity, per-learner history)
+before reading the bytes from the private store. There are no public or direct
+media URLs, and a missing reference, missing bytes, and another learner's
+completion all produce the same unlisted 404. The storage directory is
+deployment-private and configurable (`FABLIT_ARTIFACT_STORAGE_DIR`), defaulting
+to a process-private location under the system temp directory.
+
+Records written before this boundary existed embedded the bytes inline. They
+still deserialize (the embedded payload is ignored), and no automatic
+migration is performed: legacy bytes are no longer retrievable through the
+review, and a review renders normally when an artifact's bytes are missing.
+
 ---
 
 ## Optional Practice Modes & Learner Choice
