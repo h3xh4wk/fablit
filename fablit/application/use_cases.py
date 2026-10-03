@@ -36,7 +36,8 @@ from fablit.domain import (
     Submission,
 )
 
-from .artifacts import SketchbookArtifact
+from .artifact_storage import ArtifactStorage, FileArtifactStorage
+from .artifacts import ArtifactRef, SketchbookArtifact
 from .demo_data import (
     INTENTION_ACTION_LABEL,
     INTENTION_HEADING,
@@ -116,12 +117,16 @@ class PracticeApplication:
         evaluator: Evaluator,
         stimulus_provider: StimulusProvider,
         history_repository: PracticeHistoryRepository | None = None,
+        artifact_storage: ArtifactStorage | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._store = store
         self._evaluator = evaluator
         self._stimulus_provider = stimulus_provider
         self._history_repository = history_repository
+        # SPEC-033: private sketchbook bytes live behind this boundary, never
+        # inside the durable practice-history records.
+        self._artifact_storage = artifact_storage or FileArtifactStorage()
         self._clock = clock or _now
         # HTMX disables the submit button in normal browser use, but requests
         # can still race due to retries or multiple clients. Keep this guard at
@@ -436,7 +441,7 @@ class PracticeApplication:
                 "Please enter a reflection before saving."
             )
         activity = self._activity_for_feedback(feedback)
-        artifact = self._store.take_pending_artifact(activity.activity.id)
+        artifact_ref = self._store_pending_artifact_ref(activity.activity.id)
         if content is None:
             self._store.save_completion(
                 PracticeCompletion(
@@ -444,7 +449,7 @@ class PracticeApplication:
                     activity_id=activity.activity.id,
                     reflection_id=None,
                     completed_at=self._clock(),
-                    artifact=artifact,
+                    artifact=artifact_ref,
                 )
             )
             logger.info(
@@ -467,7 +472,7 @@ class PracticeApplication:
                 activity_id=activity.activity.id,
                 reflection_id=reflection.id,
                 completed_at=self._clock(),
-                artifact=artifact,
+                artifact=artifact_ref,
             )
         )
 
@@ -488,7 +493,7 @@ class PracticeApplication:
                     feedback=feedback,
                     reflection=reflection,
                     stimulus=stimulus,
-                    artifact=artifact,
+                    artifact=artifact_ref,
                 )
             except TypeError as exc:
                 if "artifact" not in str(exc):
@@ -622,10 +627,16 @@ class PracticeApplication:
             pre_practice_intention=completion.submission.pre_practice_intention,
         )
 
-    def get_artifact_for_completion(
+    def get_artifact_ref_for_completion(
         self, completion_id: UUID
-    ) -> SketchbookArtifact | None:
-        """Return a learner-owned uploaded artifact for a completed practice."""
+    ) -> ArtifactRef | None:
+        """Return the private artifact reference for a learner's own completion.
+
+        SPEC-033: ownership is enforced here — only a completion belonging to
+        the current learner yields a reference — while the bytes stay behind
+        the artifact-storage boundary. Unknown or unowned completions return
+        None rather than revealing whether an artifact exists.
+        """
         if self._history_repository is None:
             return None
         completion = self._history_repository.get_completion(
@@ -634,6 +645,29 @@ class PracticeApplication:
         if completion is None:
             return None
         return completion.artifact
+
+    def get_artifact_bytes(self, artifact_id: UUID) -> bytes | None:
+        """Return the private bytes for an already-authorized artifact reference.
+
+        Returns None when the bytes are missing (for example a legacy record
+        saved before SPEC-033), so the web layer can answer with the same
+        unlisted 404 it uses for absent artifacts.
+        """
+        return self._artifact_storage.get(artifact_id)
+
+    def _store_pending_artifact_ref(self, activity_id: UUID) -> ArtifactRef | None:
+        """Move pending sketchbook bytes into private storage (SPEC-033).
+
+        The bytes are written once to the artifact-storage boundary and only
+        the metadata reference is retained for the in-memory completion and
+        the durable history record, so history never carries the payload.
+        """
+        artifact = self._store.take_pending_artifact(activity_id)
+        if artifact is None:
+            return None
+        ref = artifact.as_ref()
+        self._artifact_storage.save(ref, artifact.data)
+        return ref
 
     def _resolve_stimulus(self, item: DemoActivity) -> StimulusInstance | None:
         """Resolve (or reuse) the stimulus for an activity instance, if required.

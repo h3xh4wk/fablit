@@ -46,6 +46,7 @@ from fablit.application import (
     CompletionNotFoundError,
     EvaluationFailedError,
     FeedbackNotFoundError,
+    FileArtifactStorage,
     InvalidPracticeResponseError,
     InvalidReflectionResponseError,
     PracticeApplication,
@@ -81,11 +82,15 @@ def _build_learner_applications(
     anonymous learner identity to a learner-scoped ``PracticeApplication``
     via the registry (``app.learner_session``). The history repository
     (SPEC-021) is shared — it is learner-scoped by contract — and may be
-    ``None`` when persistence is not configured.
+    ``None`` when persistence is not configured. The private artifact storage
+    (SPEC-033) is likewise shared and deployment-configured.
     """
     content = DemoContent.build(app_config)
     history_repository = _build_history_repository(app_config)
-    return content, LearnerApplicationRegistry(content, history_repository)
+    artifact_storage = FileArtifactStorage(app_config.artifact_storage_dir)
+    return content, LearnerApplicationRegistry(
+        content, history_repository, artifact_storage
+    )
 
 
 def _build_history_repository(
@@ -692,14 +697,21 @@ def create_app(config: AppConfig) -> FastAPI:
 
     @app.get("/history/{completion_id}/artifact", response_class=Response)
     async def practice_artifact(request: Request, completion_id: str) -> Response:
-        """Serve the learner's private sketchbook artifact for a completed review."""
+        """Serve the learner's private sketchbook artifact for a completed review.
+
+        SPEC-033: history carries only the artifact reference, so the bytes are
+        read from the private artifact-storage boundary. Ownership is enforced
+        by resolving the reference through the learner-scoped completion; a
+        missing reference, missing bytes, or another learner's completion all
+        return the same unlisted 404.
+        """
         practice = practice_for_request(request)
         try:
             cid = _completion_id(completion_id)
         except CompletionNotFoundError:
             return _error_response(request, "Practice record not found.")
 
-        artifact = practice.get_artifact_for_completion(cid)
+        artifact = practice.get_artifact_ref_for_completion(cid)
         if artifact is None:
             return _error_response(
                 request,
@@ -707,8 +719,16 @@ def create_app(config: AppConfig) -> FastAPI:
                 status_code=404,
             )
 
+        data = practice.get_artifact_bytes(artifact.artifact_id)
+        if data is None:
+            return _error_response(
+                request,
+                "This practice does not have an attached sketch image.",
+                status_code=404,
+            )
+
         return Response(
-            content=artifact.data,
+            content=data,
             media_type=artifact.content_type,
             headers={"Cache-Control": "private, no-store"},
         )

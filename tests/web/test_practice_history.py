@@ -8,6 +8,7 @@ still completing successfully (SPEC-021 §19 "Web/UI Tests").
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -344,6 +345,191 @@ def test_existing_practice_journey_still_completes() -> None:
             "completed this practice" in completion.text
             or "That's one done" in completion.text
         )
+
+
+# --- Private sketchbook artifacts (SPEC-033) -------------------------------------
+
+#: A minimal payload that passes the upload sniffing (PNG signature + body).
+PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"web-test-body"
+
+
+def _reflection_activity_href(client: TestClient) -> str:
+    """Return the demo reflection activity's href (the upload-capable one)."""
+    dashboard = client.get("/")
+    hrefs = [
+        "/activities/" + chunk.split('"')[0]
+        for chunk in dashboard.text.split('href="/activities/')[1:]
+    ]
+    for href in hrefs:
+        href = href.removesuffix("/intention")
+        if 'name="artifact"' in client.get(href).text:
+            return href
+    raise AssertionError("no reflection activity with sketch upload found")
+
+
+def _first_review_href(client: TestClient) -> str:
+    """Return the href of the newest history entry's review."""
+    history = client.get("/history")
+    return next(
+        line.split('href="')[1].split('"')[0]
+        for line in history.text.splitlines()
+        if 'href="/history/' in line
+    )
+
+
+def test_artifact_route_serves_private_bytes_from_storage(tmp_path: Path) -> None:
+    """SPEC-033: the review serves bytes from storage, not from history."""
+    test_config = load_config(
+        overrides={
+            "practice_history_repository": "memory",
+            "artifact_storage_dir": str(tmp_path / "artifacts"),
+        }
+    )
+    test_app = create_app(test_config)
+    with TestClient(test_app) as client:
+        href = _reflection_activity_href(client)
+        client.post(
+            href + "/submit",
+            data={"response": "I looked closely at my own work."},
+            files={"artifact": ("my-sketch.png", PNG_BYTES, "image/png")},
+        )
+        client.post("/reflect", data={"content": "A reflection."})
+        review_href = _first_review_href(client)
+        review = client.get(review_href)
+        artifact = client.get(review_href + "/artifact")
+
+    assert review.status_code == 200
+    # The review points at the artifact route rather than embedding the bytes.
+    assert review_href + "/artifact" in review.text
+    assert artifact.status_code == 200
+    assert artifact.content == PNG_BYTES
+    assert artifact.headers["content-type"] == "image/png"
+    assert artifact.headers["cache-control"] == "private, no-store"
+
+
+def test_artifact_route_is_unlisted_without_an_attached_sketch() -> None:
+    """SPEC-033: absent artifacts answer with the same unlisted 404."""
+    with _history_client() as client:
+        review_href = _complete_first_practice(client, "A response.")
+        artifact = client.get(review_href + "/artifact")
+
+    assert artifact.status_code == 404
+    assert "sketch image" in artifact.text
+
+
+def test_artifact_route_404_for_unknown_completion() -> None:
+    with _history_client() as client:
+        artifact = client.get(f"/history/{uuid4()}/artifact")
+
+    assert artifact.status_code == 404
+
+
+def _artifact_client(tmp_path: Path) -> TestClient:
+    """A client whose private artifacts are written under the temp directory."""
+    test_config = load_config(
+        overrides={
+            "practice_history_repository": "memory",
+            "artifact_storage_dir": str(tmp_path / "artifacts"),
+        }
+    )
+    return TestClient(create_app(test_config))
+
+
+def _upload_sketch(client: TestClient) -> None:
+    """Complete a reflection practice with an attached sketch."""
+    href = _reflection_activity_href(client)
+    client.post(
+        href + "/submit",
+        data={"response": "I looked closely at my own work."},
+        files={"artifact": ("my-sketch.png", PNG_BYTES, "image/png")},
+    )
+    client.post("/reflect", data={"content": "A reflection."})
+
+
+def test_another_learner_cannot_retrieve_the_artifact(tmp_path: Path) -> None:
+    """AC: artifact retrieval stays learner-scoped and private."""
+    test_config = load_config(
+        overrides={
+            "practice_history_repository": "memory",
+            "artifact_storage_dir": str(tmp_path / "artifacts"),
+        }
+    )
+    test_app = create_app(test_config)
+    with TestClient(test_app) as learner_a, TestClient(test_app) as learner_b:
+        _upload_sketch(learner_a)
+        review_href = _first_review_href(learner_a)
+
+        # Learner B has its own anonymous identity and cannot see A's record.
+        foreign_review = learner_b.get(review_href)
+        foreign_artifact = learner_b.get(review_href + "/artifact")
+
+    assert foreign_review.status_code == 404
+    assert foreign_artifact.status_code == 404
+
+
+def test_review_stays_usable_when_artifact_bytes_are_missing(tmp_path: Path) -> None:
+    """AC: a missing artifact must not make the rest of the review unusable."""
+    artifacts_dir = tmp_path / "artifacts"
+    with _artifact_client(tmp_path) as client:
+        _upload_sketch(client)
+        review_href = _first_review_href(client)
+
+        # Remove the private bytes behind the (still present) reference.
+        for path in artifacts_dir.iterdir():
+            path.unlink()
+
+        review = client.get(review_href)
+        artifact = client.get(review_href + "/artifact")
+
+    assert review.status_code == 200
+    assert "Your reflection" in review.text
+    assert artifact.status_code == 404
+
+
+def test_unsupported_sketch_format_is_rejected(tmp_path: Path) -> None:
+    """AC: PNG/JPEG/WebP validation remains enforced on upload."""
+    with _artifact_client(tmp_path) as client:
+        href = _reflection_activity_href(client)
+        response = client.post(
+            href + "/submit",
+            data={"response": "A response."},
+            files={"artifact": ("notes.txt", b"not an image", "text/plain")},
+        )
+
+    assert response.status_code == 200
+    assert "PNG, JPG, or WebP" in response.text
+
+
+def test_oversized_sketch_upload_is_rejected(tmp_path: Path) -> None:
+    """AC: the 5 MB upload limit remains enforced."""
+    oversized = b"\x89PNG\r\n\x1a\n" + b"0" * (5 * 1024 * 1024)
+    with _artifact_client(tmp_path) as client:
+        href = _reflection_activity_href(client)
+        response = client.post(
+            href + "/submit",
+            data={"response": "A response."},
+            files={"artifact": ("big.png", oversized, "image/png")},
+        )
+
+    assert response.status_code == 200
+    assert "5MB or smaller" in response.text
+
+
+def test_non_reflection_practice_offers_and_records_no_artifact() -> None:
+    """AC: non-sketchbook practices remain unaffected."""
+    with _history_client() as client:
+        dashboard = client.get("/")
+        href = _first_activity_href(dashboard.text)
+        practice_page = client.get(href)
+        assert 'name="artifact"' not in practice_page.text
+
+        client.post(href + "/submit", data={"response": "A response."})
+        client.post("/reflect", data={"content": "A reflection."})
+        review = client.get(_first_review_href(client))
+
+    assert review.status_code == 200
+    # No artifact block is rendered for a practice without a sketch.
+    assert "Uploaded sketch" not in review.text
 
 
 def test_history_link_offers_path_from_completion() -> None:

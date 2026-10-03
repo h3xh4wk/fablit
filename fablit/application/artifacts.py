@@ -22,6 +22,26 @@ SUPPORTED_SKETCHBOOK_ARTIFACT_TYPES = {
 
 
 @dataclass(frozen=True)
+class ArtifactRef:
+    """Metadata-only reference to a private sketchbook artifact (SPEC-033).
+
+    This is the *only* artifact handle that durable practice-history records
+    may carry: the binary payload lives behind the artifact-storage boundary
+    (``artifact_storage.py``). The reference is learner-scoped by construction
+    and its fields are fixed at save time, so history records stay small and
+    the private bytes never enter learner-journey history storage.
+    """
+
+    artifact_id: UUID
+    learner_id: UUID
+    activity_id: UUID
+    filename: str
+    content_type: str
+    size_bytes: int
+    created_at: datetime
+
+
+@dataclass(frozen=True)
 class SketchbookArtifact:
     """Private sketch image stored by a learner for one reflection practice."""
 
@@ -73,6 +93,22 @@ class SketchbookArtifact:
             content_type=resolved_type or _infer_content_type(extension),
             size_bytes=len(data),
             data=data,
+        )
+
+    def as_ref(self) -> ArtifactRef:
+        """Return the metadata-only reference persisted with history (SPEC-033).
+
+        The reference deliberately excludes ``data``: only the artifact-storage
+        boundary ever holds the private bytes.
+        """
+        return ArtifactRef(
+            artifact_id=self.artifact_id,
+            learner_id=self.learner_id,
+            activity_id=self.activity_id,
+            filename=self.filename,
+            content_type=self.content_type,
+            size_bytes=self.size_bytes,
+            created_at=self.created_at,
         )
 
 

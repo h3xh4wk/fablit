@@ -194,6 +194,16 @@ Completed practice is durable: after the learner saves a reflection, the complet
 - **Local development and tests:** `FABLIT_PRACTICE_HISTORY_REPOSITORY=memory` (or unset) keeps the journey fully functional with the in-memory repository; the Datastore adapter is unit-tested against a lightweight fake client, so the test suite never needs a live emulator or credentials.
 - **Learner surface:** "Your practice" (`/history`) answers *What have I practised recently?* with newest-first entries and a calm empty state pointing back to Explore; a review page answers *What did I do, what feedback did I receive, and what did I learn from it?* No scores, percentages, mastery labels, streaks, rankings, or recommendations are introduced.
 
+## Private sketchbook artifact storage
+
+Sketchbook reflection images are private learner media, not practice-history evidence. Since the sketchbook reflection practice added optional sketch upload, their binary payload is deliberately kept **outside** the practice-history record:
+
+- **History keeps metadata only:** a completion stores an artifact *reference* (artifact id, learner id, activity id, filename, content type, size, created-at) — never the image bytes. The Datastore adapter serializes exactly those fields, so a `PracticeCompletion` entity can never grow by the 5 MB upload limit.
+- **Storage boundary:** `ArtifactStorage` (`fablit/application/artifact_storage.py`) isolates the bytes. The current deployment uses `FileArtifactStorage`, a deployment-private, file-backed store keyed by the opaque artifact id; the directory is created lazily and is selected with `FABLIT_ARTIFACT_STORAGE_DIR` (or the `artifact_storage_dir` setting). Unset falls back to a process-private directory under the system temp location, so local development and tests work without a writable `/private` mount. No new dependency or GCP service is introduced.
+- **Ownership and access control:** retrieval stays behind the existing learner-scoped route `/history/{completion_id}/artifact`. The application resolves the artifact reference only through the requesting learner's own completion (the SPEC-024 anonymous identity plus per-learner history), then reads the bytes from the private store. There are no public or direct media URLs; a missing reference, missing bytes, and another learner's completion all return the same unlisted `404`.
+- **Validation unchanged:** PNG/JPEG/WebP and the 5 MB limit are still enforced at upload time, and non-sketchbook practices are unaffected.
+- **Existing records:** records written before this change stored the bytes inline. They still load (the embedded payload is ignored), but no automated migration is performed — those legacy bytes are no longer retrievable through the review, and a review renders normally when an artifact's bytes are missing.
+
 ## Quality checks
 
 Run the automated checks locally:

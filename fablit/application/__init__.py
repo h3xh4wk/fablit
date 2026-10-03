@@ -9,9 +9,17 @@ isolated behind an application-level boundary) and the response-aware
 evaluator contract.
 """
 
+from .artifact_storage import (
+    ARTIFACT_STORAGE_DIR_ENV,
+    ArtifactStorage,
+    ArtifactStorageError,
+    FileArtifactStorage,
+    default_artifact_storage_dir,
+)
 from .artifacts import (
     MAX_SKETCHBOOK_ARTIFACT_BYTES,
     SUPPORTED_SKETCHBOOK_ARTIFACT_TYPES,
+    ArtifactRef,
     SketchbookArtifact,
 )
 from .demo_data import (
@@ -129,6 +137,12 @@ __all__ = [
     "PRACTICE_CAPABILITY_REFLECT",
     "PRACTICE_MODE_CHOICE_QUESTION",
     "PracticeActivitySummary",
+    "ARTIFACT_STORAGE_DIR_ENV",
+    "ArtifactRef",
+    "ArtifactStorage",
+    "ArtifactStorageError",
+    "FileArtifactStorage",
+    "default_artifact_storage_dir",
     "SketchbookArtifact",
     "SketchbookArtifactView",
     "PracticeActivityView",

@@ -82,6 +82,16 @@ class AppConfig(BaseSettings):
             "Unset disables practice history persistence."
         ),
     )
+    artifact_storage_dir: str | None = Field(
+        None,
+        description=(
+            "Deployment-private directory holding sketchbook artifact bytes "
+            "(SPEC-033). Practice-history records store only artifact "
+            "references, so the binary payload lives here instead. Unset uses "
+            "FABLIT_ARTIFACT_STORAGE_DIR, or a process-private directory under "
+            "the system temp location when that is also unset."
+        ),
+    )
     config_file: Path | None = Field(None, description="Path to optional config file.")
     version: str = Field("0.1.0", description="Application version.")
 

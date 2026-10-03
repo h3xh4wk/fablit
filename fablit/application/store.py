@@ -31,7 +31,7 @@ from fablit.domain import (
     Submission,
 )
 
-from .artifacts import SketchbookArtifact
+from .artifacts import ArtifactRef, SketchbookArtifact
 from .errors import (
     ActivityNotFoundError,
     FeedbackNotFoundError,
@@ -251,15 +251,17 @@ class PracticeCompletion:
     — skipping must never block completion or history recording in the
     journey store (§2.2 acceptance criteria).
 
-    SPEC-033: a sketchbook reflection may include a private learner-owned
-    artifact associated with the completed practice record.
+    SPEC-033: a sketchbook reflection may reference a private learner-owned
+    artifact associated with the completed practice record. Only the metadata
+    reference is kept here; the private bytes live behind the artifact-storage
+    boundary and never enter history storage.
     """
 
     learner_id: UUID
     activity_id: UUID
     reflection_id: UUID | None
     completed_at: datetime
-    artifact: SketchbookArtifact | None = None
+    artifact: ArtifactRef | None = None
 
 
 class LearnerJourneyStore:
