@@ -7,6 +7,11 @@ journey rather than becoming a generic repository framework.
 The application layer depends on this port, not on Datastore implementations
 directly. Concrete implementations (in-memory, Datastore) live in separate
 adapters behind this boundary.
+
+SPEC-033 refines the sketchbook contract: the private artifact bytes live
+behind a dedicated artifact-storage boundary, while history records keep only
+the artifact reference. This keeps the binary payload out of the
+learner-journey history records.
 """
 
 from __future__ import annotations
@@ -16,9 +21,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
+from fablit.application.artifact_storage import ArtifactRef
 from fablit.domain import Evaluation, Feedback, Reflection, StimulusInstance, Submission
-
-from .artifacts import SketchbookArtifact
 
 
 @dataclass(frozen=True)
@@ -31,6 +35,10 @@ class StoredPracticeCompletion:
     This dataclass represents the reconstituted data after retrieval from
     durable storage. It carries only domain/application semantics, never
     Datastore-specific concerns.
+
+    SPEC-033: the artifact field carries only the artifact reference, not the
+    private binary payload. The bytes live behind the artifact-storage
+    boundary.
     """
 
     completion_id: UUID  # Stable identity of this completion record
@@ -44,7 +52,7 @@ class StoredPracticeCompletion:
     feedback: Feedback
     reflection: Reflection
     stimulus: StimulusInstance | None = None  # SPEC-015 stimulus preservation
-    artifact: SketchbookArtifact | None = None  # SPEC-033 private sketchbook context
+    artifact: ArtifactRef | None = None  # SPEC-033 private sketchbook reference
 
 
 @dataclass(frozen=True)
@@ -73,6 +81,10 @@ class PracticeHistoryRepository(ABC):
     records to persistence-compatible representations, assigning stable
     identifiers, and reconstructing domain records for review. The domain
     model remains independent of persistence mechanics.
+
+    SPEC-033: the artifact parameter is an artifact reference, not the
+    private binary payload. The bytes are stored by the artifact-storage
+    boundary.
     """
 
     @abstractmethod
@@ -86,7 +98,7 @@ class PracticeHistoryRepository(ABC):
         feedback: Feedback,
         reflection: Reflection,
         stimulus: StimulusInstance | None,
-        artifact: SketchbookArtifact | None = None,
+        artifact: ArtifactRef | None = None,
     ) -> StoredPracticeCompletion:
         """Persist a completed practice journey durably.
 
@@ -105,8 +117,8 @@ class PracticeHistoryRepository(ABC):
             feedback: The feedback derived from the evaluation (Feedback).
             reflection: The learner's reflection (Reflection domain object).
             stimulus: The resolved stimulus shown during practice, if any.
-            artifact: The private sketchbook image uploaded for a reflection
-                practice, if present.
+            artifact: The private sketchbook reference uploaded for a
+                reflection practice, if present.
 
         Returns:
             StoredPracticeCompletion: The persisted record with stable identity.

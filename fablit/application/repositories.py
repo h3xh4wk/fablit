@@ -9,6 +9,9 @@ This implementation is suitable for:
 - Unit tests of application logic
 - Integration tests that don't require Datastore
 - Local development without GCP setup
+
+SPEC-033: the artifact is persisted as a reference only. The private binary
+bytes live behind the artifact-storage boundary.
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ from fablit.application.persistence import (
 )
 from fablit.domain import Evaluation, Feedback, Reflection, StimulusInstance, Submission
 
-from .artifacts import SketchbookArtifact
+from .artifacts import ArtifactRef
 
 
 class InMemoryPracticeHistoryRepository(PracticeHistoryRepository):
@@ -34,6 +37,8 @@ class InMemoryPracticeHistoryRepository(PracticeHistoryRepository):
     SPEC-021 §6: the in-memory implementation remains useful for unit tests
     and local development where practical, keeping ordinary unit/application
     tests independent of production GCP credentials.
+
+    SPEC-033: the artifact is persisted as a reference only.
     """
 
     def __init__(self) -> None:
@@ -53,7 +58,7 @@ class InMemoryPracticeHistoryRepository(PracticeHistoryRepository):
         feedback: Feedback,
         reflection: Reflection,
         stimulus: StimulusInstance | None,
-        artifact: SketchbookArtifact | None = None,
+        artifact: ArtifactRef | None = None,
     ) -> StoredPracticeCompletion:
         """Persist a completed practice journey in memory.
 
@@ -71,6 +76,7 @@ class InMemoryPracticeHistoryRepository(PracticeHistoryRepository):
             feedback: The feedback.
             reflection: The learner's reflection.
             stimulus: The resolved stimulus, if any.
+            artifact: The private sketchbook reference, if present.
 
         Returns:
             StoredPracticeCompletion: The persisted record.
