@@ -49,6 +49,85 @@ class Concept:
 
 
 @dataclass(frozen=True)
+class PracticeContentContract:
+    """Explicit content metadata that defines what makes a practice a Fablit practice.
+
+    The structure follows SPEC-029's minimum educational contract: purpose,
+    task, expected thinking, response requirements, and evaluation/feedback/
+    reflection/continuation intent. This metadata remains application-level
+    content configuration and never becomes a learner-progress model.
+    """
+
+    purpose: str
+    task: str
+    expected_thinking: str
+    response_contract: str
+    evaluation_intent: str
+    feedback_intent: str
+    reflection_intent: str
+    continuation_intent: str
+
+    @classmethod
+    def from_activity(
+        cls,
+        *,
+        title: str,
+        description: str,
+        prompt: str,
+        primary_capability: str,
+    ) -> PracticeContentContract:
+        """Build a usable, reviewable content contract from the activity."""
+        capability = primary_capability.lower()
+        if description.strip():
+            purpose = (
+                f"Use the {capability} lens to {description.lower()}."
+                if capability
+                else description.strip()
+            )
+        else:
+            purpose = (
+                f"Exercise {capability} thinking through the activity."
+                if capability
+                else "Exercise deliberate creative thinking through the activity."
+            )
+        task = prompt.strip() or title.strip()
+        expected_thinking = (
+            "The learner moves from concrete evidence to a reasoned response, "
+            "rather than relying on vague generalisation or unsupported claims."
+        )
+        response_contract = (
+            "Answer with a focused, evidence-based response that matches the task "
+            "without unnecessary format overhead or padding."
+        )
+        evaluation_intent = (
+            "A useful evaluation looks for specificity, direct evidence, and clear "
+            f"use of the {capability} thinking demanded by the task."
+        )
+        feedback_intent = (
+            "Feedback should name a concrete strength, explain why it matters, "
+            "and point to one useful next move."
+        )
+        reflection_intent = (
+            "Reflection should help the learner notice how the attempt was made and "
+            "what would change in a future attempt."
+        )
+        continuation_intent = (
+            "Continue with a related practice that extends the same thinking move or "
+            "uses a meaningful next step rather than a superficial repeat."
+        )
+        return cls(
+            purpose=purpose,
+            task=task,
+            expected_thinking=expected_thinking,
+            response_contract=response_contract,
+            evaluation_intent=evaluation_intent,
+            feedback_intent=feedback_intent,
+            reflection_intent=reflection_intent,
+            continuation_intent=continuation_intent,
+        )
+
+
+@dataclass(frozen=True)
 class DemoActivity:
     """A seeded demo practice activity plus its learner-facing content.
 
@@ -63,11 +142,57 @@ class DemoActivity:
     strength: str
     improvement: str
     next_step: str
+    content_contract: PracticeContentContract | None = None
     primary_capability: str = ""
     concepts: tuple[Concept, ...] = ()
     fallback_image: str | None = None
     fallback_alt: str | None = None
     secondary_capabilities: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.content_contract is None:
+            object.__setattr__(
+                self,
+                "content_contract",
+                PracticeContentContract.from_activity(
+                    title=self.title,
+                    description=self.description,
+                    prompt=self.activity.instructions,
+                    primary_capability=self.primary_capability,
+                ),
+            )
+
+    @property
+    def purpose(self) -> str:
+        return self.content_contract.purpose
+
+    @property
+    def task(self) -> str:
+        return self.content_contract.task
+
+    @property
+    def expected_thinking(self) -> str:
+        return self.content_contract.expected_thinking
+
+    @property
+    def response_contract(self) -> str:
+        return self.content_contract.response_contract
+
+    @property
+    def evaluation_intent(self) -> str:
+        return self.content_contract.evaluation_intent
+
+    @property
+    def feedback_intent(self) -> str:
+        return self.content_contract.feedback_intent
+
+    @property
+    def reflection_intent(self) -> str:
+        return self.content_contract.reflection_intent
+
+    @property
+    def continuation_intent(self) -> str:
+        return self.content_contract.continuation_intent
 
     @property
     def stimulus_context(self) -> ActivityStimulusContext | None:
