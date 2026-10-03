@@ -61,6 +61,20 @@ class PracticeActivityView:
     prompt: str
     stimulus: StimulusView | None = None
     intention: str | None = None
+    supports_artifact_upload: bool = False
+    artifact_upload_label: str = ""
+    max_artifact_size_mb: int = 5
+
+
+@dataclass(frozen=True)
+class SketchbookArtifactView:
+    """Private sketchbook artifact shown during review."""
+
+    artifact_id: UUID
+    filename: str
+    content_type: str
+    size_bytes: int
+    image_url: str
 
 
 @dataclass(frozen=True)
@@ -208,6 +222,8 @@ class PracticeReviewView:
     next_steps: tuple[str, ...]
     feedback: str
     reflection: str | None
+    completion_id: UUID | None = None
+    artifact: SketchbookArtifactView | None = None
     #: The pre-practice intention captured for this session (SPEC-026 §2.1,
     #: §2.3), rendered before the response in chronological order. ``None``
     #: when the learner skipped the intention or practised before SPEC-026.

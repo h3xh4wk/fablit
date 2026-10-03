@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Annotated
 from uuid import UUID, uuid4
 
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import (
     HTMLResponse,
     PlainTextResponse,
@@ -37,6 +37,7 @@ from fastapi.templating import Jinja2Templates
 from app.learner_session import (
     DemoContent,
     LearnerApplicationRegistry,
+    learner_id_for_request,
     learner_identity_middleware,
     practice_for_request,
 )
@@ -49,6 +50,7 @@ from fablit.application import (
     InvalidReflectionResponseError,
     PracticeApplication,
     PracticeMode,
+    SketchbookArtifact,
     SubmissionInProgressError,
     UnknownPracticeModeError,
 )
@@ -209,6 +211,28 @@ def _mode_id(value: str) -> PracticeMode:
         return PracticeMode(value)
     except ValueError:
         raise UnknownPracticeModeError("Practice mode not found.") from None
+
+
+async def _read_sketchbook_artifact(
+    request: Request,
+    activity_id: UUID,
+    upload: UploadFile | None,
+) -> SketchbookArtifact | None:
+    """Validate and store a private sketch image for the current reflection practice."""
+    if upload is None or upload.filename is None or not upload.filename.strip():
+        return None
+
+    data = await upload.read()
+    if not data:
+        return None
+
+    return SketchbookArtifact.from_upload(
+        learner_id=learner_id_for_request(request),
+        activity_id=activity_id,
+        filename=upload.filename,
+        content_type=upload.content_type,
+        data=data,
+    )
 
 
 async def _unhandled_exception_handler(request: Request, exc: Exception) -> Response:
@@ -408,6 +432,7 @@ def create_app(config: AppConfig) -> FastAPI:
         request: Request,
         activity_id: str,
         response: Annotated[str, Form()] = "",
+        artifact: Annotated[UploadFile | None, File()] = None,
     ) -> Response:
         """Accept a learner response and move to feedback (UC-003/004/005).
 
@@ -423,7 +448,26 @@ def create_app(config: AppConfig) -> FastAPI:
         except ActivityNotFoundError:
             return _error_response(request, "Activity not found.")
         try:
-            practice.submit_response(activity, response)
+            uploaded_artifact = await _read_sketchbook_artifact(
+                request,
+                activity,
+                artifact,
+            )
+            practice.submit_response(activity, response, artifact=uploaded_artifact)
+        except ValueError as exc:
+            view = practice.start_practice(activity)
+            if is_htmx:
+                return _practice_partial(
+                    request,
+                    view,
+                    error=str(exc),
+                    submitted_response=response,
+                )
+            return templates.TemplateResponse(
+                request,
+                "practice.html",
+                {"view": view, "error": str(exc), "submitted_response": response},
+            )
         except ActivityNotFoundError:
             return _error_response(request, "Activity not found.")
         except InvalidPracticeResponseError as exc:
@@ -455,8 +499,6 @@ def create_app(config: AppConfig) -> FastAPI:
                 {"view": view, "error": str(exc), "submitted_response": response},
             )
         except EvaluationFailedError as exc:
-            # SPEC-015 §64: preserve the learner's response and show a safe
-            # message instead of an internal failure.
             view = practice.start_practice(activity)
             if is_htmx:
                 return _practice_partial(
@@ -646,6 +688,29 @@ def create_app(config: AppConfig) -> FastAPI:
             request,
             "review.html",
             {"view": view, "export_record": _export_record(view)},
+        )
+
+    @app.get("/history/{completion_id}/artifact", response_class=Response)
+    async def practice_artifact(request: Request, completion_id: str) -> Response:
+        """Serve the learner's private sketchbook artifact for a completed review."""
+        practice = practice_for_request(request)
+        try:
+            cid = _completion_id(completion_id)
+        except CompletionNotFoundError:
+            return _error_response(request, "Practice record not found.")
+
+        artifact = practice.get_artifact_for_completion(cid)
+        if artifact is None:
+            return _error_response(
+                request,
+                "This practice does not have an attached sketch image.",
+                status_code=404,
+            )
+
+        return Response(
+            content=artifact.data,
+            media_type=artifact.content_type,
+            headers={"Cache-Control": "private, no-store"},
         )
 
     @app.get("/health")

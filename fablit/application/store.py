@@ -31,6 +31,7 @@ from fablit.domain import (
     Submission,
 )
 
+from .artifacts import SketchbookArtifact
 from .errors import ActivityNotFoundError, FeedbackNotFoundError, JourneyStateError
 
 
@@ -217,12 +218,16 @@ class PracticeCompletion:
     optional post-practice reflection (§2.2): the practice is still complete
     — skipping must never block completion or history recording in the
     journey store (§2.2 acceptance criteria).
+
+    SPEC-033: a sketchbook reflection may include a private learner-owned
+    artifact associated with the completed practice record.
     """
 
     learner_id: UUID
     activity_id: UUID
     reflection_id: UUID | None
     completed_at: datetime
+    artifact: SketchbookArtifact | None = None
 
 
 class LearnerJourneyStore:
@@ -246,6 +251,7 @@ class LearnerJourneyStore:
         self._feedback: dict[UUID, Feedback] = {}
         self._reflections: dict[UUID, Reflection] = {}
         self._completions: list[PracticeCompletion] = []
+        self._pending_artifacts: dict[UUID, SketchbookArtifact] = {}
         # SPEC-026 §2.1: the learner's optional pre-practice intention for the
         # current activity instance. Pending journey state only: it is captured
         # into the journey at submission (retry-safe) and never blocks practice.
@@ -378,6 +384,19 @@ class LearnerJourneyStore:
     def save_reflection(self, reflection: Reflection) -> None:
         self._reflections[reflection.id] = reflection
         self._last_reflection_id = reflection.id
+
+    def save_pending_artifact(
+        self, activity_id: UUID, artifact: SketchbookArtifact
+    ) -> None:
+        """Hold a private sketchbook artifact while the activity is submitted."""
+        self._pending_artifacts[activity_id] = artifact
+
+    def take_pending_artifact(self, activity_id: UUID) -> SketchbookArtifact | None:
+        """Consume the private sketchbook artifact for this activity."""
+        artifact = self._pending_artifacts.pop(activity_id, None)
+        if artifact is not None and artifact.learner_id != self._learner_id:
+            return None
+        return artifact
 
     def save_completion(self, completion: PracticeCompletion) -> None:
         """Record a completed practice journey without collapsing repeats."""

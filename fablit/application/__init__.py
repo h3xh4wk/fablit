@@ -9,6 +9,11 @@ isolated behind an application-level boundary) and the response-aware
 evaluator contract.
 """
 
+from .artifacts import (
+    MAX_SKETCHBOOK_ARTIFACT_BYTES,
+    SUPPORTED_SKETCHBOOK_ARTIFACT_TYPES,
+    SketchbookArtifact,
+)
 from .demo_data import (
     DEMO_LEARNER_ID,
     GAP_ANALYSIS_PROMPT,
@@ -83,6 +88,7 @@ from .view_models import (
     PracticeModeChoiceView,
     PracticeModeOption,
     ReflectionView,
+    SketchbookArtifactView,
     StimulusView,
 )
 
@@ -90,6 +96,7 @@ __all__ = [
     "ActivityNotFoundError",
     "ApplicationError",
     "CompletionNotFoundError",
+    "MAX_SKETCHBOOK_ARTIFACT_BYTES",
     "CompletionView",
     "Concept",
     "CONTINUATION_ACTION_LABEL",
@@ -122,6 +129,8 @@ __all__ = [
     "PRACTICE_CAPABILITY_REFLECT",
     "PRACTICE_MODE_CHOICE_QUESTION",
     "PracticeActivitySummary",
+    "SketchbookArtifact",
+    "SketchbookArtifactView",
     "PracticeActivityView",
     "PracticeApplication",
     "PracticeDashboardView",
@@ -141,6 +150,7 @@ __all__ = [
     "STRATEGY_ASSESSMENT_PROMPT",
     "StimulusProvider",
     "StimulusRetrievalError",
+    "SUPPORTED_SKETCHBOOK_ARTIFACT_TYPES",
     "StimulusView",
     "SubmissionInProgressError",
     "SUPPORTED_PROVIDERS",

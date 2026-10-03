@@ -28,6 +28,7 @@ from uuid import UUID
 
 from fablit.application.persistence import PracticeHistoryRepository
 from fablit.domain import (
+    ActivityType,
     Evaluation,
     Feedback,
     Reflection,
@@ -35,6 +36,7 @@ from fablit.domain import (
     Submission,
 )
 
+from .artifacts import SketchbookArtifact
 from .demo_data import (
     INTENTION_ACTION_LABEL,
     INTENTION_HEADING,
@@ -84,6 +86,7 @@ from .view_models import (
     PracticeModeOption,
     PracticeReviewView,
     ReflectionView,
+    SketchbookArtifactView,
     StimulusView,
 )
 
@@ -232,6 +235,9 @@ class PracticeApplication:
         """
         item = self._store.get_activity(activity_id)
         stimulus = self._resolve_stimulus(item)
+        supports_artifact_upload = (
+            item.activity.activity_type is ActivityType.REFLECTION
+        )
         return PracticeActivityView(
             id=item.activity.id,
             title=item.title,
@@ -240,6 +246,12 @@ class PracticeApplication:
             prompt=item.activity.instructions,
             stimulus=self._stimulus_view(stimulus),
             intention=self._store.pending_intention(activity_id),
+            supports_artifact_upload=supports_artifact_upload,
+            artifact_upload_label=(
+                "Add your sketch (optional, PNG/JPG/WebP, up to 5MB)"
+                if supports_artifact_upload
+                else ""
+            ),
         )
 
     # SPEC-026 §2.1 — Pre-Practice Intention
@@ -275,7 +287,12 @@ class PracticeApplication:
         self._store.set_pending_intention(activity_id, intention)
 
     # UC-003/004/005 — Submit Response + Response-Aware Evaluation + Feedback
-    def submit_response(self, activity_id: UUID, response: str) -> FeedbackView:
+    def submit_response(
+        self,
+        activity_id: UUID,
+        response: str,
+        artifact: SketchbookArtifact | None = None,
+    ) -> FeedbackView:
         """Accept a learner response, create the journey records, and prepare feedback.
 
         Creates a Submitted Submission through the existing domain model,
@@ -289,6 +306,11 @@ class PracticeApplication:
             raise InvalidPracticeResponseError(
                 "Please enter a response before submitting."
             )
+        if (
+            artifact is not None
+            and item.activity.activity_type is ActivityType.REFLECTION
+        ):
+            self._store.save_pending_artifact(activity_id, artifact)
         # SPEC-026 §2.1: the learner's pre-practice intention, if one was
         # stated for this activity, is attached to the journey when the
         # response is saved. The intention is qualitative session context
@@ -414,6 +436,7 @@ class PracticeApplication:
                 "Please enter a reflection before saving."
             )
         activity = self._activity_for_feedback(feedback)
+        artifact = self._store.take_pending_artifact(activity.activity.id)
         if content is None:
             self._store.save_completion(
                 PracticeCompletion(
@@ -421,6 +444,7 @@ class PracticeApplication:
                     activity_id=activity.activity.id,
                     reflection_id=None,
                     completed_at=self._clock(),
+                    artifact=artifact,
                 )
             )
             logger.info(
@@ -443,24 +467,42 @@ class PracticeApplication:
                 activity_id=activity.activity.id,
                 reflection_id=reflection.id,
                 completed_at=self._clock(),
+                artifact=artifact,
             )
         )
 
-        # SPEC-021: persist the completion durably if a repository is configured
+        # SPEC-021: persist the completion durably if a repository is configured.
+        # Older repositories may not yet accept the optional sketch artifact
+        # parameter; keep this compatibility path for those implementations.
         if self._history_repository is not None:
             evaluation = self._store.get_evaluation(feedback.evaluation_id)
             submission = self._store.get_submission(evaluation.submission_id)
             stimulus = self._store.current_stimulus(activity.activity.id)
-            self._history_repository.save_completion(
-                learner_id=self._store.learner_id,
-                activity_id=activity.activity.id,
-                activity_title=activity.title,
-                submission=submission,
-                evaluation=evaluation,
-                feedback=feedback,
-                reflection=reflection,
-                stimulus=stimulus,
-            )
+            try:
+                self._history_repository.save_completion(
+                    learner_id=self._store.learner_id,
+                    activity_id=activity.activity.id,
+                    activity_title=activity.title,
+                    submission=submission,
+                    evaluation=evaluation,
+                    feedback=feedback,
+                    reflection=reflection,
+                    stimulus=stimulus,
+                    artifact=artifact,
+                )
+            except TypeError as exc:
+                if "artifact" not in str(exc):
+                    raise
+                self._history_repository.save_completion(
+                    learner_id=self._store.learner_id,
+                    activity_id=activity.activity.id,
+                    activity_title=activity.title,
+                    submission=submission,
+                    evaluation=evaluation,
+                    feedback=feedback,
+                    reflection=reflection,
+                    stimulus=stimulus,
+                )
             logger.info(
                 "practice completion persisted",
                 extra={
@@ -554,6 +596,16 @@ class PracticeApplication:
         # Split the evaluation findings into categories for presentation
         strengths, improvements, next_steps = self._categorise(completion.evaluation)
 
+        artifact = None
+        if completion.artifact is not None:
+            artifact = SketchbookArtifactView(
+                artifact_id=completion.artifact.artifact_id,
+                filename=completion.artifact.filename,
+                content_type=completion.artifact.content_type,
+                size_bytes=completion.artifact.size_bytes,
+                image_url=f"/history/{completion.completion_id}/artifact",
+            )
+
         return PracticeReviewView(
             activity_title=completion.activity_title,
             activity_id=completion.activity_id,
@@ -565,8 +617,23 @@ class PracticeApplication:
             next_steps=next_steps,
             feedback=completion.feedback.content,
             reflection=completion.reflection.content,
+            completion_id=completion.completion_id,
+            artifact=artifact,
             pre_practice_intention=completion.submission.pre_practice_intention,
         )
+
+    def get_artifact_for_completion(
+        self, completion_id: UUID
+    ) -> SketchbookArtifact | None:
+        """Return a learner-owned uploaded artifact for a completed practice."""
+        if self._history_repository is None:
+            return None
+        completion = self._history_repository.get_completion(
+            self._store.learner_id, completion_id
+        )
+        if completion is None:
+            return None
+        return completion.artifact
 
     def _resolve_stimulus(self, item: DemoActivity) -> StimulusInstance | None:
         """Resolve (or reuse) the stimulus for an activity instance, if required.

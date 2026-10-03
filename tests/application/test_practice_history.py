@@ -21,6 +21,7 @@ from fablit.application import (
     DemoEvaluator,
     LearnerJourneyStore,
     PracticeApplication,
+    SketchbookArtifact,
     build_demo_activities,
     build_demo_activity_map,
     build_demo_skills,
@@ -522,6 +523,7 @@ class FailingRepository(InMemoryPracticeHistoryRepository):
         feedback: Feedback,
         reflection: Reflection,
         stimulus: StimulusInstance | None,
+        artifact: SketchbookArtifact | None = None,
     ) -> StoredPracticeCompletion:
         if self.fail_next_save:
             raise PersistenceError("Failed to save completed practice.")
@@ -534,6 +536,7 @@ class FailingRepository(InMemoryPracticeHistoryRepository):
             feedback=feedback,
             reflection=reflection,
             stimulus=stimulus,
+            artifact=artifact,
         )
 
 
