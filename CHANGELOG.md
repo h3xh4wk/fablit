@@ -28,6 +28,11 @@ See [SPEC-026](specifications/platform/SPEC-026-metacognitive-practice-and-refle
 
 ### Fixed
 
+- **Export on first page load ([issue #97](https://github.com/h3xh4wk/fablit/issues/97))**: the "Export this practice" and "Export history as JSON" buttons did nothing until a full page refresh.
+  - Cause: `base.html` enables htmx body boosting (`hx-boost="true"`), so navigating between Explore, history, and review swaps page content without re-running the `<head>` scripts. `export.js` bound its click listeners once at initial page load — when no export button existed yet — and the buttons swapped in later were left dead; only a full reload re-ran the module.
+  - Fix: `export.js` now delegates clicks at the document level and reads the page's export data script at click time, so the controls work on first arrival — full load, boosted navigation, or HTMX swap alike — and always export the record currently on screen.
+  - New opt-in browser tests (`tests/e2e/test_export_first_load.py`) walk the learner journey and export both artifacts after boosted navigation; fast web tests (`tests/web/test_export_buttons.py`) guard the server-rendered export wiring.
+
 - **SPEC-026 wiring ([issue #92](https://github.com/h3xh4wk/fablit/issues/92))**: the metacognitive surfaces were implemented but unreachable in the normal learner journey — the intention prompt had no inbound links, and the default HTMX feedback path rendered a pre-SPEC-026 minimal reflection section.
   - Activity selection now leads through the optional intention prompt: Explore dashboard cards, practice-mode activity cards, and the SPEC-025 completion continuation all point to `/activities/{id}/intention` before the active workspace. Direct activity entry still works unchanged; skipping stays an invitation, never a gate.
   - The HTMX feedback partial (`_feedback_partial.html`) now matches the full feedback page: structured strategy-assessment and gap-analysis prompts, the intention echo when one was stated, and explicit Save/Skip reflection controls (labels passed from the application in `_feedback_partial` rendering).
