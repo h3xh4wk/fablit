@@ -16,7 +16,7 @@ stimulus that was shown; the store never silently replaces it (§48).
 from __future__ import annotations
 
 import dataclasses
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID
 
@@ -142,7 +142,14 @@ class DemoActivity:
     strength: str
     improvement: str
     next_step: str
-    content_contract: PracticeContentContract | None = None
+    content_contract: PracticeContentContract = field(
+        default_factory=lambda: PracticeContentContract.from_activity(
+            title="",
+            description="",
+            prompt="",
+            primary_capability="",
+        )
+    )
     primary_capability: str = ""
     concepts: tuple[Concept, ...] = ()
     fallback_image: str | None = None
@@ -150,17 +157,16 @@ class DemoActivity:
     secondary_capabilities: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        if self.content_contract is None:
-            object.__setattr__(
-                self,
-                "content_contract",
-                PracticeContentContract.from_activity(
-                    title=self.title,
-                    description=self.description,
-                    prompt=self.activity.instructions,
-                    primary_capability=self.primary_capability,
-                ),
-            )
+        object.__setattr__(
+            self,
+            "content_contract",
+            PracticeContentContract.from_activity(
+                title=self.title,
+                description=self.description,
+                prompt=self.activity.instructions,
+                primary_capability=self.primary_capability,
+            ),
+        )
 
     @property
     def purpose(self) -> str:

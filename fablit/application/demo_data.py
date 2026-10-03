@@ -24,7 +24,7 @@ no fake user-management model.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from uuid import UUID
 
 from fablit.domain import (
@@ -164,7 +164,14 @@ class DemoActivityDefinition:
     strength: str
     improvement: str
     next_step: str
-    content_contract: PracticeContentContract | None = None
+    content_contract: PracticeContentContract = field(
+        default_factory=lambda: PracticeContentContract.from_activity(
+            title="",
+            description="",
+            prompt="",
+            primary_capability="",
+        )
+    )
     #: The activity's primary practice capability (SPEC-023 §5, AC-023-03):
     #: an internal content-design label, never learner-facing.
     primary_capability: str = ""
@@ -177,17 +184,16 @@ class DemoActivityDefinition:
     secondary_capabilities: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        if self.content_contract is None:
-            object.__setattr__(
-                self,
-                "content_contract",
-                PracticeContentContract.from_activity(
-                    title=self.title,
-                    description=self.description,
-                    prompt=self.prompt,
-                    primary_capability=self.primary_capability,
-                ),
-            )
+        object.__setattr__(
+            self,
+            "content_contract",
+            PracticeContentContract.from_activity(
+                title=self.title,
+                description=self.description,
+                prompt=self.prompt,
+                primary_capability=self.primary_capability,
+            ),
+        )
 
     @property
     def purpose(self) -> str:
