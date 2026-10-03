@@ -22,6 +22,8 @@ from fablit.application.persistence import (
 )
 from fablit.domain import Evaluation, Feedback, Reflection, StimulusInstance, Submission
 
+from .artifacts import SketchbookArtifact
+
 
 class InMemoryPracticeHistoryRepository(PracticeHistoryRepository):
     """In-memory test double for practice history persistence (SPEC-021).
@@ -51,6 +53,7 @@ class InMemoryPracticeHistoryRepository(PracticeHistoryRepository):
         feedback: Feedback,
         reflection: Reflection,
         stimulus: StimulusInstance | None,
+        artifact: SketchbookArtifact | None = None,
     ) -> StoredPracticeCompletion:
         """Persist a completed practice journey in memory.
 
@@ -95,6 +98,7 @@ class InMemoryPracticeHistoryRepository(PracticeHistoryRepository):
             feedback=feedback,
             reflection=reflection,
             stimulus=stimulus,
+            artifact=artifact,
         )
 
         # Store the completion

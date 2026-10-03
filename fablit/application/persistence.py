@@ -18,6 +18,8 @@ from uuid import UUID
 
 from fablit.domain import Evaluation, Feedback, Reflection, StimulusInstance, Submission
 
+from .artifacts import SketchbookArtifact
+
 
 @dataclass(frozen=True)
 class StoredPracticeCompletion:
@@ -42,6 +44,7 @@ class StoredPracticeCompletion:
     feedback: Feedback
     reflection: Reflection
     stimulus: StimulusInstance | None = None  # SPEC-015 stimulus preservation
+    artifact: SketchbookArtifact | None = None  # SPEC-033 private sketchbook context
 
 
 @dataclass(frozen=True)
@@ -83,6 +86,7 @@ class PracticeHistoryRepository(ABC):
         feedback: Feedback,
         reflection: Reflection,
         stimulus: StimulusInstance | None,
+        artifact: SketchbookArtifact | None = None,
     ) -> StoredPracticeCompletion:
         """Persist a completed practice journey durably.
 
@@ -101,6 +105,8 @@ class PracticeHistoryRepository(ABC):
             feedback: The feedback derived from the evaluation (Feedback).
             reflection: The learner's reflection (Reflection domain object).
             stimulus: The resolved stimulus shown during practice, if any.
+            artifact: The private sketchbook image uploaded for a reflection
+                practice, if present.
 
         Returns:
             StoredPracticeCompletion: The persisted record with stable identity.

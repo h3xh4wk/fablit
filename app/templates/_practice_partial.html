@@ -3,10 +3,17 @@
 {% if error %}
 <p class="field-error" role="alert">{{ error }}</p>
 {% endif %}
-<form method="post" action="/activities/{{ view.id }}/submit" hx-post="/activities/{{ view.id }}/submit" hx-target="#submission-area" hx-swap="innerHTML" hx-disabled-elt="find button">
+<form method="post" action="/activities/{{ view.id }}/submit" enctype="multipart/form-data" hx-post="/activities/{{ view.id }}/submit" hx-target="#submission-area" hx-swap="innerHTML" hx-disabled-elt="find button">
   <label class="form-label" for="response">💭 What's your reading of it?</label>
   <p class="form-hint" id="response-hint">There isn't a right answer. Tell us what you notice.</p>
   <textarea id="response" name="response" class="form-control" rows="12" required aria-describedby="response-hint" placeholder="Start writing — even a sentence helps.">{{ submitted_response or "" }}</textarea>
+  {% if view.supports_artifact_upload %}
+  <div class="form-group">
+    <label class="form-label" for="artifact">🖼️ Add your sketch (optional)</label>
+    <p class="form-hint">PNG, JPG, or WebP, up to 5MB.</p>
+    <input id="artifact" name="artifact" type="file" accept="image/png,image/jpeg,image/webp">
+  </div>
+  {% endif %}
   <p class="form-actions">
     <button type="submit" class="button">I'm ready <span aria-hidden="true">→</span></button>
     <span class="htmx-indicator loading-indicator" aria-live="polite">Evaluating your response…</span>

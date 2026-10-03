@@ -22,6 +22,7 @@ import logging
 from typing import Any
 from uuid import UUID
 
+from fablit.application.artifacts import SketchbookArtifact
 from fablit.application.persistence import (
     PersistenceError,
     PracticeHistoryRepository,
@@ -70,6 +71,7 @@ class DatastorePracticeHistoryRepository(PracticeHistoryRepository):
         feedback: Feedback,
         reflection: Reflection,
         stimulus: StimulusInstance | None,
+        artifact: SketchbookArtifact | None = None,
     ) -> StoredPracticeCompletion:
         """Persist a completed practice journey to Datastore.
 
@@ -124,6 +126,9 @@ class DatastorePracticeHistoryRepository(PracticeHistoryRepository):
                     "stimulus": (
                         self._serialize_stimulus(stimulus) if stimulus else None
                     ),
+                    "artifact": (
+                        self._serialize_artifact(artifact) if artifact else None
+                    ),
                 }
             )
 
@@ -148,6 +153,7 @@ class DatastorePracticeHistoryRepository(PracticeHistoryRepository):
                 feedback=feedback,
                 reflection=reflection,
                 stimulus=stimulus,
+                artifact=artifact,
             )
 
         except Exception as e:
@@ -206,6 +212,11 @@ class DatastorePracticeHistoryRepository(PracticeHistoryRepository):
                 stimulus=(
                     self._deserialize_stimulus(entity["stimulus"])
                     if entity.get("stimulus")
+                    else None
+                ),
+                artifact=(
+                    self._deserialize_artifact(entity["artifact"])
+                    if entity.get("artifact")
                     else None
                 ),
             )
@@ -447,6 +458,34 @@ class DatastorePracticeHistoryRepository(PracticeHistoryRepository):
             license=data.get("license"),
             attribution=data.get("attribution"),
             alt_text=data.get("alt_text"),
+        )
+
+    @staticmethod
+    def _serialize_artifact(artifact: SketchbookArtifact) -> dict[str, Any]:
+        """Convert a private sketch artifact to a Datastore-safe payload."""
+        return {
+            "artifact_id": str(artifact.artifact_id),
+            "learner_id": str(artifact.learner_id),
+            "activity_id": str(artifact.activity_id),
+            "filename": artifact.filename,
+            "content_type": artifact.content_type,
+            "size_bytes": artifact.size_bytes,
+            "data": artifact.data,
+            "created_at": artifact.created_at,
+        }
+
+    @staticmethod
+    def _deserialize_artifact(data: dict[str, Any]) -> SketchbookArtifact:
+        """Reconstruct a private sketch artifact from Datastore representation."""
+        return SketchbookArtifact(
+            learner_id=UUID(data["learner_id"]),
+            activity_id=UUID(data["activity_id"]),
+            filename=data["filename"],
+            content_type=data["content_type"],
+            size_bytes=data["size_bytes"],
+            data=data["data"],
+            created_at=data["created_at"],
+            artifact_id=UUID(data["artifact_id"]),
         )
 
     @staticmethod
