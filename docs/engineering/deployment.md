@@ -1,269 +1,254 @@
-# Learner Pilot Deployment (SPEC-014)
+# Production & Learner Pilot Deployment (SPEC-014 / SPEC-034)
 
-This document describes how the Fablit learner pilot is deployed and operated.
-It satisfies the deployment documentation requirements of
-[SPEC-014](specifications/platform/SPEC-014-learner-pilot-deployment.md) (§40)
-and is written so another developer can understand and reproduce the pilot
-environment.
+This document describes how Fablit is deployed and operated on Google App Engine (GAE) with durable Datastore practice history and Google Cloud Storage (GCS) artifact storage. It satisfies the deployment documentation requirements of [SPEC-014](specifications/platform/SPEC-014-learner-pilot-deployment.md) (§40) and [SPEC-034](specifications/platform/SPEC-034-google-app-engine-deployment-and-durable-artifact-storage.md) (§16).
 
-> **Deploy what we have. Do not redesign what we have just because we are
-> deploying it.** SPEC-014 adds an operational boundary around the existing
-> SPEC-013 learner experience; it introduces no new learning capability and no
-> new domain concept.
+---
 
-## 1. Deployment target
+## 1. Deployment Target
 
-- **Provider:** PythonAnywhere (see [ADR-008](../adr/ADR-008-pythonanywhere-deployment.md))
-- **Environment:** a dedicated pilot environment, separate from local
-  development, driven entirely by environment-variable configuration
-- **Plan:** a paid (inexpensive) plan with an "Always-on" option is recommended
-  so the pilot stays reachable during the learner testing period; the free
-  plan's sleep-on-idle behaviour interrupts the pilot
+- **Platform:** Google App Engine (Standard Environment)
+- **Runtime:** Python 3.12 (`python312`)
+- **Persistence:**
+  - **Practice History:** Google Cloud Datastore (`practice_history_repository="datastore"`, SPEC-021)
+  - **Sketchbook Artifacts:** Google Cloud Storage (`artifact_storage_backend="gcs"`, SPEC-034)
+- **Static Assets:** Handled directly via App Engine static file handlers for `/static/`
+- **Application Execution:** ASGI application served by `uvicorn` (`app.main:app`)
 
-The provider supplies everything the pilot needs (§9):
+The platform architecture satisfies all operational requirements:
 
 | Requirement | How it is met |
 | --- | --- |
-| Stable public URL | `https://<username>.pythonanywhere.com` (or a custom domain) |
-| HTTPS | Managed TLS — free on PythonAnywhere subdomains, Let's Encrypt for custom domains |
-| Application process execution | ASGI site running uvicorn |
-| Required Python/runtime dependencies | Virtualenv on the host |
-| Persistent storage where required | Not required — see [Persistence](#6-persistence-behaviour) |
-| Environment configuration | Environment variables |
-| Basic logs | Access/error/server logs under `/var/log/` |
+| Stable public URL | `https://<project-id>.appspot.com` (or a custom domain via Cloud Domains) |
+| Managed HTTPS / TLS | Google-managed TLS certificates on appspot.com and custom domains |
+| Process execution | Standard container instances running `uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
+| Practice history persistence | Google Cloud Datastore via `DatastorePracticeHistoryRepository` |
+| Durable sketchbook artifacts | Google Cloud Storage via `GCSArtifactStorage` |
+| Static asset offloading | Native App Engine static file handlers (`app.yaml`) |
+| Observability & logs | Structured JSON logs stream automatically to Google Cloud Logging |
+| Zero secrets in source/config | Google Application Default Credentials (ADC) via IAM roles on the App Engine service account |
 
-## 2. Required runtime
+---
 
-- Python 3.12+
-- [uv](https://docs.astral.sh/uv/) for dependency installation
-- The application is an ASGI app: `app.main:app`, served by uvicorn
-  (FastAPI, Jinja2 templates, and HTMX — all already project dependencies)
+## 2. Required Runtime & Deployment Files
 
-## 3. Required environment variables
+The repository root includes the deployment manifests required by Google Cloud SDK:
 
-All configuration comes from environment variables (`FABLIT_*`); nothing
-environment-specific is hard-coded into the application, and no secrets are
-committed to the repository (§12–13).
+- **`app.yaml`**: App Engine deployment manifest:
+  - Runtime: `python312`
+  - Entrypoint: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+  - Static file routing: `/static/` routes to `app/static/`
+  - Production environment variables (`FABLIT_ENV=production`, `FABLIT_PRACTICE_HISTORY_REPOSITORY=datastore`, `FABLIT_ARTIFACT_STORAGE_BACKEND=gcs`)
+- **`requirements.txt`**: Minimal production dependencies for App Engine buildpacks (FastAPI, Jinja2, Uvicorn, Pydantic, HTTPX, google-cloud-datastore, google-cloud-storage).
+- **`.gcloudignore`**: Excludes tests, documentation, caches, virtual environments, and Git metadata from the deployed package.
 
-| Variable | Pilot value | Notes |
-| --- | --- | --- |
-| `FABLIT_ENV` | `production` | Enables the pilot safety boundary (see [Safety](#9-safety-boundary)) |
-| `FABLIT_DEBUG` | `false` | Debug mode is disabled for learners |
-| `FABLIT_LOG_LEVEL` | `INFO` | Basic operational logs |
-| `FABLIT_LOG_FORMAT` | `json` | Structured logs for the pilot |
-| `FABLIT_HOST` | `0.0.0.0` | Binds the server (uvicorn `--uds` overrides this on PythonAnywhere) |
-| `FABLIT_PORT` | `8000` | Default port (uvicorn `--uds` overrides this on PythonAnywhere) |
-| `FABLIT_SERVICE_NAME` | `fablit` | Service name in log records |
-| `FABLIT_VERSION` | current release | Version recorded in logs at startup |
-| `FABLIT_STIMULUS_PROVIDER` | `builtin` (default) | Visual stimulus source: `builtin` serves deterministic bundled images with no network; `wikimedia` retrieves images from the approved external source (see below) |
+---
 
-Optional stimulus settings (only needed when `FABLIT_STIMULUS_PROVIDER=wikimedia`
-or when overriding the bundled fallback images):
-
-| Variable | Default | Notes |
-| --- | --- | --- |
-| `FABLIT_STIMULUS_FALLBACK_IMAGES` | (none) | JSON object mapping activity title to a custom fallback image URL, overriding the bundled images without code changes |
-| `FABLIT_WIKIMEDIA_ENDPOINT` | `https://commons.wikimedia.org/w/api.php` | Wikimedia Commons API endpoint |
-| `FABLIT_WIKIMEDIA_TIMEOUT` | `10.0` | Retrieval timeout in seconds |
-| `FABLIT_WIKIMEDIA_WIDTH` | `1200` | Requested thumbnail width |
-| `FABLIT_WIKIMEDIA_LIMIT` | `5` | Candidate images searched |
-
-**Secrets:** the pilot has no secrets to configure — there is no database and
-no API key. The default `builtin` stimulus provider also needs no external
-service; switching to `FABLIT_STIMULUS_PROVIDER=wikimedia` adds an outbound
-dependency on the Wikimedia Commons API, which must be reachable from the
-host and falls back to the bundled images when retrieval fails (§21–22 of
-SPEC-015). If any secrets are ever needed, they must be set through the
-provider's environment mechanism and never committed (§13).
-
-## 4. Build / install process
-
-```bash
-# 1. Get the code (on the PythonAnywhere host, in a Bash console)
-git clone https://github.com/h3xh4wk/fablit.git
-cd fablit
-
-# 2. Create the virtualenv at the location the ASGI site command expects
-#    (PythonAnywhere's conventional ~/.virtualenvs/<name> path), then install
-#    the project — including uvicorn — into that exact virtualenv.
-#    (Using a venv at ~/.virtualenvs keeps it outside the project directory,
-#    so redeploys that rewrite ~/fablit never orphan the site's interpreter.)
-uv venv ~/.virtualenvs/fablit
-UV_PROJECT_ENVIRONMENT=~/.virtualenvs/fablit uv sync --dev
-```
-
-## 5. Startup command
-
-Local reference command (deterministic, documented):
-
-```bash
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-On PythonAnywhere the site is managed through the `pa` command-line tool
-(ASGI sites, currently in beta). Install the tool once per account, then
-create the site:
-
-```bash
-pip install --upgrade pythonanywhere
-pa website create \
-  --domain <username>.pythonanywhere.com \
-  --command '/home/<username>/.virtualenvs/fablit/bin/uvicorn --app-dir /home/<username>/fablit --uds ${DOMAIN_SOCKET} app.main:app'
-```
-
-Set the pilot environment variables before first start (e.g. in the site
-command or the host environment):
-
-```bash
-export FABLIT_ENV=production
-export FABLIT_DEBUG=false
-export FABLIT_LOG_LEVEL=INFO
-export FABLIT_LOG_FORMAT=json
-```
-
-Once created, the site runs continuously — no developer starts a local process
-after every restart (§11).
-
-## 6. Persistence behaviour
-
-The current application persists the learner journey **in memory only**
-(`fablit.application.LearnerJourneyStore`, SPEC-012 §28). Verified for the
-pilot (§15):
-
-| Question | Answer |
-| --- | --- |
-| What data is persisted? | Demo activities/skills (seeded in code) and one learner journey's Submission → Evaluation → Feedback → Reflection records, all in process memory |
-| Where is it persisted? | Nowhere on disk — in-memory dictionaries in the running process |
-| How long does it survive? | Until the process stops or the app is restarted/redeployed |
-| What happens on restart? | All journey state is lost; the next visitor starts fresh with the demo content |
-
-**Verification:** this behaviour is acceptable for the pilot — the demo
-journey is single-learner, restarts reset only in-progress state, and the
-pilot does not need multi-user or durable storage. **No persistence upgrade is
-introduced.** The expected data-loss risk is documented in
-[§13 Known limitations](#13-known-pilot-limitations) and
-[Backup and Recovery (SPEC-014 §29)].
-
-## 7. Health check
-
-- Endpoint: `GET /health`
-- Expected: `200 OK` with `{"status": "healthy"}`
-
-Use it to confirm the application is available (e.g. before and after a
-restart, and as part of deployment verification).
-
-## 8. Log access
-
-The application emits structured JSON logs (startup, request completion,
-significant errors) through the shared logging setup. On PythonAnywhere the
-uvicorn error/server output lands in:
+## 3. Storage Architecture
 
 ```text
-/var/log/<username>.pythonanywhere.com.error.log
-/var/log/<username>.pythonanywhere.com.server.log
-/var/log/<username>.pythonanywhere.com.access.log
+                               Web Browser (Learner)
+                                        │
+                         HTTPS GET /history/{id}/artifact
+                                        │
+                                        ▼
+                            FastAPI Route (/history)
+                                        │
+                              Learner Authorization
+                            (Cookie-scoped identity)
+                                        │
+                  ┌─────────────────────┴─────────────────────┐
+                  ▼                                           ▼
+      DatastorePracticeHistoryRepository              GCSArtifactStorage
+                  │                                           │
+         Metadata & Completion                      Private Object Stream
+                  │                                           │
+                  ▼                                           ▼
+         Google Cloud Datastore                      Google Cloud Storage
+         (PracticeCompletion entity)                 (Private GCS Bucket)
 ```
 
-These logs let the team determine when the application started, when
-significant errors occurred, which endpoint or operation failed, and whether
-the application became unavailable (§21). Logs do not include learner response
-content or other sensitive learner information.
+### Google Cloud Datastore (Practice History)
+- Enabled by `FABLIT_PRACTICE_HISTORY_REPOSITORY=datastore`.
+- Learner practice completions are stored as `PracticeCompletion` entities under the learner's namespace.
+- No custom composite indexes required.
+- Stored completions contain only `ArtifactRef` metadata (never binary image payloads).
 
-## 9. Safety boundary
+### Google Cloud Storage (Private Sketchbook Artifacts)
+- Enabled by `FABLIT_ARTIFACT_STORAGE_BACKEND=gcs` and `FABLIT_ARTIFACT_STORAGE_BUCKET=<bucket-name>`.
+- Private learner sketchbook images uploaded during reflection practice are stored as binary blobs named by their opaque `artifact_id` (`UUID`).
+- GCS blobs are stored with appropriate metadata (`artifact_id`, `filename`) and `content_type` (`image/png`, `image/jpeg`, `image/webp`).
+- **No direct or public GCS URLs are ever generated or returned to learners.** Artifacts are served exclusively through the learner-scoped application route `/history/{completion_id}/artifact` with `Cache-Control: private, no-store`.
 
-The pilot environment (§19, §43):
+---
 
-- **No development interfaces:** `/docs`, `/redoc`, and `/openapi.json` are
-  disabled in the `production` environment (they remain available in
-  development and testing).
-- **No debug output:** `FABLIT_DEBUG` is `false`; unhandled errors render a
-  learner-friendly error page (`Something went wrong.`) with no stack traces,
-  file paths, environment variables, or framework debugging pages (§20). Full
-  tracebacks are written to the server logs only.
-- **No admin functionality:** the application exposes no administrative
-  endpoints, development tools, debugging interfaces, source repositories, or
-  credentials.
-- **No committed secrets:** the repository contains no credentials or API keys.
-- **Data minimisation:** the application collects only what the journey
-  itself requires; no identity, demographic, or tracking data is collected
-  (§44). Learner feedback is recorded externally per
-  [the pilot feedback record](../pilot/feedback-record.md).
+## 4. Security & IAM Configuration
 
-## 10. Restart procedure
+App Engine runs under the project's App Engine default service account (`<project-id>@appspot.gserviceaccount.com`). Authentication to Google Cloud Datastore and Google Cloud Storage happens transparently through **Application Default Credentials (ADC)**.
 
-- **Restart the app:** `pa website reload --domain <username>.pythonanywhere.com`
-- **Redeploy new code:** pull the latest commit on the host, re-run
-  `uv sync --dev`, then reload the site:
+**No service account keys, passwords, or cloud credentials are stored in code, configuration files, or environment variables.**
+
+### Required IAM Roles
+
+Grant the App Engine default service account the following roles:
 
 ```bash
-git pull
-UV_PROJECT_ENVIRONMENT=~/.virtualenvs/fablit uv sync --dev
-pa website reload --domain <username>.pythonanywhere.com
+# 1. Datastore read/write access
+gcloud projects add-iam-policy-binding <PROJECT_ID> \
+  --member="serviceAccount:<PROJECT_ID>@appspot.gserviceaccount.com" \
+  --role="roles/datastore.user"
+
+# 2. Cloud Storage object read/write/delete access on the bucket
+gcloud storage buckets add-iam-policy-binding gs://<PROJECT_ID>-artifacts \
+  --member="serviceAccount:<PROJECT_ID>@appspot.gserviceaccount.com" \
+  --role="roles/storage.objectUser"
 ```
 
-Every restart resets in-memory journey state (see
-[§6 Persistence](#6-persistence-behaviour)).
+### Bucket Security Settings
 
-## 11. Rollback
-
-Deployment comes from the repository, so the rollback path is Git-based (§42):
+Create the GCS bucket with uniform bucket-level access and public access prevention:
 
 ```bash
-git log --oneline -5
-git checkout <last-known-good-commit-or-tag>
-pa website reload --domain <username>.pythonanywhere.com
+# Create bucket in the same region as App Engine
+gcloud storage buckets create gs://<PROJECT_ID>-artifacts \
+  --location=us-central1 \
+  --uniform-bucket-level-access
+
+# Enforce public access prevention
+gcloud storage buckets update gs://<PROJECT_ID>-artifacts \
+  --public-access-prevention
 ```
 
-Alternatively, PythonAnywhere keeps the site's own server logs and the ASGI
-site can be recreated from any prior commit; either way the pilot can return
-to the last known-good version without manual fixes.
+---
 
-## 12. Deployment verification
+## 5. Required Environment Variables
 
-Before inviting learners, verify the pilot through the **actual public URL**
-(§23–26), not just the local server:
+All settings are managed via environment variables (`FABLIT_*`), configured in `app.yaml`:
 
-1. `GET /health` returns `200 OK`.
-2. Complete the full journey in a real browser:
-   Dashboard → choose an activity → **see the visual stimulus** → submit a
-   response → receive response-aware feedback → reflect → completion → back
-   to practice.
-3. Repeat the journey at a mobile-sized viewport (≈390 px wide).
-4. Check accessibility behaviour: keyboard navigation, visible focus, labelled
-   controls, single-h1 hierarchy, skip link, and readable contrast.
-5. Confirm a broken/unknown action shows the learner-friendly error page and
-   that `/docs` returns 404.
+| Variable | Production Value | Description |
+| --- | --- | --- |
+| `FABLIT_ENV` | `production` | Enables production safety boundary (hides API docs, renders clean error pages) |
+| `FABLIT_DEBUG` | `false` | Disables debug mode and tracebacks |
+| `FABLIT_LOG_LEVEL` | `INFO` | Emits operational logs |
+| `FABLIT_LOG_FORMAT` | `json` | Emits structured JSON logs for Google Cloud Logging |
+| `FABLIT_STIMULUS_PROVIDER` | `builtin` | Bundled deterministic stimulus images (zero network dependencies) |
+| `FABLIT_PRACTICE_HISTORY_REPOSITORY` | `datastore` | Persists completed practice history in Google Cloud Datastore |
+| `FABLIT_ARTIFACT_STORAGE_BACKEND` | `gcs` | Persists sketchbook artifact binaries in Google Cloud Storage |
+| `FABLIT_ARTIFACT_STORAGE_BUCKET` | `<project-id>-artifacts` | Name of the private Google Cloud Storage bucket |
+| `FABLIT_SERVICE_NAME` | `fablit` | Service name tag in structured logs |
 
-The existing automated suites remain the primary regression path:
-`tests/web/test_learner_flow.py`, `tests/web/test_deployment.py`, and the
-opt-in Playwright journey in `tests/e2e` (`RUN_BROWSER_TESTS=1`).
+---
 
-## 13. Known pilot limitations
+## 6. Deployment Procedure
 
-- **In-memory persistence:** all journey state is lost on restart or redeploy;
-  a learner mid-journey during a deployment can lose their progress.
-- **Single demo learner:** the application models one demo learner journey; it
-  is not multi-user.
-- **No production SLA:** the pilot is not production infrastructure (§28);
-  availability is best-effort for the testing period.
-- **ASGI hosting is experimental on PythonAnywhere:** the `pa` CLI and ASGI
-  site support are in beta; syntax may change.
-- **No authentication:** the pilot is open by design (§18). Anyone with the
-  URL can use it; the URL should only be shared with invited learners.
-- **No backup/recovery system:** there is no disaster-recovery process; the
-  environment is recreated from the repository (§29).
+### Initial Setup
+1. Ensure the Google Cloud SDK (`gcloud`) is installed and authenticated:
+   ```bash
+   gcloud auth login
+   gcloud config set project <PROJECT_ID>
+   ```
+2. Enable required Google Cloud APIs:
+   ```bash
+   gcloud services enable appengine.googleapis.com datastore.googleapis.com storage.googleapis.com
+   ```
+3. Initialize the App Engine application (if not already done):
+   ```bash
+   gcloud app create --region=us-central1
+   ```
+4. Create the private GCS bucket and grant IAM permissions as shown in §4.
+5. In `app.yaml`, verify that `FABLIT_ARTIFACT_STORAGE_BUCKET` matches your GCS bucket name.
 
-## 14. Deployment checklist
+### Deploying the Application
+Run the standard App Engine deployment command:
 
-- [ ] `FABLIT_ENV=production` is set on the host
-- [ ] `FABLIT_DEBUG=false`, `FABLIT_LOG_LEVEL=INFO`, `FABLIT_LOG_FORMAT=json`
-- [ ] `FABLIT_STIMULUS_PROVIDER` left at the default `builtin` (or set deliberately)
-- [ ] `/docs`, `/redoc`, `/openapi.json` return 404 on the public URL
-- [ ] `GET /health` returns `200 OK` on the public URL
-- [ ] Full learner journey verified in a real browser against the public URL (visual stimulus visible, response-aware feedback shown)
-- [ ] Mobile viewport and accessibility checks pass against the public URL
-- [ ] Learner instructions shared with participants
-  ([learner-instructions.md](../pilot/learner-instructions.md))
-- [ ] Feedback-recording mechanism ready
-  ([feedback-record.md](../pilot/feedback-record.md))
-- [ ] Rollback commit/tag identified
+```bash
+gcloud app deploy app.yaml
+```
+
+The command packages the application, uploads it to App Engine buildpacks, installs dependencies from `requirements.txt`, and provisions traffic to the new version.
+
+---
+
+## 7. Health Check & Verification
+
+### Automated Health Check
+- **Endpoint:** `GET /health`
+- **Expected:** `200 OK` with JSON `{"status": "healthy"}`
+
+```bash
+curl -f https://<PROJECT_ID>.appspot.com/health
+```
+
+### Full Deployment Smoke Test Checklist
+Perform these steps against the live deployment URL:
+
+1. **Health Verification:** Confirm `GET /health` returns `200 OK`.
+2. **Safety Boundary:**
+   - Confirm `/docs`, `/redoc`, and `/openapi.json` return `404 Not Found`.
+   - Confirm an invalid path or trigger renders the calm error page (`Something went wrong.`) with no stack traces or server paths.
+3. **Explore Dashboard:**
+   - Navigate to `/`.
+   - Verify practice cards render with visual previews and prompt summaries.
+4. **Practice Journey & Artifact Upload:**
+   - Select the reflection activity (*"Sketchbook Practice — Observational Study"* or similar reflection activity).
+   - Verify stimulus, task, and response areas display properly.
+   - Attach a sample sketchbook drawing (PNG or JPEG, < 5 MB).
+   - Enter response notes and submit.
+   - Review evaluation feedback and complete the reflection.
+5. **Durable History & Review:**
+   - Navigate to `/history`.
+   - Verify the newly completed practice appears in history.
+   - Click into the practice review.
+   - Verify the written submission, evaluation, and reflection are displayed.
+   - Verify the attached sketch displays correctly via `/history/{completion_id}/artifact`.
+   - Inspect network headers to verify `Cache-Control: private, no-store`.
+6. **Cloud Verification:**
+   - Check Google Cloud Datastore console: verify a `PracticeCompletion` entity exists with metadata and no large binary blob.
+   - Check Google Cloud Storage console: verify an object named after the `artifact_id` UUID exists in the bucket with `Content-Type: image/png` (or jpeg).
+
+---
+
+## 8. Log Access
+
+App Engine streams container stdout and stderr to Google Cloud Logging. To tail real-time structured logs from the terminal:
+
+```bash
+gcloud app logs tail -s default
+```
+
+Or view them in the Cloud Console under **Logging > Logs Explorer**. Filter by:
+```text
+resource.type="gae_app"
+jsonPayload.service="fablit"
+```
+
+Logs are structured JSON containing timestamps, log levels, request paths, and status codes, without sensitive learner response text.
+
+---
+
+## 9. Rollback & Version Management
+
+App Engine maintains historical deployed versions:
+
+- **List existing versions:**
+  ```bash
+  gcloud app versions list
+  ```
+- **Instantly roll back to a prior healthy version:**
+  ```bash
+  gcloud app versions migrate <PREVIOUS_VERSION_ID>
+  ```
+- **Delete broken versions:**
+  ```bash
+  gcloud app versions delete <BAD_VERSION_ID>
+  ```
+
+---
+
+## 10. Legacy Artifact Operational Policy (AC-034-14)
+
+Earlier pilot deployments hosted on PythonAnywhere or temporary local environments persisted artifacts to ephemeral filesystem directories (`FileArtifactStorage`).
+
+**Operational Decision:** Artifacts from prior ephemeral environments are intentionally **not** migrated or backfilled into GCS.
+- Existing historical Datastore records that reference missing artifact files will gracefully degrade:
+  - Requesting the artifact route `/history/{completion_id}/artifact` returns an unlisted `404 Not Found`.
+  - The review page `/history/{completion_id}` continues to render the full written submission, evaluation findings, feedback, and reflection notes without error.

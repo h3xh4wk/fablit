@@ -52,9 +52,9 @@ The platform exposes:
 
 The learner experience is server-rendered HTML (Jinja2 templates) enhanced with HTMX (vendored under `app/static/`); the core journey works without JavaScript. A deterministic demo evaluator (no AI, no network, no async workers) drives the feedback step, and the journey is preserved in memory for the vertical slice.
 
-## Pilot deployment (SPEC-014)
+## Deployment (SPEC-014 / SPEC-034)
 
-SPEC-014 makes the current learner experience pilot-ready by placing an operational boundary around it — no new learning capability and no new domain concept. The pilot environment is driven entirely by environment-variable configuration, exposes no development interfaces or internals to learners (API documentation is disabled in `production`, unhandled errors render a learner-friendly page), and keeps the existing in-memory persistence, which is acceptable for the pilot and documented as such.
+The Fablit platform targets Google App Engine (standard environment, Python 3.12) with Google Cloud Datastore for practice history persistence (SPEC-021) and Google Cloud Storage for durable private sketchbook artifact storage (SPEC-034). The production environment is driven entirely by environment-variable configuration, uses Google Application Default Credentials (ADC), exposes no development interfaces or internals to learners (API documentation is disabled in `production`, unhandled errors render a learner-friendly page), and serves private artifacts through authenticated, learner-scoped application routes (`Cache-Control: private, no-store`). Local development and testing run out of the box with in-memory or file-backed storage without any GCP credentials.
 
 See [docs/engineering/deployment.md](docs/engineering/deployment.md) for the full deployment guide (target, runtime, environment variables, startup, persistence behaviour, health check, logs, restart, rollback, and known limitations), and [docs/pilot/](docs/pilot/README.md) for learner instructions and the lightweight feedback-recording mechanism.
 
@@ -84,10 +84,13 @@ Key settings include:
 - `FABLIT_WIKIMEDIA_WIDTH` — requested thumbnail width (default `1200`)
 - `FABLIT_WIKIMEDIA_LIMIT` — candidate images searched (default `5`)
 - `FABLIT_PRACTICE_HISTORY_REPOSITORY` — practice history persistence (SPEC-021): `memory` (in-memory, for tests and local development), `datastore` (Google Cloud Datastore, for the deployed App Engine environment), or unset (history persistence disabled; the `/history` surface shows an empty state)
+- `FABLIT_ARTIFACT_STORAGE_BACKEND` — private sketchbook artifact storage (SPEC-034): `file` (default; file-backed private storage for local development and tests) or `gcs` (Google Cloud Storage for deployed App Engine environment)
+- `FABLIT_ARTIFACT_STORAGE_BUCKET` — GCS bucket name for private sketchbook artifacts (required when `FABLIT_ARTIFACT_STORAGE_BACKEND=gcs`)
+- `FABLIT_ARTIFACT_STORAGE_DIR` — optional filesystem directory for file-backed storage (when backend is `file`)
 
 Every anonymous learner receives a unique, opaque learner identity stored in a secure, HttpOnly cookie (SPEC-024): practice history is private to that learner's browser, with no registration, email, or password. The identity cookie carries the `Secure` attribute in production and a one-year lifetime; clearing cookies simply starts a fresh anonymous learner.
 
-The `FABLIT_WIKIMEDIA_*` settings only take effect with `FABLIT_STIMULUS_PROVIDER=wikimedia`. With `FABLIT_PRACTICE_HISTORY_REPOSITORY=datastore`, the application uses the normal Google Cloud authentication mechanism available to App Engine (application-default credentials) — no credentials are hard-coded or stored in source. No Datastore indexes are required for the scoped history queries.
+The `FABLIT_WIKIMEDIA_*` settings only take effect with `FABLIT_STIMULUS_PROVIDER=wikimedia`. With `FABLIT_PRACTICE_HISTORY_REPOSITORY=datastore` and `FABLIT_ARTIFACT_STORAGE_BACKEND=gcs`, the application uses the standard Google Cloud authentication mechanism available to App Engine (application-default credentials) — no credentials are hard-coded or stored in source. No Datastore indexes are required for the scoped history queries.
 
 The application initializes structured logging during startup and attaches service and environment context to every log record.
 
@@ -131,6 +134,7 @@ SPEC-012 introduces the first application layer under `fablit.application`, sepa
 - Practice transition configuration (SPEC-025) — `fablit/application/practice_continuity.py` holds the authored source → target transition table (title-keyed, resolved to stable activity identities) and the `ContinuationView` view model surfaces it on completion; the continuation resolves from the completed activity alone and never from learner state
 - Pre-practice intention (SPEC-026) — an optional, qualitative focus statement captured before the active workspace (`get_intention`/`set_intention`), held as pending journey state in `LearnerJourneyStore`, attached to the session's `Submission` (`pre_practice_intention`) at response time, persisted with history, and rendered in review; it is never graded or consumed by evaluation
 - Session recovery layer (SPEC-028) — `app/static/js/session-recovery.js`, a client-only static module that auto-saves the active response, intention, and reflection drafts to browser storage (IndexedDB primary, `localStorage` fallback) on a 3-second debounce or blur, offers a quiet Resume/Discard banner for uncommitted response drafts, purges drafts after successful submission and after 24 hours, and degrades gracefully when storage is unavailable; drafts never reach the server
+- Private sketchbook artifact storage (SPEC-033 / SPEC-034) — `fablit/application/artifact_storage.py` isolates sketchbook reflection image binaries from history records behind the `ArtifactStorage` port; implemented via `FileArtifactStorage` (local dev/test) and `GCSArtifactStorage` (Google Cloud Storage adapter in `fablit/platform/gcs_artifact_storage.py` for App Engine). Practice reviews reference artifacts by opaque ID, and missing objects degrade gracefully with an unlisted 404 while leaving written practice history intact.
 
 The vertical slice introduces no authentication, scoring, Progress, mastery, recommendations, gamification, or examination-specific logic.
 
