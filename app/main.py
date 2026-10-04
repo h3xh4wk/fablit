@@ -43,6 +43,7 @@ from app.learner_session import (
 )
 from fablit.application import (
     ActivityNotFoundError,
+    ArtifactStorage,
     CompletionNotFoundError,
     EvaluationFailedError,
     FeedbackNotFoundError,
@@ -83,14 +84,52 @@ def _build_learner_applications(
     via the registry (``app.learner_session``). The history repository
     (SPEC-021) is shared — it is learner-scoped by contract — and may be
     ``None`` when persistence is not configured. The private artifact storage
-    (SPEC-033) is likewise shared and deployment-configured.
+    (SPEC-033/034) is likewise shared and deployment-configured.
     """
     content = DemoContent.build(app_config)
     history_repository = _build_history_repository(app_config)
-    artifact_storage = FileArtifactStorage(app_config.artifact_storage_dir)
+    artifact_storage = _build_artifact_storage(app_config)
     return content, LearnerApplicationRegistry(
         content, history_repository, artifact_storage
     )
+
+
+def _build_artifact_storage(app_config: AppConfig) -> ArtifactStorage:
+    """Build the artifact storage backend based on configuration (SPEC-034).
+
+    Defaults to file-backed storage (SPEC-033) for local development and tests.
+    In production on App Engine, uses Google Cloud Storage backed by the configured
+    bucket.
+    """
+    backend = app_config.artifact_storage_backend
+
+    if backend == "gcs":
+        bucket_name = app_config.artifact_storage_bucket
+        if not bucket_name or not bucket_name.strip():
+            raise RuntimeError(
+                "Could not initialize Google Cloud Storage for artifact storage: "
+                "artifact_storage_bucket is not configured."
+            )
+        try:
+            from google.cloud import storage
+
+            from fablit.platform.gcs_artifact_storage import GCSArtifactStorage
+
+            client: storage.Client = storage.Client()
+            logger.info(
+                "initialized GCS artifact storage",
+                extra={"bucket": bucket_name, "project_id": client.project},
+            )
+            return GCSArtifactStorage(bucket_name=bucket_name, client=client)
+        except Exception as e:
+            logger.exception("failed to initialize GCS artifact storage")
+            raise RuntimeError(
+                "Could not initialize Google Cloud Storage for artifact storage. "
+                "Check GCP configuration and credentials."
+            ) from e
+
+    logger.info("initialized file-backed artifact storage")
+    return FileArtifactStorage(app_config.artifact_storage_dir)
 
 
 def _build_history_repository(

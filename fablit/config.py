@@ -6,7 +6,7 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any, cast
 
-from pydantic import Field, ValidationError, field_validator
+from pydantic import Field, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 # Dynamically import PyYAML without needing a mypy type-ignore comment.
@@ -21,6 +21,7 @@ SUPPORTED_ENVIRONMENTS = {"development", "testing", "production"}
 SUPPORTED_LOG_FORMATS = {"json", "text"}
 SUPPORTED_STIMULUS_PROVIDERS = {"builtin", "wikimedia"}
 SUPPORTED_PRACTICE_HISTORY_REPOSITORIES = {"memory", "datastore"}
+SUPPORTED_ARTIFACT_STORAGE_BACKENDS = {"file", "gcs"}
 
 
 class ConfigError(RuntimeError):
@@ -82,14 +83,30 @@ class AppConfig(BaseSettings):
             "Unset disables practice history persistence."
         ),
     )
+    artifact_storage_backend: str = Field(
+        "file",
+        description=(
+            "Artifact storage backend (SPEC-034): 'file' (file-backed, for tests "
+            "and local development) or 'gcs' (Google Cloud Storage, for the "
+            "deployed App Engine environment)."
+        ),
+    )
+    artifact_storage_bucket: str | None = Field(
+        None,
+        description=(
+            "Google Cloud Storage bucket name for private sketchbook artifact bytes "
+            "(SPEC-034). Required when artifact_storage_backend is 'gcs'."
+        ),
+    )
     artifact_storage_dir: str | None = Field(
         None,
         description=(
             "Deployment-private directory holding sketchbook artifact bytes "
             "(SPEC-033). Practice-history records store only artifact "
-            "references, so the binary payload lives here instead. Unset uses "
-            "FABLIT_ARTIFACT_STORAGE_DIR, or a process-private directory under "
-            "the system temp location when that is also unset."
+            "references, so the binary payload lives here instead when using "
+            "the file backend. Unset uses FABLIT_ARTIFACT_STORAGE_DIR, or a "
+            "process-private directory under the system temp location when that "
+            "is also unset."
         ),
     )
     config_file: Path | None = Field(None, description="Path to optional config file.")
@@ -175,6 +192,44 @@ class AppConfig(BaseSettings):
             }
         return value  # type: ignore[return-value]
 
+    @field_validator("artifact_storage_backend", mode="before")
+    def normalize_artifact_storage_backend(cls, value: object) -> str:
+        """Normalize the artifact storage backend; defaults to 'file'."""
+        if value is None:
+            return "file"
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if not normalized:
+                return "file"
+            if normalized not in SUPPORTED_ARTIFACT_STORAGE_BACKENDS:
+                allowed = ", ".join(sorted(SUPPORTED_ARTIFACT_STORAGE_BACKENDS))
+                raise ValueError(
+                    f"Unsupported artifact storage backend '{value}'. "
+                    f"Must be one of: {allowed}."
+                )
+            return normalized
+        return str(value)
+
+    @field_validator("artifact_storage_bucket", mode="before")
+    def normalize_artifact_storage_bucket(cls, value: object) -> str | None:
+        """Strip whitespace from bucket name; empty string becomes None."""
+        if value is None:
+            return None
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped if stripped else None
+        return str(value)
+
+    @model_validator(mode="after")
+    def validate_gcs_bucket(self) -> AppConfig:
+        """Ensure GCS backend is configured with a non-empty bucket name."""
+        if self.artifact_storage_backend == "gcs" and not self.artifact_storage_bucket:
+            raise ValueError(
+                "artifact_storage_bucket is required when "
+                "artifact_storage_backend is 'gcs'."
+            )
+        return self
+
 
 def _load_config_file(path: Path) -> dict[str, Any]:
     if not path.exists():
@@ -218,6 +273,9 @@ def _resolve_environment_overrides() -> dict[str, Any]:
         "wikimedia_width": "FABLIT_WIKIMEDIA_WIDTH",
         "wikimedia_limit": "FABLIT_WIKIMEDIA_LIMIT",
         "practice_history_repository": "FABLIT_PRACTICE_HISTORY_REPOSITORY",
+        "artifact_storage_backend": "FABLIT_ARTIFACT_STORAGE_BACKEND",
+        "artifact_storage_bucket": "FABLIT_ARTIFACT_STORAGE_BUCKET",
+        "artifact_storage_dir": "FABLIT_ARTIFACT_STORAGE_DIR",
         "version": "FABLIT_VERSION",
     }
     resolved: dict[str, Any] = {}

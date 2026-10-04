@@ -1,0 +1,27 @@
+# Google App Engine deployment configuration for Fablit (SPEC-034).
+# Target runtime: Python 3.12 (standard environment).
+runtime: python312
+instance_class: F1
+
+entrypoint: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+
+handlers:
+  - url: /static
+    static_dir: app/static
+    secure: always
+
+  - url: /.*
+    script: auto
+    secure: always
+
+env_variables:
+  FABLIT_ENV: "production"
+  FABLIT_DEBUG: "false"
+  FABLIT_LOG_LEVEL: "INFO"
+  FABLIT_LOG_FORMAT: "json"
+  FABLIT_PRACTICE_HISTORY_REPOSITORY: "datastore"
+  FABLIT_ARTIFACT_STORAGE_BACKEND: "gcs"
+  # Target GCS bucket for private sketchbook artifacts (SPEC-034).
+  # Specify your private bucket name here or override via:
+  # gcloud app deploy --set-env-vars FABLIT_ARTIFACT_STORAGE_BUCKET=<bucket-name>
+  # FABLIT_ARTIFACT_STORAGE_BUCKET: "<your-artifacts-bucket-name>"

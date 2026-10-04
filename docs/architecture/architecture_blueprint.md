@@ -498,7 +498,7 @@ rankings, streaks, or recommendations. Per-learner Datastore key namespaces
 keep learner context explicit for future authentication/ownership work without
 redesigning the stored evidence.
 
-### Private Sketchbook Artifact Storage
+### Private Sketchbook Artifact Storage (SPEC-033 / SPEC-034)
 
 The sketchbook reflection practice can attach a private learner image, but the
 binary payload is deliberately excluded from the practice-history record. The
@@ -510,8 +510,8 @@ Review route (learner-scoped)
 Application / Use Cases (PracticeApplication)
         ↓
 Artifact Storage Port (ArtifactStorage)
-        ↓
-File-Backed Private Store (fablit.application.artifact_storage)
+        ├── FileArtifactStorage (local dev/test)
+        └── GCSArtifactStorage (Google Cloud Storage, App Engine production)
 ```
 
 `StoredPracticeCompletion.artifact` is an `ArtifactRef` — metadata only — so the
@@ -525,9 +525,19 @@ obscurity: the review route resolves the artifact reference through the
 requesting learner's own completion (SPEC-024 identity, per-learner history)
 before reading the bytes from the private store. There are no public or direct
 media URLs, and a missing reference, missing bytes, and another learner's
-completion all produce the same unlisted 404. The storage directory is
-deployment-private and configurable (`FABLIT_ARTIFACT_STORAGE_DIR`), defaulting
-to a process-private location under the system temp directory.
+completion all produce the same unlisted 404.
+
+Artifact storage backends are configurable via `FABLIT_ARTIFACT_STORAGE_BACKEND`:
+- **File-backed (`file`, default):** `FileArtifactStorage` stores bytes in a
+  deployment-private filesystem directory (`FABLIT_ARTIFACT_STORAGE_DIR`),
+  defaulting to a process-private temp directory. Used for local development and
+  automated testing without external cloud credentials.
+- **Google Cloud Storage (`gcs`, SPEC-034):** `GCSArtifactStorage` in
+  `fablit.platform.gcs_artifact_storage` persists objects durably in a private
+  GCS bucket specified by `FABLIT_ARTIFACT_STORAGE_BUCKET`. The bucket has
+  Uniform Bucket-Level Access and public access prevention enabled. The App
+  Engine service account authenticates via Application Default Credentials (ADC)
+  requiring `roles/storage.objectUser`.
 
 Records written before this boundary existed embedded the bytes inline. They
 still deserialize (the embedded payload is ignored), and no automatic

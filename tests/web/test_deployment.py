@@ -11,10 +11,15 @@ SPEC-014 establishes an operational boundary around the existing application:
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
+import pytest
 from fastapi.testclient import TestClient
 
-from app.main import create_app
+from app.main import _build_artifact_storage, create_app
+from fablit.application.artifact_storage import FileArtifactStorage
 from fablit.config import AppConfig, load_config
+from fablit.platform.gcs_artifact_storage import GCSArtifactStorage
 
 
 def _app(environment: str) -> AppConfig:
@@ -137,3 +142,155 @@ def test_development_app_still_exposes_api_documentation() -> None:
         assert client.get("/docs").status_code == 200
         assert client.get("/redoc").status_code == 200
         assert client.get("/openapi.json").status_code == 200
+
+
+# --- Artifact storage backend assembly (SPEC-034) -----------------------------
+
+
+def test_build_artifact_storage_file_backend_defaults() -> None:
+    config = AppConfig.model_validate({"artifact_storage_backend": "file"})
+    storage = _build_artifact_storage(config)
+
+    assert isinstance(storage, FileArtifactStorage)
+
+
+def test_build_artifact_storage_gcs_backend_instantiates_adapter() -> None:
+    config = AppConfig.model_validate(
+        {
+            "artifact_storage_backend": "gcs",
+            "artifact_storage_bucket": "my-artifacts-bucket",
+        }
+    )
+
+    google_cloud = MagicMock()
+    fake_storage = MagicMock()
+    google_cloud.storage = fake_storage
+    fake_client = MagicMock()
+    fake_client.project = "test-project"
+    fake_storage.Client.return_value = fake_client
+
+    with patch.dict(
+        "sys.modules",
+        {
+            "google": MagicMock(cloud=google_cloud),
+            "google.cloud": google_cloud,
+            "google.cloud.storage": fake_storage,
+        },
+    ):
+        storage = _build_artifact_storage(config)
+
+    assert isinstance(storage, GCSArtifactStorage)
+    assert storage.bucket_name == "my-artifacts-bucket"
+    assert storage.client is fake_client
+
+
+def test_build_artifact_storage_gcs_backend_fails_on_client_init_error() -> None:
+    config = AppConfig.model_validate(
+        {
+            "artifact_storage_backend": "gcs",
+            "artifact_storage_bucket": "my-artifacts-bucket",
+        }
+    )
+
+    google_cloud = MagicMock()
+    fake_storage = MagicMock()
+    google_cloud.storage = fake_storage
+    fake_storage.Client.side_effect = RuntimeError("GCP auth failed")
+
+    with (
+        patch.dict(
+            "sys.modules",
+            {
+                "google": MagicMock(cloud=google_cloud),
+                "google.cloud": google_cloud,
+                "google.cloud.storage": fake_storage,
+            },
+        ),
+        pytest.raises(
+            RuntimeError,
+            match="Could not initialize Google Cloud Storage",
+        ),
+    ):
+        _build_artifact_storage(config)
+
+
+def test_gcs_artifact_storage_web_roundtrip() -> None:
+    """AC-034-08/09/10: Full web journey persists to GCS and serves privately."""
+    from tests.persistence.test_gcs_artifact_storage import FakeStorageClient
+
+    fake_client = FakeStorageClient()
+    fake_storage = MagicMock()
+    fake_storage.Client.return_value = fake_client
+
+    google_cloud = MagicMock()
+    google_cloud.storage = fake_storage
+
+    config = load_config(
+        overrides={
+            "environment": "production",
+            "practice_history_repository": "memory",
+            "artifact_storage_backend": "gcs",
+            "artifact_storage_bucket": "prod-sketch-bucket",
+        }
+    )
+
+    with (
+        patch.dict(
+            "sys.modules",
+            {
+                "google": MagicMock(cloud=google_cloud),
+                "google.cloud": google_cloud,
+                "google.cloud.storage": fake_storage,
+            },
+        ),
+        TestClient(create_app(config), base_url="https://testserver") as client,
+    ):
+        dashboard = client.get("/")
+        hrefs = [
+            "/activities/" + chunk.split('"')[0]
+            for chunk in dashboard.text.split('href="/activities/')[1:]
+        ]
+        reflection_href = None
+        for href in hrefs:
+            clean_href = href.removesuffix("/intention")
+            if 'name="artifact"' in client.get(clean_href).text:
+                reflection_href = clean_href
+                break
+        assert reflection_href is not None
+
+        png_bytes = b"\x89PNG\r\n\x1a\n" + b"gcs-web-test"
+        client.post(
+            reflection_href + "/submit",
+            data={"response": "Sketch response persisted to GCS"},
+            files={"artifact": ("my-sketch.png", png_bytes, "image/png")},
+        )
+        client.post("/reflect", data={"content": "Reflection with GCS artifact."})
+
+        history = client.get("/history")
+        review_href = next(
+            line.split('href="')[1].split('"')[0]
+            for line in history.text.splitlines()
+            if 'href="/history/' in line
+        )
+
+        review = client.get(review_href)
+        assert review.status_code == 200
+        assert review_href + "/artifact" in review.text
+
+        artifact_resp = client.get(review_href + "/artifact")
+        assert artifact_resp.status_code == 200
+        assert artifact_resp.content == png_bytes
+        assert artifact_resp.headers["content-type"] == "image/png"
+        assert artifact_resp.headers["cache-control"] == "private, no-store"
+
+        # Verify underlying GCS bucket stored the blob
+        bucket = fake_client.bucket("prod-sketch-bucket")
+        assert len(bucket._blobs) == 1
+
+        # When blob is deleted (e.g. absent/legacy object), route 404s and review
+        # renders normally without crashing (AC-034-10)
+        bucket._blobs.clear()
+        artifact_missing = client.get(review_href + "/artifact")
+        assert artifact_missing.status_code == 404
+        review_after_deletion = client.get(review_href)
+        assert review_after_deletion.status_code == 200

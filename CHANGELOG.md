@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **SPEC-034 — Google App Engine Deployment & Durable Artifact Storage**: the Fablit platform is now deployable to Google App Engine standard environment with durable, private Google Cloud Storage (GCS) artifact storage alongside Google Cloud Datastore practice history.
+  - Deployment configuration: committed `app.yaml` targeting Python 3.12, entrypoint running `uvicorn app.main:app --host 0.0.0.0 --port $PORT`, static file handler for `/static/`, and `.gcloudignore` and `requirements.txt` manifests.
+  - Durable artifact storage: implemented `GCSArtifactStorage` in `fablit.platform.gcs_artifact_storage`, fulfilling the existing `ArtifactStorage` application port. Stores private sketchbook reflection artifacts as private objects in a dedicated GCS bucket without public URLs.
+  - Configuration support: added `FABLIT_ARTIFACT_STORAGE_BACKEND` (`file` default for local/test, `gcs` for production) and `FABLIT_ARTIFACT_STORAGE_BUCKET` to `AppConfig`, wired during application bootstrap.
+  - IAM & security: relies on Google Application Default Credentials (ADC) via App Engine service account roles `roles/datastore.user` and `roles/storage.objectUser`, with no secrets committed or passed in config.
+  - Resilient review and degradation: missing or historical unbackfilled artifacts return an unlisted 404 on the artifact route, leaving the complete written practice history and reflection intact.
+  - Deployment documentation: updated `docs/engineering/deployment.md` and `docs/architecture/architecture_blueprint.md` for App Engine and GCS.
+
+See [SPEC-034](specifications/platform/SPEC-034-google-app-engine-deployment-and-durable-artifact-storage.md) — issue [#117](https://github.com/h3xh4wk/fablit/issues/117) — for details.
+
 - **SPEC-031 — Sketchbook-to-Practice Reflection**: a new short-drill reflection practice lets learners bring existing sketchbook work into Fablit and reflect on what their own work taught them, without turning the sketch into an evaluative artifact or replacing the practice with a full drawing app.
   - The demo practice library now includes a single short-drill reflection activity whose description, prompt, and feedback emphasise process, evidence, and the next learning move rather than drawing quality.
   - The curated short-drill configuration and continuation wiring keep the practice embedded in the normal `Submission → Evaluation → Feedback → Reflection → Completion` flow.

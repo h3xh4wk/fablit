@@ -352,86 +352,86 @@ Do not:
 
 ### AC-034-01 — App Engine Configuration
 
-**Given** the Fablit repository is checked out  
-**When** the documented deployment process is followed  
+**Given** the Fablit repository is checked out
+**When** the documented deployment process is followed
 **Then** the application has an explicit App Engine deployment configuration capable of deploying the current FastAPI application.
 
 ### AC-034-02 — Production Datastore
 
-**Given** Fablit is deployed to the supported App Engine environment  
-**When** a learner completes practice  
+**Given** Fablit is deployed to the supported App Engine environment
+**When** a learner completes practice
 **Then** Practice History continues to use Google Cloud Datastore as the durable persistence mechanism.
 
 ### AC-034-03 — Production Artifact Backend
 
-**Given** Fablit is deployed to the supported App Engine environment  
-**When** a learner uploads a Sketchbook Reflection artifact  
+**Given** Fablit is deployed to the supported App Engine environment
+**When** a learner uploads a Sketchbook Reflection artifact
 **Then** the artifact bytes are stored in the configured private Google Cloud Storage bucket rather than the App Engine instance filesystem.
 
 ### AC-034-04 — Artifact Boundary
 
-**Given** a completed Sketchbook Reflection exists  
-**When** Practice History is persisted  
+**Given** a completed Sketchbook Reflection exists
+**When** Practice History is persisted
 **Then** the history record contains artifact reference/metadata but not the raw image bytes.
 
 ### AC-034-05 — Private Retrieval
 
-**Given** a learner owns a completed Sketchbook Reflection  
-**When** the learner opens its artifact through Fablit  
+**Given** a learner owns a completed Sketchbook Reflection
+**When** the learner opens its artifact through Fablit
 **Then** the application verifies ownership and retrieves the bytes through the private storage boundary.
 
 ### AC-034-06 — Cross-Learner Isolation
 
-**Given** learner A owns an artifact  
-**When** learner B attempts to retrieve that artifact by changing identifiers or URLs  
+**Given** learner A owns an artifact
+**When** learner B attempts to retrieve that artifact by changing identifiers or URLs
 **Then** the artifact is not disclosed.
 
 ### AC-034-07 — Durable Artifact
 
-**Given** a learner has completed Sketchbook Reflection successfully  
-**When** the App Engine instance handling the original request is no longer available  
+**Given** a learner has completed Sketchbook Reflection successfully
+**When** the App Engine instance handling the original request is no longer available
 **Then** the artifact remains retrievable from the durable production storage backend.
 
 ### AC-034-08 — Retry Safety
 
-**Given** artifact persistence or completion processing is interrupted  
-**When** the learner retries the operation  
+**Given** artifact persistence or completion processing is interrupted
+**When** the learner retries the operation
 **Then** the application preserves the existing FIX-3 retry guarantees and does not falsely report completion or unintentionally duplicate artifacts.
 
 ### AC-034-09 — Local/Test Storage
 
-**Given** Fablit is running in local development or ordinary unit tests  
-**When** artifact storage is exercised  
+**Given** Fablit is running in local development or ordinary unit tests
+**When** artifact storage is exercised
 **Then** the existing file-backed storage implementation remains usable without production GCP credentials.
 
 ### AC-034-10 — Missing Artifact
 
-**Given** a Practice History record references an unavailable artifact  
-**When** the learner opens the review  
+**Given** a Practice History record references an unavailable artifact
+**When** the learner opens the review
 **Then** the written reflection and other practice-history evidence remain usable.
 
 ### AC-034-11 — Deployment Documentation
 
-**Given** App Engine is the supported deployment environment  
-**When** a contributor reads the deployment documentation  
+**Given** App Engine is the supported deployment environment
+**When** a contributor reads the deployment documentation
 **Then** the documented provider, configuration, deployment command, required environment configuration, and artifact-storage architecture match the actual implementation.
 
 ### AC-034-12 — No Public Media Access
 
-**Given** an artifact is stored in production  
-**When** a user attempts to access the GCS object directly without application authorization  
+**Given** an artifact is stored in production
+**When** a user attempts to access the GCS object directly without application authorization
 **Then** the object is not publicly accessible.
 
 ### AC-034-13 — Existing Journey Preservation
 
-**Given** SPEC-034 is enabled  
-**When** a learner uses ordinary Fablit practices  
+**Given** SPEC-034 is enabled
+**When** a learner uses ordinary Fablit practices
 **Then** the existing learner journey and practice semantics remain unchanged.
 
 ### AC-034-14 — Regression Safety
 
-**Given** the implementation is complete  
-**When** the full CI/check suite runs  
+**Given** the implementation is complete
+**When** the full CI/check suite runs
 **Then** formatting, linting, type checking, tests, and coverage requirements continue to pass.
 
 ---

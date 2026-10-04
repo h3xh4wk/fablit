@@ -228,3 +228,89 @@ def test_unsupported_practice_history_repository_raises_validation_error(
 
     with pytest.raises(ConfigValidationError, match="practice history repository"):
         load_config()
+
+
+# --- Artifact storage backend (SPEC-034) --------------------------------------
+
+
+def test_artifact_storage_backend_defaults_to_file() -> None:
+    config = AppConfig.model_validate({})
+
+    assert config.artifact_storage_backend == "file"
+    assert config.artifact_storage_bucket is None
+    assert config.artifact_storage_dir is None
+
+
+def test_artifact_storage_backend_accepts_file() -> None:
+    config = AppConfig.model_validate({"artifact_storage_backend": "file"})
+
+    assert config.artifact_storage_backend == "file"
+
+
+def test_artifact_storage_backend_accepts_gcs_with_bucket() -> None:
+    config = AppConfig.model_validate(
+        {
+            "artifact_storage_backend": "gcs",
+            "artifact_storage_bucket": "my-bucket",
+        }
+    )
+
+    assert config.artifact_storage_backend == "gcs"
+    assert config.artifact_storage_bucket == "my-bucket"
+
+
+def test_artifact_storage_backend_is_normalised_to_lowercase() -> None:
+    config = AppConfig.model_validate(
+        {
+            "artifact_storage_backend": "  GCS ",
+            "artifact_storage_bucket": "my-bucket",
+        }
+    )
+
+    assert config.artifact_storage_backend == "gcs"
+
+
+def test_unsupported_artifact_storage_backend_raises_validation_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FABLIT_ARTIFACT_STORAGE_BACKEND", "s3")
+
+    with pytest.raises(ConfigValidationError, match="artifact storage backend"):
+        load_config()
+
+
+def test_gcs_backend_without_bucket_raises_validation_error() -> None:
+    with pytest.raises(ValidationError, match="artifact_storage_bucket is required"):
+        AppConfig.model_validate({"artifact_storage_backend": "gcs"})
+
+
+def test_gcs_backend_with_empty_bucket_raises_validation_error() -> None:
+    with pytest.raises(ValidationError, match="artifact_storage_bucket is required"):
+        AppConfig.model_validate(
+            {
+                "artifact_storage_backend": "gcs",
+                "artifact_storage_bucket": "   ",
+            }
+        )
+
+
+def test_artifact_storage_backend_and_bucket_read_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FABLIT_ARTIFACT_STORAGE_BACKEND", "gcs")
+    monkeypatch.setenv("FABLIT_ARTIFACT_STORAGE_BUCKET", "prod-artifacts-bucket")
+
+    config = load_config()
+
+    assert config.artifact_storage_backend == "gcs"
+    assert config.artifact_storage_bucket == "prod-artifacts-bucket"
+
+
+def test_artifact_storage_dir_reads_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FABLIT_ARTIFACT_STORAGE_DIR", "/custom/storage/path")
+
+    config = load_config()
+
+    assert config.artifact_storage_dir == "/custom/storage/path"
