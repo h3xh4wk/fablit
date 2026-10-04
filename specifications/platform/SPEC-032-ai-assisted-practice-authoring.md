@@ -369,6 +369,8 @@ Implementation must preserve:
 - SPEC-029 Practice Content Model & Learning Contract.
 - SPEC-030 Practice Feedback Quality.
 - SPEC-031 Sketchbook-to-Practice Reflection.
+- SPEC-033 private artifact support.
+- SPEC-034 Google App Engine deployment and durable artifact storage.
 
 The authoring workflow should not require changes to learner identity, learner history, or learner-facing practice selection merely to support AI authoring.
 
@@ -498,6 +500,10 @@ SPEC-031 defines:
 
 > **How can Fablit connect existing sketchbook work to deliberate reflection?**
 
+SPEC-034 defines:
+
+> **How can the production platform safely support durable learner artifacts on App Engine?**
+
 SPEC-032 defines:
 
 > **How can Fablit scale the creation of high-quality practices without surrendering curation to AI?**
@@ -510,6 +516,8 @@ Practice Contract
 Feedback Contract
       ↓
 Sketchbook / Practice Experience
+      ↓
+Durable Production Infrastructure
       ↓
 AI-Assisted Authoring
       ↓
