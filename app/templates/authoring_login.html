@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Authoring Access — Fablit{% endblock %}
+{% block content %}
+<article class="intention">
+  <nav class="subnav" aria-label="Back to practice">
+    <a href="/"><span aria-hidden="true">←</span> Back to practice</a>
+  </nav>
+  <h1 class="display">Internal Authoring Access</h1>
+  <p class="lede">Protected Practice Authoring (SEC-001)</p>
+  <p class="intention__prompt">
+    This workspace is restricted to authorized internal Fablit content authors. Please enter your authoring secret to continue.
+  </p>
+  {% if error %}
+  <div class="feedback-observation feedback-observation--critical" role="alert" style="margin-bottom: 1.5rem;">
+    <p>{{ error }}</p>
+  </div>
+  {% endif %}
+  <form method="post" action="/authoring/login">
+    <label class="form-label" for="authoring-secret">Authoring Secret</label>
+    <input type="password" id="authoring-secret" name="secret" class="form-control" autocomplete="current-password" required autofocus style="width: 100%; max-width: 28rem; padding: 0.5rem; margin-bottom: 1rem;">
+    <p class="form-actions">
+      <button type="submit" class="button">Access Authoring Workspace <span aria-hidden="true">→</span></button>
+    </p>
+  </form>
+</article>
+{% endblock %}

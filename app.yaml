@@ -25,3 +25,8 @@ env_variables:
   # Specify your private bucket name here or override via:
   # gcloud app deploy --set-env-vars FABLIT_ARTIFACT_STORAGE_BUCKET=<bucket-name>
   # FABLIT_ARTIFACT_STORAGE_BUCKET: "<your-artifacts-bucket-name>"
+  # Shared secret for internal AI practice authoring access (SEC-001).
+  # Unset or empty disables authoring routes by default.
+  # FABLIT_AUTHORING_SECRET: "<your-authoring-secret>"
+  # Optional API key for server-side AI practice authoring provider (SPEC-032 / SEC-001).
+  # FABLIT_AI_PROVIDER_API_KEY: "<your-ai-provider-api-key>"

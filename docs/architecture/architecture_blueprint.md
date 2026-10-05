@@ -1,9 +1,9 @@
 # Fablit Architecture Blueprint
 
 **Document ID:** AB-001
-**Version:** 0.14.0
+**Version:** 0.15.0
 **Status:** Draft
-**Last Updated:** 2026-10-03
+**Last Updated:** 2026-10-05
 
 ---
 
@@ -764,6 +764,34 @@ Draft key removed immediately; 24h purge on launch
   the durable artifact remains the SPEC-021 history record written after
   successful reflection. Drafts are never scored, analysed, or graded, and
   the recovery copy stays calm and factual.
+
+---
+
+## Internal AI Authoring Security Boundary (SEC-001 / SPEC-032)
+
+SPEC-032 introduces an internal AI-assisted practice authoring workflow. Because the deployed Fablit platform is publicly accessible, SEC-001 establishes a strict, server-side security boundary around authoring interfaces and AI-generation capabilities:
+
+```text
+Public Learner Request (/, /practice, /history)
+        ↓
+Learner Identity Middleware (anonymous, public, open)
+        ↓
+Learner Experience & Practice Application
+
+Internal Author Request (/authoring, /authoring/generate, /authoring/candidates)
+        ↓
+Authoring Authentication Guard (require_author_access)
+        ↓ checks FABLIT_AUTHORING_SECRET (constant-time comparison)
+        ├── If valid: Authoring Router & AI Candidate Generation
+        └── If invalid/unconfigured: 401 Unauthorized (AI provider never invoked)
+```
+
+- **Strict server-side enforcement:** Authoring UI routes (`/authoring`) and candidate generation endpoints (`/authoring/generate`, `/authoring/candidates`) enforce authorization server-side prior to executing any handler logic.
+- **Provider invocation protection:** Unauthorized requests are rejected immediately with 401 Unauthorized, guaranteeing that unauthenticated actors cannot consume configured AI providers.
+- **Shared secret authentication:** Access requires `FABLIT_AUTHORING_SECRET`, verified with constant-time equality (`hmac.compare_digest`) in `fablit.platform.authoring_auth`. When unset or blank, authoring access is disabled by default.
+- **Transport mechanisms:** Supports interactive author login via `/authoring/login` (setting an HttpOnly, SameSite=Lax, Path-restricted session cookie `fablit_author_token`, marked Secure in production) as well as header-based authentication (`Authorization: Bearer <secret>`, Basic auth, or `X-Author-Key`).
+- **Complete learner isolation:** Existing learner routes remain completely anonymous, public, and unaffected. Provider credentials (`FABLIT_AI_PROVIDER_API_KEY`) stay server-side and are never exposed in HTML or client responses.
+- **Minimal scope:** SEC-001 provides the smallest secure boundary for internal authoring, intentionally omitting learner authentication, multi-author RBAC, or public author registration.
 
 ---
 

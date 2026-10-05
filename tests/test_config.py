@@ -314,3 +314,33 @@ def test_artifact_storage_dir_reads_from_environment(
     config = load_config()
 
     assert config.artifact_storage_dir == "/custom/storage/path"
+
+
+def test_authoring_secret_and_ai_provider_defaults_to_none() -> None:
+    config = AppConfig.model_validate({})
+    assert config.authoring_secret is None
+    assert config.ai_provider_api_key is None
+
+
+def test_authoring_secret_and_ai_provider_read_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FABLIT_AUTHORING_SECRET", "super-secret-key-123")
+    monkeypatch.setenv("FABLIT_AI_PROVIDER_API_KEY", "ai-key-xyz")
+
+    config = load_config()
+
+    assert config.authoring_secret == "super-secret-key-123"
+    assert config.ai_provider_api_key == "ai-key-xyz"
+
+
+def test_authoring_secret_and_ai_provider_whitespace_normalized_to_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FABLIT_AUTHORING_SECRET", "   ")
+    monkeypatch.setenv("FABLIT_AI_PROVIDER_API_KEY", " \t\n ")
+
+    config = load_config()
+
+    assert config.authoring_secret is None
+    assert config.ai_provider_api_key is None

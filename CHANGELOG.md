@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **SEC-001 — Protect Internal AI Authoring Access**: the internal AI-assisted practice authoring workflow and candidate generation endpoints are now protected by a server-side security boundary before SPEC-032 implementation, ensuring only authorized internal authors can access authoring tools or trigger AI provider calls while preserving open, anonymous public access for learners.
+  - Protected endpoints & UI: authoring UI routes (`/authoring`, `/authoring/`) and candidate generation/review endpoints (`/authoring/generate`, `/authoring/candidates`) enforce authorization server-side and reject unauthenticated requests with `401 Unauthorized`.
+  - Secret & session management: constant-time comparison via `hmac.compare_digest` in `fablit.platform.authoring_auth`, supporting `Authorization: Bearer <secret>`, HTTP Basic (`author:<secret>`), `X-Author-Key`, and a path-restricted session cookie (`fablit_author_token`, `Path=/authoring`, HttpOnly, SameSite=Lax, Secure in production) established via `/authoring/login`.
+  - Secure by default: authoring access is completely disabled when `FABLIT_AUTHORING_SECRET` is unset or blank.
+  - Server-side guard: unauthorized requests never trigger AI provider calls.
+  - AI credential isolation: `FABLIT_AI_PROVIDER_API_KEY` stays server-side and is never exposed to browsers or learners.
+  - Public learner routes: learner routes (`/`, `/practice`, `/history`, `/health`) remain public, open, and anonymous without login or accounts.
+  - Documentation: updated `docs/engineering/deployment.md`, `docs/architecture/architecture_blueprint.md`, and `README.md`.
+
+See issue [#121](https://github.com/h3xh4wk/fablit/issues/121) for details.
+
 - **SPEC-034 — Google App Engine Deployment & Durable Artifact Storage**: the Fablit platform is now deployable to Google App Engine standard environment with durable, private Google Cloud Storage (GCS) artifact storage alongside Google Cloud Datastore practice history.
   - Deployment configuration: committed `app.yaml` targeting Python 3.12, entrypoint running `uvicorn app.main:app --host 0.0.0.0 --port $PORT`, static file handler for `/static/`, and `.gcloudignore` and `requirements.txt` manifests.
   - Durable artifact storage: implemented `GCSArtifactStorage` in `fablit.platform.gcs_artifact_storage`, fulfilling the existing `ArtifactStorage` application port. Stores private sketchbook reflection artifacts as private objects in a dedicated GCS bucket without public URLs.

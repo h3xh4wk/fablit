@@ -109,6 +109,21 @@ class AppConfig(BaseSettings):
             "is also unset."
         ),
     )
+    authoring_secret: str | None = Field(
+        None,
+        description=(
+            "Shared secret for internal authoring access (SEC-001). "
+            "Unset disables internal authoring access."
+        ),
+    )
+    ai_provider_api_key: str | None = Field(
+        None,
+        description=(
+            "Server-side API key for the AI practice authoring provider "
+            "(SPEC-032 / SEC-001). Kept strictly server-side and never exposed to "
+            "learners."
+        ),
+    )
     config_file: Path | None = Field(None, description="Path to optional config file.")
     version: str = Field("0.1.0", description="Application version.")
 
@@ -220,6 +235,16 @@ class AppConfig(BaseSettings):
             return stripped if stripped else None
         return str(value)
 
+    @field_validator("authoring_secret", "ai_provider_api_key", mode="before")
+    def normalize_optional_secrets(cls, value: object) -> str | None:
+        """Strip whitespace from optional secrets; empty string becomes None."""
+        if value is None:
+            return None
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped if stripped else None
+        return str(value)
+
     @model_validator(mode="after")
     def validate_gcs_bucket(self) -> AppConfig:
         """Ensure GCS backend is configured with a non-empty bucket name."""
@@ -276,6 +301,8 @@ def _resolve_environment_overrides() -> dict[str, Any]:
         "artifact_storage_backend": "FABLIT_ARTIFACT_STORAGE_BACKEND",
         "artifact_storage_bucket": "FABLIT_ARTIFACT_STORAGE_BUCKET",
         "artifact_storage_dir": "FABLIT_ARTIFACT_STORAGE_DIR",
+        "authoring_secret": "FABLIT_AUTHORING_SECRET",
+        "ai_provider_api_key": "FABLIT_AI_PROVIDER_API_KEY",
         "version": "FABLIT_VERSION",
     }
     resolved: dict[str, Any] = {}
