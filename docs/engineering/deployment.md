@@ -134,6 +134,8 @@ All settings are managed via environment variables (`FABLIT_*`), configured in `
 | `FABLIT_PRACTICE_HISTORY_REPOSITORY` | `datastore` | Persists completed practice history in Google Cloud Datastore |
 | `FABLIT_ARTIFACT_STORAGE_BACKEND` | `gcs` | Persists sketchbook artifact binaries in Google Cloud Storage |
 | `FABLIT_ARTIFACT_STORAGE_BUCKET` | `<project-id>-artifacts` | Name of the private Google Cloud Storage bucket |
+| `FABLIT_AUTHORING_SECRET` | `<shared-secret>` | Shared secret for internal AI authoring access (SEC-001). Unset disables authoring. |
+| `FABLIT_AI_PROVIDER_API_KEY` | `<provider-key>` | Optional server-side API key for the AI practice authoring provider (SPEC-032 / SEC-001). Never exposed to learners or clients. |
 | `FABLIT_SERVICE_NAME` | `fablit` | Service name tag in structured logs |
 
 ---
@@ -252,3 +254,54 @@ Earlier pilot deployments hosted on PythonAnywhere or temporary local environmen
 - Existing historical Datastore records that reference missing artifact files will gracefully degrade:
   - Requesting the artifact route `/history/{completion_id}/artifact` returns an unlisted `404 Not Found`.
   - The review page `/history/{completion_id}` continues to render the full written submission, evaluation findings, feedback, and reflection notes without error.
+
+---
+
+## 11. Internal AI Authoring Security Boundary (SEC-001)
+
+SPEC-032 introduces an internal AI-assisted practice authoring workflow. Because the deployed Fablit platform is publicly accessible, SEC-001 establishes a strict, server-side security boundary around authoring tools:
+
+### Access Boundary & Endpoints
+
+All authoring-only routes and operations are grouped under `/authoring`:
+- `GET /authoring` / `GET /authoring/` — Internal authoring workspace UI.
+- `GET /authoring/login` & `POST /authoring/login` — Authoring login and session establishment.
+- `POST /authoring/logout` — Terminate authoring session.
+- `POST /authoring/generate` — Server-side AI candidate generation.
+- `GET /authoring/candidates` — Review candidate list.
+- `POST /authoring/candidates/{id}/approve` & `POST /authoring/candidates/{id}/reject` — Explicit human review gates.
+
+### Authentication & Authorization Model
+
+1. **Shared Authoring Secret (`FABLIT_AUTHORING_SECRET`):**
+   - Authentication relies on a high-entropy shared secret configured in the environment.
+   - Secret verification uses constant-time comparison (`hmac.compare_digest`) in `fablit.platform.authoring_auth` to prevent timing attacks.
+   - **Secure by default:** If `FABLIT_AUTHORING_SECRET` is unset or blank, authoring access is completely disabled and rejects all access attempts.
+2. **Supported Credential Transports:**
+   - **Interactive Browser Session:** An author visits `/authoring/login` and provides the secret. On success, the response sets an `HttpOnly`, `SameSite=Lax`, `Path=/authoring` cookie (`fablit_author_token`) with the `Secure` flag enabled in production. The cookie is never sent on public learner routes.
+   - **API / Header Authentication:** Supports `Authorization: Bearer <secret>`, HTTP Basic (`Authorization: Basic <base64>`), or `X-Author-Key: <secret>`.
+3. **Strict Server-Side Enforcement:**
+   - Every authoring endpoint checks authorization server-side before executing handler logic.
+   - Unauthorized requests to `/authoring/generate` or `/authoring/candidates` return `401 Unauthorized` (JSON) immediately without invoking the AI provider or any external service.
+   - Browser navigation to `/authoring` without authentication renders the authoring login view (`401 Unauthorized`).
+
+### Separation from Learner Surface & Secret Isolation
+
+- **Public Learner Experience Unaffected:** Learner routes (`/`, `/practice`, `/history`, `/health`) remain completely public, anonymous, and unauthenticated. No learner accounts, passwords, or login prompts are ever introduced.
+- **Provider Credentials Stay Server-Side:** Any AI provider API key (`FABLIT_AI_PROVIDER_API_KEY`) is stored strictly in server-side configuration and is never transmitted in HTML, client JavaScript, or API responses.
+- **Scope Limit:** SEC-001 is purposefully sized as the smallest secure mechanism for the current single internal author. It intentionally avoids multi-user role management (RBAC), public user registration, or external OAuth integrations.
+
+### Operational Deployment Configuration
+
+To enable authoring access in an App Engine deployment:
+
+```bash
+# Deploy or update environment variables with the authoring secret and AI provider key:
+gcloud app deploy app.yaml --set-env-vars FABLIT_AUTHORING_SECRET="<your-strong-secret>",FABLIT_AI_PROVIDER_API_KEY="<your-ai-key>"
+```
+
+To revoke authoring access immediately, remove or clear `FABLIT_AUTHORING_SECRET`:
+
+```bash
+gcloud app deploy app.yaml --set-env-vars FABLIT_AUTHORING_SECRET=""
+```

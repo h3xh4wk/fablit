@@ -371,10 +371,11 @@ Implementation must preserve:
 - SPEC-031 Sketchbook-to-Practice Reflection.
 - SPEC-033 private artifact support.
 - SPEC-034 Google App Engine deployment and durable artifact storage.
+- SEC-001 Internal AI Authoring Security Boundary.
 
 The authoring workflow should not require changes to learner identity, learner history, or learner-facing practice selection merely to support AI authoring.
 
-If an authoring interface is introduced, it should remain separate from the learner-facing experience.
+If an authoring interface is introduced, it should remain separate from the learner-facing experience and protected server-side under the SEC-001 access boundary (`FABLIT_AUTHORING_SECRET`).
 
 ---
 

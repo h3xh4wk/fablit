@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Internal Authoring Workspace — Fablit{% endblock %}
+{% block content %}
+<article class="intention">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+    <nav class="subnav" aria-label="Navigation">
+      <a href="/"><span aria-hidden="true">←</span> Learner Practice</a>
+    </nav>
+    <form method="post" action="/authoring/logout" style="margin: 0;">
+      <button type="submit" class="button button--secondary">Log out</button>
+    </form>
+  </div>
+
+  <h1 class="display">Internal Authoring Workspace</h1>
+  <p class="lede">AI-Assisted Practice Authoring (SPEC-032 / SEC-001)</p>
+  <p class="intention__prompt">
+    Draft and review practice candidates with AI assistance before human approval. All generated content requires explicit author review before becoming learner-facing content.
+  </p>
+
+  {% if message %}
+  <div class="feedback-observation" role="status" style="margin-bottom: 1.5rem;">
+    <p>{{ message }}</p>
+  </div>
+  {% endif %}
+
+  <section class="card" style="margin-bottom: 2rem; padding: 1.5rem; border: 1px solid var(--color-border, #e2e8f0); border-radius: 0.5rem;">
+    <h2 class="subheading" style="margin-top: 0;">Authoring Brief</h2>
+    <form method="post" action="/authoring/generate">
+      <div style="margin-bottom: 1rem;">
+        <label class="form-label" for="practice_area">Practice Area / Skill</label>
+        <input type="text" id="practice_area" name="practice_area" class="form-control" value="{{ brief.practice_area if brief else '' }}" placeholder="e.g. Visual Analysis or Critical Observation" required style="width: 100%; padding: 0.5rem;">
+      </div>
+
+      <div style="margin-bottom: 1rem;">
+        <label class="form-label" for="learning_focus">Learning Focus</label>
+        <textarea id="learning_focus" name="learning_focus" class="form-control" rows="3" placeholder="What skill or insight should this practice develop?" required style="width: 100%; padding: 0.5rem;">{{ brief.learning_focus if brief else '' }}</textarea>
+      </div>
+
+      <div style="margin-bottom: 1rem;">
+        <label class="form-label" for="mode_intent">Practice Mode Intent</label>
+        <select id="mode_intent" name="mode_intent" class="form-control" style="width: 100%; max-width: 20rem; padding: 0.5rem;">
+          <option value="short-drill" {% if brief and brief.mode_intent == 'short-drill' %}selected{% endif %}>Short Drill (5–10 min)</option>
+          <option value="full-practice" {% if brief and brief.mode_intent == 'full-practice' %}selected{% endif %}>Full Practice</option>
+        </select>
+      </div>
+
+      <div style="margin-bottom: 1rem;">
+        <label class="form-label" for="stimulus_intent">Stimulus Intent (Optional)</label>
+        <input type="text" id="stimulus_intent" name="stimulus_intent" class="form-control" value="{{ brief.stimulus_intent if brief else '' }}" placeholder="e.g. Urban architecture photograph or abstract composition" style="width: 100%; padding: 0.5rem;">
+      </div>
+
+      <p class="form-actions">
+        <button type="submit" class="button">Generate Candidate Practice <span aria-hidden="true">→</span></button>
+      </p>
+    </form>
+  </section>
+
+  {% if candidate %}
+  <section class="card" style="padding: 1.5rem; border: 1px solid var(--color-border, #e2e8f0); border-radius: 0.5rem; background: var(--color-surface-raised, #f8fafc);">
+    <h2 class="subheading" style="margin-top: 0;">Generated Candidate Practice</h2>
+    <div style="margin-bottom: 1rem;">
+      <p><strong>Status:</strong> <span class="tag">{{ candidate.status or 'candidate' }}</span></p>
+      {% if candidate.activity %}
+      <p><strong>Title:</strong> {{ candidate.activity.title or 'Untitled Practice' }}</p>
+      <p><strong>Instructions:</strong> {{ candidate.activity.instructions or '' }}</p>
+      {% endif %}
+    </div>
+    <div class="form-actions" style="display: flex; gap: 1rem;">
+      {% set candidate_id = candidate.id or 'current' %}
+      <form method="post" action="/authoring/candidates/{{ candidate_id }}/approve">
+        <button type="submit" class="button">Approve for Library</button>
+      </form>
+      <form method="post" action="/authoring/candidates/{{ candidate_id }}/reject">
+        <button type="submit" class="button button--secondary">Reject Candidate</button>
+      </form>
+    </div>
+  </section>
+  {% endif %}
+</article>
+{% endblock %}

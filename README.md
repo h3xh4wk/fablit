@@ -87,6 +87,8 @@ Key settings include:
 - `FABLIT_ARTIFACT_STORAGE_BACKEND` — private sketchbook artifact storage (SPEC-034): `file` (default; file-backed private storage for local development and tests) or `gcs` (Google Cloud Storage for deployed App Engine environment)
 - `FABLIT_ARTIFACT_STORAGE_BUCKET` — GCS bucket name for private sketchbook artifacts (required when `FABLIT_ARTIFACT_STORAGE_BACKEND=gcs`)
 - `FABLIT_ARTIFACT_STORAGE_DIR` — optional filesystem directory for file-backed storage (when backend is `file`)
+- `FABLIT_AUTHORING_SECRET` — shared secret for internal AI authoring access (SEC-001). When unset, internal authoring routes reject all requests by default
+- `FABLIT_AI_PROVIDER_API_KEY` — optional server-side API key for the AI practice authoring provider (SPEC-032 / SEC-001). Kept strictly server-side and never exposed to learners or browsers
 
 Every anonymous learner receives a unique, opaque learner identity stored in a secure, HttpOnly cookie (SPEC-024): practice history is private to that learner's browser, with no registration, email, or password. The identity cookie carries the `Secure` attribute in production and a one-year lifetime; clearing cookies simply starts a fresh anonymous learner.
 
@@ -135,8 +137,9 @@ SPEC-012 introduces the first application layer under `fablit.application`, sepa
 - Pre-practice intention (SPEC-026) — an optional, qualitative focus statement captured before the active workspace (`get_intention`/`set_intention`), held as pending journey state in `LearnerJourneyStore`, attached to the session's `Submission` (`pre_practice_intention`) at response time, persisted with history, and rendered in review; it is never graded or consumed by evaluation
 - Session recovery layer (SPEC-028) — `app/static/js/session-recovery.js`, a client-only static module that auto-saves the active response, intention, and reflection drafts to browser storage (IndexedDB primary, `localStorage` fallback) on a 3-second debounce or blur, offers a quiet Resume/Discard banner for uncommitted response drafts, purges drafts after successful submission and after 24 hours, and degrades gracefully when storage is unavailable; drafts never reach the server
 - Private sketchbook artifact storage (SPEC-033 / SPEC-034) — `fablit/application/artifact_storage.py` isolates sketchbook reflection image binaries from history records behind the `ArtifactStorage` port; implemented via `FileArtifactStorage` (local dev/test) and `GCSArtifactStorage` (Google Cloud Storage adapter in `fablit/platform/gcs_artifact_storage.py` for App Engine). Practice reviews reference artifacts by opaque ID, and missing objects degrade gracefully with an unlisted 404 while leaving written practice history intact.
+- Internal AI authoring security boundary (SEC-001 / SPEC-032) — internal practice authoring tools and AI generation endpoints (`/authoring`, `/authoring/generate`, `/authoring/candidates`) are protected server-side by a shared authoring secret (`FABLIT_AUTHORING_SECRET`). Direct and unauthenticated requests are rejected with 401 before any AI provider invocation occurs; credentials stay server-side; public learner routes remain open, public, and anonymous without login.
 
-The vertical slice introduces no authentication, scoring, Progress, mastery, recommendations, gamification, or examination-specific logic.
+The learner experience introduces no learner authentication, scoring, Progress, mastery, recommendations, gamification, or examination-specific logic.
 
 ## Practice content contract (SPEC-029)
 

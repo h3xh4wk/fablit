@@ -24,9 +24,10 @@ from pathlib import Path
 from typing import Annotated
 from uuid import UUID, uuid4
 
-from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import (
     HTMLResponse,
+    JSONResponse,
     PlainTextResponse,
     RedirectResponse,
     Response,
@@ -34,6 +35,7 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from app.authoring import router as authoring_router
 from app.learner_session import (
     DemoContent,
     LearnerApplicationRegistry,
@@ -279,6 +281,43 @@ async def _read_sketchbook_artifact(
     )
 
 
+async def _http_exception_handler(request: Request, exc: Exception) -> Response:
+    """Handle HTTP exceptions with appropriate format (JSON vs HTML).
+
+    SEC-001: Unauthorized authoring requests receive 401 Unauthorized, returning
+    JSON for API/generate calls and the login form for browser navigation.
+    Learner-facing errors use the calm learner error template.
+    """
+    if not isinstance(exc, HTTPException):
+        return await _unhandled_exception_handler(request, exc)
+
+    headers = exc.headers or {}
+    accept = request.headers.get("accept", "")
+
+    if (
+        "application/json" in accept
+        or request.url.path.startswith("/authoring/generate")
+        or request.url.path.startswith("/authoring/candidates")
+    ):
+        error_name = "Unauthorized" if exc.status_code == 401 else "Error"
+        return JSONResponse(
+            {"error": error_name, "detail": exc.detail},
+            status_code=exc.status_code,
+            headers=headers,
+        )
+
+    if request.url.path.startswith("/authoring"):
+        return templates.TemplateResponse(
+            request,
+            "authoring_login.html",
+            {"error": str(exc.detail)},
+            status_code=exc.status_code,
+            headers=headers,
+        )
+
+    return _error_response(request, str(exc.detail), status_code=exc.status_code)
+
+
 async def _unhandled_exception_handler(request: Request, exc: Exception) -> Response:
     """Turn unexpected failures into a learner-friendly page (SPEC-014 §20).
 
@@ -356,11 +395,13 @@ def create_app(config: AppConfig) -> FastAPI:
         logger.info("application startup", extra={"version": config.version})
         app.state.ready = True
         app.state.config = config
+        app.state.authoring_ai_provider = None
         app.state.demo_content, app.state.learner_applications = (
             _build_learner_applications(config)
         )
         yield
         app.state.ready = False
+        app.state.authoring_ai_provider = None
         app.state.demo_content = None
         app.state.learner_applications = None
         logger.info("application shutdown")
@@ -377,13 +418,23 @@ def create_app(config: AppConfig) -> FastAPI:
         openapi_url="/openapi.json" if docs_enabled else None,
     )
 
+    app.state.ready = False
+    app.state.config = config
+    app.state.authoring_ai_provider = None
+    app.state.demo_content, app.state.learner_applications = (
+        _build_learner_applications(config)
+    )
+
     app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
     # SPEC-024: the identity boundary is centralised in middleware rather
     # than duplicated across routes (§6): every request resolves its
     # anonymous learner identity before reaching a handler.
     app.middleware("http")(learner_identity_middleware)
     app.middleware("http")(request_logging_middleware)
+    app.add_exception_handler(HTTPException, _http_exception_handler)
     app.add_exception_handler(Exception, _unhandled_exception_handler)
+    # SEC-001: internal authoring access and AI-generation routes
+    app.include_router(authoring_router)
 
     @app.get("/", response_class=HTMLResponse)
     async def dashboard(request: Request) -> Response:
