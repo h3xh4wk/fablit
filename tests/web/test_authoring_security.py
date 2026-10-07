@@ -16,11 +16,49 @@ from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from fablit.application import LlmGenerationResult
 from fablit.config import AppConfig, load_config
 from fablit.platform.authoring_auth import AUTHORING_COOKIE_NAME
 
 SECRET = "test-internal-authoring-secret-42"
 AI_KEY = "test-ai-provider-api-key-999"
+
+
+def _valid_brief_payload() -> dict[str, str]:
+    """A complete SPEC-032 authoring brief for the generate endpoint."""
+    return {
+        "practice_area": "Visual Analysis",
+        "practice_purpose": "Practise reading structure in a composition.",
+        "task": "Describe the dominant structure you notice.",
+        "response_form": "A short evidence-based paragraph.",
+        "primary_capability": "Observe",
+        "practice_mode": "full-practice",
+        "learner_context": "Design aspirants preparing a portfolio.",
+        "evaluation_intent": "Look for specific evidence grounded in the response.",
+        "feedback_intent": "Name one strength, why it matters, and one next move.",
+        "reflection_intent": "Notice how you approached the task.",
+        "continuation_intent": "Try a related practice using the same thinking move.",
+    }
+
+
+#: A complete, SPEC-029-compatible provider output so the workflow can be
+#: exercised end to end through the SEC-001-protected routes.
+_VALID_PROVIDER_OUTPUT: dict[str, object] = {
+    "status": "candidate",
+    "id": "candidate-xyz",
+    "title": "Generated Test Practice",
+    "description": "A generated practice on reading composition.",
+    "contract": {
+        "purpose": "Practise reading structure in a composition.",
+        "task": "Describe the dominant structure you notice.",
+        "expected_thinking": "Move from observation to a reasoned claim.",
+        "response_contract": "A short evidence-based paragraph.",
+        "evaluation_intent": "Look for specific evidence grounded in the response.",
+        "feedback_intent": "Name one strength, why it matters, and one next move.",
+        "reflection_intent": "Notice how you approached the task.",
+        "continuation_intent": "Try a related practice on the same thinking move.",
+    },
+}
 
 
 def _configured_client(
@@ -39,14 +77,12 @@ def _configured_client(
     )
     app = create_app(config)
     spy_provider = MagicMock()
-    spy_provider.generate_candidate.return_value = {
-        "status": "candidate",
-        "id": "candidate-xyz",
-        "activity": {
-            "title": "Generated Test Practice",
-            "instructions": "Follow these steps.",
-        },
-    }
+    spy_provider.provider_id = "google-gemini"
+    spy_provider.generate_candidate.return_value = LlmGenerationResult(
+        output=dict(_VALID_PROVIDER_OUTPUT),
+        provider="google-gemini",
+        model="gemini-2.5-flash",
+    )
     app.state.authoring_ai_provider = spy_provider
     return (
         TestClient(app, base_url="https://testserver", raise_server_exceptions=False),
@@ -147,14 +183,12 @@ def test_authorized_access_via_bearer_token() -> None:
     generate_resp = client.post(
         "/authoring/generate",
         headers=headers,
-        json={
-            "practice_area": "Observation Drill",
-            "learning_focus": "Focus on details.",
-        },
+        json=_valid_brief_payload(),
     )
     assert generate_resp.status_code == 200
     assert spy_provider.generate_candidate.called is True
     assert generate_resp.json()["status"] == "candidate"
+    assert generate_resp.json()["validation"]["is_approvable"] is True
 
 
 def test_authorized_access_via_custom_header() -> None:
@@ -179,14 +213,25 @@ def test_candidate_review_endpoints_when_authorized() -> None:
     client, _ = _configured_client()
     headers = {"Authorization": f"Bearer {SECRET}"}
 
+    generate_resp = client.post(
+        "/authoring/generate", headers=headers, json=_valid_brief_payload()
+    )
+    assert generate_resp.status_code == 200
+    candidate_id = generate_resp.json()["id"]
+
     list_resp = client.get("/authoring/candidates", headers=headers)
     assert list_resp.status_code == 200
+    assert [item["id"] for item in list_resp.json()["candidates"]] == [candidate_id]
 
-    app_resp = client.post("/authoring/candidates/c1/approve", headers=headers)
+    app_resp = client.post(
+        f"/authoring/candidates/{candidate_id}/approve", headers=headers
+    )
     assert app_resp.status_code == 200
     assert app_resp.json()["status"] == "approved"
 
-    rej_resp = client.post("/authoring/candidates/c1/reject", headers=headers)
+    rej_resp = client.post(
+        f"/authoring/candidates/{candidate_id}/reject", headers=headers
+    )
     assert rej_resp.status_code == 200
     assert rej_resp.json()["status"] == "rejected"
 
@@ -310,7 +355,7 @@ def test_provider_credentials_and_secrets_never_leak() -> None:
     gen_resp = client.post(
         "/authoring/generate",
         headers={"Authorization": f"Bearer {SECRET}"},
-        json={"practice_area": "Test Area"},
+        json=_valid_brief_payload(),
     )
     assert AI_KEY not in gen_resp.text
     assert SECRET not in gen_resp.text
@@ -341,7 +386,7 @@ def test_ai_provider_failure_returns_502_without_leaks() -> None:
     response = client.post(
         "/authoring/generate",
         headers=headers,
-        json={"practice_area": "Creative Exercise"},
+        json=_valid_brief_payload(),
     )
     assert response.status_code == 502
     assert response.json()["error"] == "Error"
@@ -357,20 +402,27 @@ def test_candidate_approval_and_rejection_browser_html_flow() -> None:
     client, _ = _configured_client()
     client.cookies.set(AUTHORING_COOKIE_NAME, SECRET)
 
+    generate_resp = client.post(
+        "/authoring/generate",
+        headers={"Accept": "application/json"},
+        json=_valid_brief_payload(),
+    )
+    candidate_id = generate_resp.json()["id"]
+
     headers = {"Accept": "text/html"}
     app_resp = client.post(
-        "/authoring/candidates/cand-123/approve",
+        f"/authoring/candidates/{candidate_id}/approve",
         headers=headers,
     )
     assert app_resp.status_code == 200
-    assert "Candidate cand-123 approved for curated library." in app_resp.text
+    assert f"Candidate {candidate_id} approved for curated library." in app_resp.text
 
     rej_resp = client.post(
-        "/authoring/candidates/cand-123/reject",
+        f"/authoring/candidates/{candidate_id}/reject",
         headers=headers,
     )
     assert rej_resp.status_code == 200
-    assert "Candidate cand-123 rejected." in rej_resp.text
+    assert f"Candidate {candidate_id} rejected." in rej_resp.text
 
 
 def test_login_post_in_production_sets_secure_cookie() -> None:

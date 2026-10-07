@@ -1,9 +1,9 @@
 # Fablit Architecture Blueprint
 
 **Document ID:** AB-001
-**Version:** 0.15.0
+**Version:** 0.16.0
 **Status:** Draft
-**Last Updated:** 2026-10-05
+**Last Updated:** 2026-10-07
 
 ---
 
@@ -792,6 +792,54 @@ Authoring Authentication Guard (require_author_access)
 - **Transport mechanisms:** Supports interactive author login via `/authoring/login` (setting an HttpOnly, SameSite=Lax, Path-restricted session cookie `fablit_author_token`, marked Secure in production) as well as header-based authentication (`Authorization: Bearer <secret>`, Basic auth, or `X-Author-Key`).
 - **Complete learner isolation:** Existing learner routes remain completely anonymous, public, and unaffected. Provider credentials (`FABLIT_AI_PROVIDER_API_KEY`) stay server-side and are never exposed in HTML or client responses.
 - **Minimal scope:** SEC-001 provides the smallest secure boundary for internal authoring, intentionally omitting learner authentication, multi-author RBAC, or public author registration.
+
+---
+
+## AI-Assisted Practice Authoring Workflow (SPEC-032)
+
+SPEC-032 adds the authoring workflow itself on top of the SEC-001 boundary. It scales *curated* practice: AI drafts candidate activities, but only an explicit human approval places content in the learner-facing library (AA-001, AA-008).
+
+```text
+Authoring Brief (structured intent)
+        ↓
+Candidate Generation  ── no provider configured → brief-derived draft
+        ↓                 provider configured → provider output
+Structural (SPEC-029) + Feedback (SPEC-030) Validation
+        ↓  (malformed output is non-approvable)
+Human Review: inspect · compare with brief · edit · reject
+        ↓  explicit approval only
+Approved Practice → Curated Library
+```
+
+- **Application boundary, no new domain model:** the workflow lives in `fablit/application/authoring.py` (`PracticeAuthoringBrief`, `PracticeCandidate`, `CandidateStatus`, `AuthoringProvenance`, `validate_candidate`, `AuthoringCandidateStore`). A candidate reuses the existing SPEC-029 `PracticeContentContract`; there is no parallel learner-facing practice model.
+- **Structured brief (§4):** practice area, purpose, task, thinking lens, mode, response form, intents, stimulus/constraints, and optional examination context. An exam name alone cannot form a brief (AA-006).
+- **Provider-agnostic generation (§17):** with no AI provider configured the workflow derives a structured draft from the brief, so authoring and learner practice never depend on AI availability. Provider failures surface as a 502 and never create learner-facing content.
+- **Validation gate (§7):** structural errors (missing/incomplete SPEC-029 contract, missing title/description) and SPEC-030 feedback violations block approval; exam-name-only and practice-area mismatches are review warnings that never auto-approve. Malformed provider output becomes a non-approvable candidate instead of entering the approval path.
+- **Explicit human gate (§8):** `POST /authoring/candidates/{id}/approve` refuses any candidate that has not passed validation; `/reject` and `/edit` (new revision, superseded version retained) keep AI output a draft that the author owns.
+- **Distinguishable library (§9, §10):** `AuthoringCandidateStore.approved_practices()` returns only approved content; provenance (brief, generation time, provider/model, version, reviewer, decision, revision history) is retained internally and never exposed to learners.
+- **Learner isolation (§16, §18):** authoring requires no learner personal data, and the learner-facing experience is unchanged — approved content only ever enters through the ordinary curated library.
+
+### LLM Provider Adapter Boundary (ARCH-001)
+
+The authoring workflow depends on a provider-neutral LLM port rather than a specific LLM vendor, so provider credentials, request/response handling, structured generation, and provider failures stay inside one adapter boundary.
+
+```text
+SPEC-032 Authoring Workflow
+        ↓ depends on
+AuthoringLlmProvider (port)         fablit/application/authoring_llm.py
+        ↓ implemented by
+GeminiAuthoringProvider (adapter)   fablit/platform/gemini_authoring_provider.py
+        ↓
+Google Gemini REST API
+```
+
+- **Provider-neutral port:** `fablit/application/authoring_llm.py` defines the `AuthoringLlmProvider` protocol, the structured `AuthoringGenerationRequest`, and the structured `LlmGenerationResult` (candidate output plus provider/model metadata). The workflow imports no provider SDK.
+- **One concrete adapter:** `fablit/platform/gemini_authoring_provider.py` implements the port against the Google Gemini REST API. It owns the API key (sent only as a server-side `x-goog-api-key` header, never in a URL, log line, or response), request construction, response parsing, and provider/model identity for SPEC-032 §10 provenance.
+- **Structured results validated by SPEC-032:** the adapter returns the candidate as a structured mapping that flows into the existing SPEC-029/SPEC-030 validation. Valid JSON that omits contract fields becomes a non-approvable candidate rather than being silently accepted.
+- **Clean failure translation:** configuration gaps and provider/transport failures become `AuthoringProviderConfigurationError` / `AuthoringProviderError`; the workflow maps them to a safe `502` and never creates learner-facing content, so AI availability is never a dependency of ordinary learner practice.
+- **Composition-root wiring:** `app/main.py` builds the adapter only when `FABLIT_AI_PROVIDER_API_KEY` is configured (model selected via `FABLIT_AI_PROVIDER_MODEL`); otherwise the workflow uses the brief-derived draft path.
+- **Testable without live calls:** `FakeAuthoringProvider` (shipped beside the port) and an injectable adapter transport let the suite exercise the workflow with no external API call. SEC-001 remains the access-control boundary for every authoring route.
+- **Deliberately out of scope:** multi-provider routing, provider fallback, model-selection logic, agent frameworks, and learner-facing AI.
 
 ---
 

@@ -46,6 +46,8 @@ from app.learner_session import (
 from fablit.application import (
     ActivityNotFoundError,
     ArtifactStorage,
+    AuthoringCandidateStore,
+    AuthoringLlmProvider,
     CompletionNotFoundError,
     EvaluationFailedError,
     FeedbackNotFoundError,
@@ -132,6 +134,32 @@ def _build_artifact_storage(app_config: AppConfig) -> ArtifactStorage:
 
     logger.info("initialized file-backed artifact storage")
     return FileArtifactStorage(app_config.artifact_storage_dir)
+
+
+def _build_authoring_provider(
+    app_config: AppConfig,
+) -> AuthoringLlmProvider | None:
+    """Build the authoring LLM provider from configuration (ARCH-001).
+
+    The concrete provider is wired here at the composition root; the
+    authoring workflow depends only on the provider-neutral port
+    (``fablit.application.authoring_llm``). With no API key configured the
+    workflow falls back to a brief-derived draft, so AI availability never
+    gates content creation or learner practice (SPEC-032 §17). Credentials
+    stay inside the server-side adapter boundary.
+    """
+    api_key = app_config.ai_provider_api_key
+    if not api_key or not api_key.strip():
+        logger.info("authoring AI provider not configured; using brief-derived drafts")
+        return None
+
+    from fablit.platform.gemini_authoring_provider import GeminiAuthoringProvider
+
+    logger.info(
+        "initialized Gemini authoring provider",
+        extra={"model": app_config.ai_provider_model},
+    )
+    return GeminiAuthoringProvider(api_key=api_key, model=app_config.ai_provider_model)
 
 
 def _build_history_repository(
@@ -395,13 +423,15 @@ def create_app(config: AppConfig) -> FastAPI:
         logger.info("application startup", extra={"version": config.version})
         app.state.ready = True
         app.state.config = config
-        app.state.authoring_ai_provider = None
+        app.state.authoring_ai_provider = _build_authoring_provider(config)
+        app.state.authoring_candidates = AuthoringCandidateStore()
         app.state.demo_content, app.state.learner_applications = (
             _build_learner_applications(config)
         )
         yield
         app.state.ready = False
         app.state.authoring_ai_provider = None
+        app.state.authoring_candidates = None
         app.state.demo_content = None
         app.state.learner_applications = None
         logger.info("application shutdown")
@@ -420,7 +450,8 @@ def create_app(config: AppConfig) -> FastAPI:
 
     app.state.ready = False
     app.state.config = config
-    app.state.authoring_ai_provider = None
+    app.state.authoring_ai_provider = _build_authoring_provider(config)
+    app.state.authoring_candidates = AuthoringCandidateStore()
     app.state.demo_content, app.state.learner_applications = (
         _build_learner_applications(config)
     )

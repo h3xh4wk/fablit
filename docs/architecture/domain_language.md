@@ -1,9 +1,9 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 1.9.0
+**Version:** 1.11.0
 **Status:** Draft
-**Last Updated:** 2026-10-03
+**Last Updated:** 2026-10-07
 
 ---
 
@@ -432,6 +432,53 @@ The sketch remains learner-owned context. The reflection is the primary evaluabl
 | DR-006 | The sketchbook path uses the existing `Submission → Evaluation → Feedback → Reflection → Completion` flow without introducing a separate scoring or ranking model. |
 
 The feature remains intentionally lightweight: it complements the learner's sketchbook routine rather than requiring a full digital sketchbook or a new public artifact model.
+
+---
+
+## AI-Assisted Practice Authoring (SPEC-032)
+
+SPEC-032 lets an authorized internal author use AI to draft *candidate* practices while the learner-facing library stays curated and human-reviewed. It is deliberately an **application-boundary workflow**, not a learning-domain concept: it introduces no new domain model and never touches the learner journey.
+
+### Relationship
+
+```
+Authoring Brief
+      ↓
+AI Candidate (or brief-derived draft)
+      ↓
+Structural (SPEC-029) + Feedback (SPEC-030) Validation
+      ↓
+Human Review
+      ↓
+Approved Practice → Curated Library
+```
+
+A candidate reuses the existing SPEC-029 `PracticeContentContract`; there is no parallel learner-facing practice model for AI output. Validation is a gate, never an automatic approval.
+
+### Workflow Language
+
+| Term | Meaning |
+|------|---------|
+| Authoring Brief | A structured description of the practice an author wants (area, purpose, task, thinking lens, mode, response form, intents). An exam name alone is not sufficient. |
+| Candidate | A structured, SPEC-029-compatible draft with its authoring provenance. A candidate is not learner-facing content. |
+| Validation | The structural and feedback check that decides whether a candidate may enter the approval path. |
+| Approval | An explicit human action that places a validated candidate in the curated library. |
+| Provenance | Internal authoring metadata (brief, generation time, provider/model, candidate version, reviewer, decision, revisions). Never exposed to learners. |
+
+### Domain Rules Reference
+
+| Rule | Description |
+|------|-------------|
+| DR-001 | AI proposes candidates; only explicit human approval places content in the curated library (AA-001, AA-008). |
+| DR-002 | Every candidate is structured against the SPEC-029 Practice Content Contract (AA-002). |
+| DR-003 | Generated evaluation/feedback guidance must satisfy SPEC-030 and carry no grading, mastery, ranking, ability, motivation, or effort language (AA-003). |
+| DR-004 | Malformed or incomplete candidates cannot enter the approval path (SPEC-032 §7, §17). |
+| DR-005 | Candidates may be edited (producing a revision) or rejected; approved content stays distinct from unapproved candidates. |
+| DR-006 | Authoring never requires learner personal data and is never shown to learners (AA-007, §16, §18). |
+| DR-007 | AI availability never affects ordinary learner practice: authoring works without a provider and is fully separate from the learner flow (§17). |
+| DR-008 | The workflow depends on a provider-neutral LLM port (`fablit/application/authoring_llm.py`), never on a specific provider SDK; a concrete adapter owns credentials, request/response handling, and provider failures (ARCH-001). |
+
+The implementation lives at the application boundary (`fablit/application/authoring.py`) behind the SEC-001 access boundary, so the internal Observe / Interpret / Ideate / Articulate / Reflect lens and all authoring metadata stay internal review aids rather than learner-facing progress data. The provider-neutral LLM port (`AuthoringLlmProvider`) and its structured `LlmGenerationResult` keep the workflow independent of any vendor; the initial Google Gemini adapter (`fablit/platform/gemini_authoring_provider.py`) keeps credentials and provider failures inside the server-side provider boundary.
 
 ---
 

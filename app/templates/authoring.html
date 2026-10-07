@@ -32,21 +32,78 @@
       </div>
 
       <div style="margin-bottom: 1rem;">
-        <label class="form-label" for="learning_focus">Learning Focus</label>
-        <textarea id="learning_focus" name="learning_focus" class="form-control" rows="3" placeholder="What skill or insight should this practice develop?" required style="width: 100%; padding: 0.5rem;">{{ brief.learning_focus if brief else '' }}</textarea>
+        <label class="form-label" for="practice_purpose">Practice Purpose</label>
+        <textarea id="practice_purpose" name="practice_purpose" class="form-control" rows="2" placeholder="What should this practice develop, and why is it worth practising?" required style="width: 100%; padding: 0.5rem;">{{ brief.practice_purpose if brief else '' }}</textarea>
       </div>
 
       <div style="margin-bottom: 1rem;">
-        <label class="form-label" for="mode_intent">Practice Mode Intent</label>
-        <select id="mode_intent" name="mode_intent" class="form-control" style="width: 100%; max-width: 20rem; padding: 0.5rem;">
-          <option value="short-drill" {% if brief and brief.mode_intent == 'short-drill' %}selected{% endif %}>Short Drill (5–10 min)</option>
-          <option value="full-practice" {% if brief and brief.mode_intent == 'full-practice' %}selected{% endif %}>Full Practice</option>
-        </select>
+        <label class="form-label" for="task">Learner Task</label>
+        <textarea id="task" name="task" class="form-control" rows="2" placeholder="What is the learner asked to do?" required style="width: 100%; padding: 0.5rem;">{{ brief.task if brief else '' }}</textarea>
       </div>
 
       <div style="margin-bottom: 1rem;">
-        <label class="form-label" for="stimulus_intent">Stimulus Intent (Optional)</label>
-        <input type="text" id="stimulus_intent" name="stimulus_intent" class="form-control" value="{{ brief.stimulus_intent if brief else '' }}" placeholder="e.g. Urban architecture photograph or abstract composition" style="width: 100%; padding: 0.5rem;">
+        <label class="form-label" for="response_form">Response Form</label>
+        <input type="text" id="response_form" name="response_form" class="form-control" value="{{ brief.response_form if brief else '' }}" placeholder="e.g. A short evidence-based paragraph" required style="width: 100%; padding: 0.5rem;">
+      </div>
+
+      <div style="margin-bottom: 1rem;">
+        <label class="form-label" for="learner_context">Learner Context (Optional)</label>
+        <input type="text" id="learner_context" name="learner_context" class="form-control" value="{{ brief.learner_context if brief else '' }}" placeholder="e.g. Design aspirants preparing a portfolio" style="width: 100%; padding: 0.5rem;">
+      </div>
+
+      <div style="margin-bottom: 1rem; display: flex; gap: 1rem; flex-wrap: wrap;">
+        <div>
+          <label class="form-label" for="primary_capability">Primary Thinking Lens</label>
+          <select id="primary_capability" name="primary_capability" class="form-control" required style="min-width: 12rem; padding: 0.5rem;">
+            <option value="Observe">Observe</option>
+            <option value="Interpret">Interpret</option>
+            <option value="Ideate">Ideate</option>
+            <option value="Articulate">Articulate</option>
+            <option value="Reflect">Reflect</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label" for="practice_mode">Practice Mode</label>
+          <select id="practice_mode" name="practice_mode" class="form-control" style="min-width: 12rem; padding: 0.5rem;">
+            <option value="short-drill" {% if brief and brief.practice_mode == 'short-drill' %}selected{% endif %}>Short Drill (5–10 min)</option>
+            <option value="full-practice" {% if not brief or brief.practice_mode == 'full-practice' %}selected{% endif %}>Full Practice</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="margin-bottom: 1rem;">
+        <label class="form-label" for="stimulus_requirements">Stimulus Requirements (Optional)</label>
+        <input type="text" id="stimulus_requirements" name="stimulus_requirements" class="form-control" value="{{ brief.stimulus_requirements if brief else '' }}" placeholder="e.g. Urban architecture photograph" style="width: 100%; padding: 0.5rem;">
+      </div>
+
+      <div style="margin-bottom: 1rem;">
+        <label class="form-label" for="examination_context">Examination Context (Optional)</label>
+        <input type="text" id="examination_context" name="examination_context" class="form-control" value="{{ brief.examination_context if brief else '' }}" placeholder="e.g. Design aptitude studio test" style="width: 100%; padding: 0.5rem;">
+      </div>
+
+      <div style="margin-bottom: 1rem;">
+        <label class="form-label" for="evaluation_intent">Evaluation Intent (Optional)</label>
+        <input type="text" id="evaluation_intent" name="evaluation_intent" class="form-control" value="{{ brief.evaluation_intent if brief else '' }}" placeholder="What should a useful evaluation look for?" style="width: 100%; padding: 0.5rem;">
+      </div>
+
+      <div style="margin-bottom: 1rem;">
+        <label class="form-label" for="feedback_intent">Feedback Intent (Optional)</label>
+        <input type="text" id="feedback_intent" name="feedback_intent" class="form-control" value="{{ brief.feedback_intent if brief else '' }}" placeholder="What should feedback help the learner understand?" style="width: 100%; padding: 0.5rem;">
+      </div>
+
+      <div style="margin-bottom: 1rem;">
+        <label class="form-label" for="reflection_intent">Reflection Intent (Optional)</label>
+        <input type="text" id="reflection_intent" name="reflection_intent" class="form-control" value="{{ brief.reflection_intent if brief else '' }}" placeholder="What should the learner notice?" style="width: 100%; padding: 0.5rem;">
+      </div>
+
+      <div style="margin-bottom: 1rem;">
+        <label class="form-label" for="continuation_intent">Continuation Intent (Optional)</label>
+        <input type="text" id="continuation_intent" name="continuation_intent" class="form-control" value="{{ brief.continuation_intent if brief else '' }}" placeholder="What practice would naturally follow?" style="width: 100%; padding: 0.5rem;">
+      </div>
+
+      <div style="margin-bottom: 1rem;">
+        <label class="form-label" for="constraints">Constraints (Optional, one per line)</label>
+        <textarea id="constraints" name="constraints" class="form-control" rows="2" placeholder="e.g. Avoid factual claims; keep to one paragraph" style="width: 100%; padding: 0.5rem;"></textarea>
       </div>
 
       <p class="form-actions">
@@ -56,25 +113,113 @@
   </section>
 
   {% if candidate %}
-  <section class="card" style="padding: 1.5rem; border: 1px solid var(--color-border, #e2e8f0); border-radius: 0.5rem; background: var(--color-surface-raised, #f8fafc);">
+  <section class="card" style="padding: 1.5rem; border: 1px solid var(--color-border, #e2e8f0); border-radius: 0.5rem; background: var(--color-surface-raised, #f8fafc); margin-bottom: 2rem;">
     <h2 class="subheading" style="margin-top: 0;">Generated Candidate Practice</h2>
     <div style="margin-bottom: 1rem;">
-      <p><strong>Status:</strong> <span class="tag">{{ candidate.status or 'candidate' }}</span></p>
-      {% if candidate.activity %}
-      <p><strong>Title:</strong> {{ candidate.activity.title or 'Untitled Practice' }}</p>
-      <p><strong>Instructions:</strong> {{ candidate.activity.instructions or '' }}</p>
+      <p><strong>Status:</strong> <span class="tag">{{ candidate.status }}</span></p>
+      <p><strong>Title:</strong> {{ candidate.title or 'Untitled Practice' }}</p>
+      <p><strong>Description:</strong> {{ candidate.description }}</p>
+      <p><strong>Revision:</strong> {{ candidate.revision }}</p>
+    </div>
+
+    {% if candidate.contract %}
+    <div style="margin-bottom: 1rem;">
+      <h3 class="subheading" style="margin-bottom: 0.5rem;">SPEC-029 Practice Content Contract</h3>
+      <p><strong>Purpose:</strong> {{ candidate.contract.purpose }}</p>
+      <p><strong>Task:</strong> {{ candidate.contract.task }}</p>
+      <p><strong>Expected thinking:</strong> {{ candidate.contract.expected_thinking }}</p>
+      <p><strong>Response contract:</strong> {{ candidate.contract.response_contract }}</p>
+      <p><strong>Evaluation intent:</strong> {{ candidate.contract.evaluation_intent }}</p>
+      <p><strong>Feedback intent:</strong> {{ candidate.contract.feedback_intent }}</p>
+      <p><strong>Reflection intent:</strong> {{ candidate.contract.reflection_intent }}</p>
+      <p><strong>Continuation intent:</strong> {{ candidate.contract.continuation_intent }}</p>
+    </div>
+    {% endif %}
+
+    <div style="margin-bottom: 1rem;">
+      <h3 class="subheading" style="margin-bottom: 0.5rem;">Validation</h3>
+      {% if candidate.validation.is_approvable %}
+      <p class="feedback-observation" role="status">This candidate passed the structural and feedback validation gate.</p>
+      {% else %}
+      <p class="feedback-observation" role="alert">This candidate cannot be approved until the issues below are resolved.</p>
+      {% endif %}
+      {% if candidate.validation.structural_errors %}
+      <p><strong>Structural issues:</strong></p>
+      <ul>
+        {% for error in candidate.validation.structural_errors %}<li>{{ error }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+      {% if candidate.validation.feedback_errors %}
+      <p><strong>Feedback contract issues:</strong></p>
+      <ul>
+        {% for error in candidate.validation.feedback_errors %}<li>{{ error }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+      {% if candidate.validation.content_warnings %}
+      <p><strong>Review notes:</strong></p>
+      <ul>
+        {% for warning in candidate.validation.content_warnings %}<li>{{ warning }}</li>{% endfor %}
+      </ul>
       {% endif %}
     </div>
-    <div class="form-actions" style="display: flex; gap: 1rem;">
-      {% set candidate_id = candidate.id or 'current' %}
-      <form method="post" action="/authoring/candidates/{{ candidate_id }}/approve">
-        <button type="submit" class="button">Approve for Library</button>
+
+    <div class="form-actions" style="display: flex; gap: 1rem; flex-wrap: wrap;">
+      <form method="post" action="/authoring/candidates/{{ candidate.id }}/approve">
+        <button type="submit" class="button" {% if not candidate.validation.is_approvable %}disabled{% endif %}>Approve for Library</button>
       </form>
-      <form method="post" action="/authoring/candidates/{{ candidate_id }}/reject">
+      <form method="post" action="/authoring/candidates/{{ candidate.id }}/reject">
         <button type="submit" class="button button--secondary">Reject Candidate</button>
       </form>
     </div>
+
+    <form method="post" action="/authoring/candidates/{{ candidate.id }}/edit" style="margin-top: 1.5rem;">
+      <h3 class="subheading">Edit Candidate</h3>
+      <div style="margin-bottom: 1rem;">
+        <label class="form-label" for="title">Title</label>
+        <input type="text" id="title" name="title" class="form-control" value="{{ candidate.title }}" style="width: 100%; padding: 0.5rem;">
+      </div>
+      <div style="margin-bottom: 1rem;">
+        <label class="form-label" for="description">Description</label>
+        <input type="text" id="description" name="description" class="form-control" value="{{ candidate.description }}" style="width: 100%; padding: 0.5rem;">
+      </div>
+      {% if candidate.contract %}
+      <div style="margin-bottom: 1rem;">
+        <label class="form-label" for="feedback_intent">Feedback intent</label>
+        <input type="text" id="feedback_intent" name="feedback_intent" class="form-control" value="{{ candidate.contract.feedback_intent }}" style="width: 100%; padding: 0.5rem;">
+      </div>
+      {% endif %}
+      <button type="submit" class="button button--secondary">Save Revision</button>
+    </form>
   </section>
   {% endif %}
+
+  <section class="card" style="padding: 1.5rem; border: 1px solid var(--color-border, #e2e8f0); border-radius: 0.5rem; margin-bottom: 2rem;">
+    <h2 class="subheading" style="margin-top: 0;">Candidate Queue</h2>
+    {% if candidates %}
+    <ul>
+      {% for item in candidates %}
+      <li>
+        <strong>{{ item.title }}</strong> — <span class="tag">{{ item.status }}</span>
+        {% if not item.validation.is_approvable %} — needs fixes{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p>No candidates yet. Generate one from an authoring brief above.</p>
+    {% endif %}
+  </section>
+
+  <section class="card" style="padding: 1.5rem; border: 1px solid var(--color-border, #e2e8f0); border-radius: 0.5rem;">
+    <h2 class="subheading" style="margin-top: 0;">Approved for Curated Library</h2>
+    {% if approved %}
+    <ul>
+      {% for item in approved %}
+      <li><strong>{{ item.title }}</strong> — approved by {{ item.reviewer or 'author' }}</li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p>No approved candidates yet. Approval is an explicit human action.</p>
+    {% endif %}
+  </section>
 </article>
 {% endblock %}

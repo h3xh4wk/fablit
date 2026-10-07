@@ -22,6 +22,29 @@ from .artifacts import (
     ArtifactRef,
     SketchbookArtifact,
 )
+from .authoring import (
+    DETERMINISTIC_MODEL,
+    DETERMINISTIC_PROVIDER,
+    FORBIDDEN_FEEDBACK_TERMS,
+    AuthoringCandidateStore,
+    AuthoringProvenance,
+    AuthoringRevision,
+    CandidateStatus,
+    CandidateValidation,
+    PracticeAuthoringBrief,
+    PracticeCandidate,
+    candidate_from_provider_output,
+    draft_candidate_from_brief,
+    serialize_candidate,
+    validate_candidate,
+    with_validation,
+)
+from .authoring_llm import (
+    AuthoringGenerationRequest,
+    AuthoringLlmProvider,
+    FakeAuthoringProvider,
+    LlmGenerationResult,
+)
 from .demo_data import (
     DEMO_LEARNER_ID,
     GAP_ANALYSIS_PROMPT,
@@ -50,9 +73,14 @@ from .demo_evaluator import DemoEvaluator, Evaluator
 from .errors import (
     ActivityNotFoundError,
     ApplicationError,
+    AuthoringProviderConfigurationError,
+    AuthoringProviderError,
+    CandidateNotApprovableError,
+    CandidateNotFoundError,
     CompletionNotFoundError,
     EvaluationFailedError,
     FeedbackNotFoundError,
+    InvalidAuthoringBriefError,
     InvalidPracticeResponseError,
     InvalidReflectionResponseError,
     JourneyStateError,
@@ -82,7 +110,13 @@ from .stimulus import (
     build_fallback_stimuli,
     build_stimulus_provider,
 )
-from .store import Concept, DemoActivity, LearnerJourneyStore, PracticeCompletion
+from .store import (
+    Concept,
+    DemoActivity,
+    LearnerJourneyStore,
+    PracticeCompletion,
+    PracticeContentContract,
+)
 from .use_cases import PracticeApplication
 from .view_models import (
     CompletionView,
@@ -102,6 +136,31 @@ from .view_models import (
 
 __all__ = [
     "ActivityNotFoundError",
+    "AuthoringCandidateStore",
+    "AuthoringGenerationRequest",
+    "AuthoringLlmProvider",
+    "AuthoringProvenance",
+    "AuthoringRevision",
+    "AuthoringProviderConfigurationError",
+    "AuthoringProviderError",
+    "CandidateNotApprovableError",
+    "CandidateNotFoundError",
+    "CandidateStatus",
+    "CandidateValidation",
+    "DETERMINISTIC_MODEL",
+    "DETERMINISTIC_PROVIDER",
+    "FORBIDDEN_FEEDBACK_TERMS",
+    "FakeAuthoringProvider",
+    "InvalidAuthoringBriefError",
+    "LlmGenerationResult",
+    "PracticeAuthoringBrief",
+    "PracticeCandidate",
+    "PracticeContentContract",
+    "candidate_from_provider_output",
+    "draft_candidate_from_brief",
+    "serialize_candidate",
+    "validate_candidate",
+    "with_validation",
     "ApplicationError",
     "CompletionNotFoundError",
     "MAX_SKETCHBOOK_ARTIFACT_BYTES",

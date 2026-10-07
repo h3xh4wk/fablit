@@ -30,3 +30,6 @@ env_variables:
   # FABLIT_AUTHORING_SECRET: "<your-authoring-secret>"
   # Optional API key for server-side AI practice authoring provider (SPEC-032 / SEC-001).
   # FABLIT_AI_PROVIDER_API_KEY: "<your-ai-provider-api-key>"
+  # Optional Gemini model for the authoring provider adapter (ARCH-001).
+  # Defaults to gemini-2.5-flash; only used when the API key above is set.
+  # FABLIT_AI_PROVIDER_MODEL: "gemini-2.5-flash"

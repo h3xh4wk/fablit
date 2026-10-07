@@ -8,6 +8,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **SPEC-032 — AI-Assisted Practice Authoring**: an authorized internal author can now use AI to draft structured practice candidates while the learner-facing library stays curated and human-reviewed.
+  - Structured authoring brief: `PracticeAuthoringBrief` (`fablit/application/authoring.py`) captures practice area, purpose, task, thinking lens, mode, response form, evaluation/feedback/reflection/continuation intent, stimulus requirements, constraints, and optional examination context; an exam name alone cannot form a brief (AA-006).
+  - Structured candidate contract: `PracticeCandidate` reuses the existing SPEC-029 `PracticeContentContract` rather than a parallel learner-facing model, and carries internal `AuthoringProvenance` (brief, generation time, provider/model, version, reviewer, decision).
+  - Provider-agnostic generation: with no AI provider configured the workflow derives a validated draft from the brief, so AI availability never gates authoring or learner practice; provider failures surface as `502` and never create learner-facing content.
+  - Validation gate: `validate_candidate` blocks approval on missing/incomplete SPEC-029 structure and on SPEC-030 feedback violations (grading, mastery, ranking, ability, motivation, effort); exam-name-only and practice-area mismatches are review warnings, never automatic approval.
+  - Explicit human gate: `POST /authoring/candidates/{id}/approve` refuses any candidate that has not passed validation; `/reject` and `/edit` (creating a new revision while retaining the superseded version) keep AI output an author-owned draft. `AuthoringCandidateStore.approved_practices()` keeps approved content distinguishable from unapproved candidates.
+  - Learner isolation: authoring requires no learner personal data, stays behind the SEC-001 access boundary, and leaves the learner-facing practice flow unchanged.
+
+See [SPEC-032](specifications/platform/SPEC-032-ai-assisted-practice-authoring.md) — issue [#101](https://github.com/h3xh4wk/fablit/issues/101) — for details.
+
+- **ARCH-001 — LLM Provider Adapter Boundary**: the SPEC-032 authoring workflow now depends on a provider-neutral LLM port instead of a specific vendor SDK, keeping provider credentials, request/response handling, and provider failures inside one server-side adapter boundary.
+  - Provider-neutral port: `AuthoringLlmProvider` and the structured `AuthoringGenerationRequest`/`LlmGenerationResult` (`fablit/application/authoring_llm.py`) let the workflow request a structured candidate and retain provider/model metadata for SPEC-032 provenance without importing any provider SDK.
+  - Initial concrete adapter: `GeminiAuthoringProvider` (`fablit/platform/gemini_authoring_provider.py`) implements the port against the Google Gemini REST API, owning the API key (sent only as a server-side `x-goog-api-key` header, never in a URL, log, or response), request construction, and response parsing. No new third-party dependency is introduced.
+  - Structured, validated output: adapter output flows into the existing SPEC-029/SPEC-030 validation; valid JSON that omits contract fields becomes a non-approvable candidate rather than being silently accepted.
+  - Clean failure handling: configuration and provider/transport failures become `AuthoringProviderConfigurationError`/`AuthoringProviderError`, mapped to a safe `502` that never creates learner-facing content; AI availability remains independent of ordinary learner practice.
+  - Configuration: `FABLIT_AI_PROVIDER_MODEL` (default `gemini-2.5-flash`) selects the model; the adapter is built at the composition root only when `FABLIT_AI_PROVIDER_API_KEY` is present, otherwise authoring uses the brief-derived draft path.
+  - Testability: a deterministic `FakeAuthoringProvider` and an injectable adapter transport let the suite exercise the workflow with no live API calls; SEC-001 remains the access-control boundary for every authoring route.
+
+See issue [#123](https://github.com/h3xh4wk/fablit/issues/123) for details.
+
 - **SEC-001 — Protect Internal AI Authoring Access**: the internal AI-assisted practice authoring workflow and candidate generation endpoints are now protected by a server-side security boundary before SPEC-032 implementation, ensuring only authorized internal authors can access authoring tools or trigger AI provider calls while preserving open, anonymous public access for learners.
   - Protected endpoints & UI: authoring UI routes (`/authoring`, `/authoring/`) and candidate generation/review endpoints (`/authoring/generate`, `/authoring/candidates`) enforce authorization server-side and reject unauthenticated requests with `401 Unauthorized`.
   - Secret & session management: constant-time comparison via `hmac.compare_digest` in `fablit.platform.authoring_auth`, supporting `Authorization: Bearer <secret>`, HTTP Basic (`author:<secret>`), `X-Author-Key`, and a path-restricted session cookie (`fablit_author_token`, `Path=/authoring`, HttpOnly, SameSite=Lax, Secure in production) established via `/authoring/login`.

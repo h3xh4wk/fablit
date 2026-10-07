@@ -136,6 +136,7 @@ All settings are managed via environment variables (`FABLIT_*`), configured in `
 | `FABLIT_ARTIFACT_STORAGE_BUCKET` | `<project-id>-artifacts` | Name of the private Google Cloud Storage bucket |
 | `FABLIT_AUTHORING_SECRET` | `<shared-secret>` | Shared secret for internal AI authoring access (SEC-001). Unset disables authoring. |
 | `FABLIT_AI_PROVIDER_API_KEY` | `<provider-key>` | Optional server-side API key for the AI practice authoring provider (SPEC-032 / SEC-001). Never exposed to learners or clients. |
+| `FABLIT_AI_PROVIDER_MODEL` | `gemini-2.5-flash` | Gemini model used by the authoring provider adapter (ARCH-001), retained as authoring provenance. Only used when `FABLIT_AI_PROVIDER_API_KEY` is set. |
 | `FABLIT_SERVICE_NAME` | `fablit` | Service name tag in structured logs |
 
 ---
@@ -288,7 +289,7 @@ All authoring-only routes and operations are grouped under `/authoring`:
 ### Separation from Learner Surface & Secret Isolation
 
 - **Public Learner Experience Unaffected:** Learner routes (`/`, `/practice`, `/history`, `/health`) remain completely public, anonymous, and unauthenticated. No learner accounts, passwords, or login prompts are ever introduced.
-- **Provider Credentials Stay Server-Side:** Any AI provider API key (`FABLIT_AI_PROVIDER_API_KEY`) is stored strictly in server-side configuration and is never transmitted in HTML, client JavaScript, or API responses.
+- **Provider Credentials Stay Server-Side:** Any AI provider API key (`FABLIT_AI_PROVIDER_API_KEY`) is stored strictly in server-side configuration and is never transmitted in HTML, client JavaScript, or API responses. The provider-neutral LLM port (ARCH-001) confines the key to the concrete adapter (`fablit/platform/gemini_authoring_provider.py`), which sends it only as a server-side header and translates provider failures into safe `502` responses.
 - **Scope Limit:** SEC-001 is purposefully sized as the smallest secure mechanism for the current single internal author. It intentionally avoids multi-user role management (RBAC), public user registration, or external OAuth integrations.
 
 ### Operational Deployment Configuration
