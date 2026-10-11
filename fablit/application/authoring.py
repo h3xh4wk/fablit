@@ -483,56 +483,176 @@ def _contains_term(text: str, term: str) -> bool:
     return False
 
 
-def validate_candidate(candidate: PracticeCandidate) -> CandidateValidation:
+def validate_candidate(candidate: Any) -> CandidateValidation:
     """Validate a candidate against SPEC-029 (structure) and SPEC-030 (§7)."""
     structural: list[str] = []
     warnings: list[str] = []
 
-    if not candidate.title.strip():
+    title = getattr(candidate, "title", None)
+    if not isinstance(title, str) or not title.strip():
+        data = getattr(candidate, "candidate_data", None)
+        if isinstance(data, Mapping):
+            title = data.get("title")
+    title_str = str(title).strip() if isinstance(title, str) else ""
+    if not title_str:
         structural.append("candidate is missing a learner-facing title")
-    if not candidate.description.strip():
+
+    description = getattr(candidate, "description", None)
+    if not isinstance(description, str) or not description.strip():
+        data = getattr(candidate, "candidate_data", None)
+        if isinstance(data, Mapping):
+            description = data.get("description")
+    desc_str = str(description).strip() if isinstance(description, str) else ""
+    if not desc_str:
         structural.append("candidate is missing a learner-facing description")
-    if candidate.contract is None:
-        structural.append(
-            "candidate does not provide a complete SPEC-029 practice content contract"
-        )
-    else:
+
+    contract = getattr(candidate, "contract", None)
+    contract_data: Mapping[str, Any] | None = None
+    if isinstance(contract, PracticeContentContract):
         for name in _CONTRACT_FIELDS:
-            if not getattr(candidate.contract, name).strip():
+            val = getattr(contract, name, None)
+            if not isinstance(val, str) or not val.strip():
                 structural.append(
                     f"candidate content contract field {name!r} must be non-blank"
                 )
-
-    feedback_errors = _feedback_language_errors(candidate.contract)
-
-    brief = candidate.brief
-    if brief.examination_context and candidate.contract is not None:
-        purpose = candidate.contract.purpose.strip().lower()
-        if purpose == brief.examination_context.strip().lower():
-            warnings.append(
-                "exam name alone is not sufficient; explain the thinking the "
-                "exam context demands"
+    else:
+        data = getattr(candidate, "candidate_data", None)
+        raw_contract = data.get("contract") if isinstance(data, Mapping) else None
+        if isinstance(raw_contract, Mapping):
+            contract_data = raw_contract
+            for name in _CONTRACT_FIELDS:
+                val = raw_contract.get(name)
+                if not isinstance(val, str) or not str(val).strip():
+                    structural.append(
+                        f"candidate content contract field {name!r} must be non-blank"
+                    )
+            if not structural:
+                contract = _contract_from_mapping(raw_contract)
+        elif raw_contract is not None:
+            structural.append(
+                f"candidate contract must be a mapping, got "
+                f"{type(raw_contract).__name__}"
             )
-    area = brief.practice_area.strip().lower()
-    haystack = " ".join(
-        filter(
-            None,
-            [
-                candidate.title.lower(),
-                candidate.description.lower(),
-                candidate.contract.purpose.lower() if candidate.contract else "",
-            ],
-        )
-    )
-    if area and area not in haystack:
-        warnings.append(
-            "candidate does not reference the requested practice area "
-            f"{brief.practice_area!r}"
-        )
+        else:
+            structural.append(
+                "candidate does not provide a complete SPEC-029 practice "
+                "content contract"
+            )
+
+    feedback_text = ""
+    evaluation_text = ""
+    if contract is not None:
+        feedback_text = contract.feedback_intent
+        evaluation_text = contract.evaluation_intent
+    elif contract_data is not None:
+        raw_fb = contract_data.get("feedback_intent")
+        raw_ev = contract_data.get("evaluation_intent")
+        feedback_text = str(raw_fb) if raw_fb is not None else ""
+        evaluation_text = str(raw_ev) if raw_ev is not None else ""
+
+    feedback_errors: list[str] = []
+    text = f"{feedback_text} {evaluation_text}".lower()
+    for term in FORBIDDEN_FEEDBACK_TERMS:
+        if _contains_term(text, term):
+            feedback_errors.append(
+                f"evaluation/feedback guidance must not use {term!r} (SPEC-030 §6)"
+            )
+
+    brief = getattr(candidate, "brief", None)
+    if brief:
+        exam_context = getattr(brief, "examination_context", None)
+        if exam_context and isinstance(exam_context, str) and exam_context.strip():
+            purpose = ""
+            if contract is not None:
+                purpose = contract.purpose
+            elif contract_data is not None:
+                purpose = str(contract_data.get("purpose", ""))
+            if purpose.strip().lower() == exam_context.strip().lower():
+                warnings.append(
+                    "exam name alone is not sufficient; explain the thinking the "
+                    "exam context demands"
+                )
+
+        practice_area = getattr(brief, "practice_area", None)
+        if practice_area and isinstance(practice_area, str) and practice_area.strip():
+            area = practice_area.strip().lower()
+            purpose = (
+                contract.purpose.lower()
+                if contract
+                else (
+                    str(contract_data.get("purpose", "")).lower()
+                    if contract_data
+                    else ""
+                )
+            )
+            haystack = " ".join(
+                filter(
+                    None,
+                    [
+                        title_str.lower(),
+                        desc_str.lower(),
+                        purpose,
+                    ],
+                )
+            )
+            if area and area not in haystack:
+                warnings.append(
+                    "candidate does not reference the requested practice area "
+                    f"{brief.practice_area!r}"
+                )
+
+        data = getattr(candidate, "candidate_data", None)
+        if isinstance(data, Mapping):
+            candidate_mode = (
+                data.get("intended_mode")
+                or data.get("mode")
+                or data.get("practice_mode")
+            )
+            if candidate_mode:
+                if candidate_mode not in ("short-drill", "full-practice"):
+                    structural.append(
+                        f"candidate declares an unsupported practice mode: "
+                        f"{candidate_mode!r}"
+                    )
+                else:
+                    brief_mode = getattr(brief, "intended_mode", None) or getattr(
+                        brief, "practice_mode", None
+                    )
+                    if brief_mode:
+                        brief_mode_val = (
+                            brief_mode.value
+                            if hasattr(brief_mode, "value")
+                            else str(brief_mode)
+                        )
+                        if candidate_mode != brief_mode_val:
+                            structural.append(
+                                f"candidate practice mode {candidate_mode!r} "
+                                f"does not match brief intended mode "
+                                f"{brief_mode_val!r}"
+                            )
+
+            candidate_lens = data.get("primary_creative_thinking_lens") or data.get(
+                "primary_capability"
+            )
+            if candidate_lens:
+                if candidate_lens not in PRACTICE_CAPABILITIES:
+                    structural.append(
+                        "candidate declares an unsupported "
+                        f"creative-thinking lens: {candidate_lens!r}"
+                    )
+                else:
+                    brief_lens = getattr(
+                        brief, "primary_creative_thinking_lens", None
+                    ) or getattr(brief, "primary_capability", None)
+                    if brief_lens and candidate_lens != brief_lens:
+                        structural.append(
+                            f"candidate thinking lens {candidate_lens!r} "
+                            f"does not match brief lens {brief_lens!r}"
+                        )
 
     return CandidateValidation(
         structural_errors=tuple(structural),
-        feedback_errors=feedback_errors,
+        feedback_errors=tuple(feedback_errors),
         content_warnings=tuple(warnings),
     )
 
@@ -668,6 +788,10 @@ class AuthoringCandidateStore:
             raise CandidateNotApprovableError(
                 f"candidate {candidate_id} is already approved"
             )
+        if candidate.status is CandidateStatus.REJECTED:
+            raise CandidateNotApprovableError(
+                f"rejected candidate {candidate_id} cannot be approved"
+            )
         if not candidate.validation.is_approvable:
             raise CandidateNotApprovableError(
                 f"candidate {candidate_id} is not approvable: "
@@ -691,6 +815,14 @@ class AuthoringCandidateStore:
 
     def reject(self, candidate_id: UUID, *, reviewer: str) -> PracticeCandidate:
         candidate = self.get(candidate_id)
+        if candidate.status is CandidateStatus.APPROVED:
+            raise CandidateNotApprovableError(
+                f"approved candidate {candidate_id} cannot be rejected"
+            )
+        if candidate.status is CandidateStatus.REJECTED:
+            raise CandidateNotApprovableError(
+                f"candidate {candidate_id} is already rejected"
+            )
         decided_at = datetime.now(UTC)
         return self._save(
             replace(

@@ -8,6 +8,7 @@ quality validation and the complete review lifecycle remain separate gates.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
@@ -22,8 +23,20 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from fablit.application.authoring import (
+    _CONTRACT_FIELDS,
+    AuthoringRevision,
+    CandidateStatus,
+    CandidateValidation,
+    validate_candidate,
+)
 from fablit.application.demo_data import PRACTICE_CAPABILITIES
+from fablit.application.errors import (
+    CandidateNotApprovableError,
+    CandidateNotFoundError,
+)
 from fablit.application.practice_modes import PracticeMode
+from fablit.application.store import PracticeContentContract
 from fablit.config import AppConfig
 from fablit.platform.authoring_auth import (
     clear_authoring_cookie,
@@ -201,9 +214,14 @@ class PracticeCandidate:
     generated_at: datetime
     id: UUID = field(default_factory=uuid4)
     review_outcome: CandidateReviewOutcome | None = None
+    validation: CandidateValidation = field(default_factory=CandidateValidation)
+    revision: int = 1
+    reviewer: str | None = None
+    decided_at: datetime | None = None
+    history: tuple[AuthoringRevision, ...] = ()
 
     def __post_init__(self) -> None:
-        """Validate candidate identity and provenance, not educational content."""
+        """Validate candidate identity, provenance, and attach quality validation."""
         if not isinstance(self.id, UUID):
             raise ValueError(f"candidate id must be a UUID, got {self.id!r}")
         if not isinstance(self.candidate_data, Mapping):
@@ -221,31 +239,211 @@ class PracticeCandidate:
             raise ValueError("candidate generated_at must be timezone-aware UTC")
         object.__setattr__(self, "generated_at", generated_at.astimezone(UTC))
 
+        if self.validation == CandidateValidation():
+            val = validate_candidate(self)
+            object.__setattr__(self, "validation", val)
+
     @property
     def status(self) -> str:
-        """Return the display status while review state is still pending."""
-        return self.review_outcome.value if self.review_outcome else "candidate"
+        """Return the lifecycle display status."""
+        if self.review_outcome is not None:
+            return self.review_outcome.value
+        return CandidateStatus.GENERATED.value
+
+    @property
+    def is_approved(self) -> bool:
+        """Whether this candidate has been approved for the curated library."""
+        return self.review_outcome == CandidateReviewOutcome.APPROVED
+
+    @property
+    def title(self) -> str:
+        val = self.candidate_data.get("title")
+        return str(val).strip() if val is not None else ""
+
+    @property
+    def description(self) -> str:
+        val = self.candidate_data.get("description")
+        return str(val).strip() if val is not None else ""
+
+    @property
+    def contract(self) -> PracticeContentContract | None:
+        raw = self.candidate_data.get("contract")
+        if isinstance(raw, Mapping):
+            try:
+                vals = {
+                    k: str(raw[k]).strip()
+                    for k in _CONTRACT_FIELDS
+                    if k in raw and isinstance(raw[k], str) and str(raw[k]).strip()
+                }
+                if len(vals) == len(_CONTRACT_FIELDS):
+                    return PracticeContentContract(**vals)
+            except Exception:
+                return None
+        return None
 
 
 class AuthoringCandidateStore:
-    """Small process-local store for candidates in the protected authoring flow."""
+    """In-memory candidate store providing stateful lifecycle review (SPEC-032)."""
 
     def __init__(self) -> None:
         self._candidates: dict[UUID, PracticeCandidate] = {}
 
-    def add(self, candidate: PracticeCandidate) -> None:
-        """Store a generated candidate under its stable identity."""
+    def add(self, candidate: PracticeCandidate) -> PracticeCandidate:
+        """Store a candidate under its stable identity and attach duplicate warnings."""
         if candidate.id in self._candidates:
             raise ValueError(f"candidate already exists: {candidate.id}")
+        if candidate.title:
+            for existing in self._candidates.values():
+                if existing.title and existing.title.lower() == candidate.title.lower():
+                    warnings = candidate.validation.content_warnings + (
+                        f"possible duplicate of existing candidate {existing.title!r}",
+                    )
+                    candidate = dataclasses.replace(
+                        candidate,
+                        validation=dataclasses.replace(
+                            candidate.validation, content_warnings=warnings
+                        ),
+                    )
+                    break
         self._candidates[candidate.id] = candidate
+        return candidate
 
-    def get(self, candidate_id: UUID) -> PracticeCandidate | None:
-        """Return a candidate by identity, or None when it is not stored."""
-        return self._candidates.get(candidate_id)
+    def get(self, candidate_id: UUID | str) -> PracticeCandidate:
+        """Return a candidate by identity, or raise CandidateNotFoundError."""
+        uuid_val: UUID
+        if isinstance(candidate_id, str):
+            try:
+                uuid_val = UUID(candidate_id)
+            except ValueError:
+                raise CandidateNotFoundError(
+                    f"Candidate {candidate_id} not found."
+                ) from None
+        elif isinstance(candidate_id, UUID):
+            uuid_val = candidate_id
+        else:
+            raise CandidateNotFoundError(f"Candidate {candidate_id} not found.")
+
+        if uuid_val not in self._candidates:
+            raise CandidateNotFoundError(f"Candidate {candidate_id} not found.")
+        return self._candidates[uuid_val]
 
     def list(self) -> tuple[PracticeCandidate, ...]:
         """Return stored candidates in insertion order."""
         return tuple(self._candidates.values())
+
+    def list_candidates(self) -> tuple[PracticeCandidate, ...]:
+        """Alias for list to maintain consistency across authoring layers."""
+        return self.list()
+
+    def approve(
+        self, candidate_id: UUID | str, *, reviewer: str = "author"
+    ) -> PracticeCandidate:
+        """Approve a validated candidate for the curated library."""
+        candidate = self.get(candidate_id)
+        if candidate.status == CandidateStatus.APPROVED.value:
+            raise CandidateNotApprovableError(
+                f"Candidate {candidate.id} is already approved."
+            )
+        if candidate.status == CandidateStatus.REJECTED.value:
+            raise CandidateNotApprovableError(
+                f"Rejected candidate {candidate.id} cannot be approved."
+            )
+        if not candidate.validation.is_approvable:
+            errors = "; ".join(
+                candidate.validation.structural_errors
+                + candidate.validation.feedback_errors
+            )
+            raise CandidateNotApprovableError(
+                f"Candidate {candidate.id} has validation errors and cannot "
+                f"be approved: {errors}"
+            )
+        approved = dataclasses.replace(
+            candidate,
+            review_outcome=CandidateReviewOutcome.APPROVED,
+            reviewer=reviewer,
+            decided_at=datetime.now(UTC),
+        )
+        self._candidates[approved.id] = approved
+        return approved
+
+    def reject(
+        self, candidate_id: UUID | str, *, reviewer: str = "author"
+    ) -> PracticeCandidate:
+        """Reject a candidate from inclusion in the curated library."""
+        candidate = self.get(candidate_id)
+        if candidate.status == CandidateStatus.APPROVED.value:
+            raise CandidateNotApprovableError(
+                f"Approved candidate {candidate.id} cannot be rejected."
+            )
+        if candidate.status == CandidateStatus.REJECTED.value:
+            raise CandidateNotApprovableError(
+                f"Candidate {candidate.id} is already rejected."
+            )
+        rejected = dataclasses.replace(
+            candidate,
+            review_outcome=CandidateReviewOutcome.REJECTED,
+            reviewer=reviewer,
+            decided_at=datetime.now(UTC),
+        )
+        self._candidates[rejected.id] = rejected
+        return rejected
+
+    def edit(
+        self,
+        candidate_id: UUID | str,
+        *,
+        updates: Mapping[str, Any],
+        editor: str = "author",
+    ) -> PracticeCandidate:
+        """Edit candidate data, record superseded revision, and revalidate."""
+        candidate = self.get(candidate_id)
+        revision_record = AuthoringRevision(
+            version=candidate.revision,
+            title=candidate.title,
+            description=candidate.description,
+            contract=candidate.contract,
+            edited_at=datetime.now(UTC),
+            editor=editor,
+        )
+
+        new_candidate_data = dict(candidate.candidate_data)
+        if "title" in updates and updates["title"] is not None:
+            new_candidate_data["title"] = str(updates["title"]).strip()
+        if "description" in updates and updates["description"] is not None:
+            new_candidate_data["description"] = str(updates["description"]).strip()
+
+        existing_contract: dict[str, Any] = {}
+        if isinstance(new_candidate_data.get("contract"), Mapping):
+            existing_contract = dict(new_candidate_data["contract"])
+
+        contract_updates = updates.get("contract")
+        if isinstance(contract_updates, Mapping):
+            existing_contract.update(contract_updates)
+
+        for field_name in _CONTRACT_FIELDS:
+            if field_name in updates and updates[field_name] is not None:
+                existing_contract[field_name] = str(updates[field_name]).strip()
+
+        if existing_contract:
+            new_candidate_data["contract"] = existing_contract
+
+        updated = dataclasses.replace(
+            candidate,
+            candidate_data=new_candidate_data,
+            review_outcome=None,
+            revision=candidate.revision + 1,
+            reviewer=editor,
+            decided_at=None,
+            history=candidate.history + (revision_record,),
+            validation=CandidateValidation(),
+        )
+        updated = dataclasses.replace(updated, validation=validate_candidate(updated))
+        self._candidates[updated.id] = updated
+        return updated
+
+    def approved_practices(self) -> tuple[PracticeCandidate, ...]:
+        """Return approved practices isolated from learner library until curated."""
+        return tuple(c for c in self._candidates.values() if c.is_approved)
 
 
 def verify_author_access(request: Request) -> bool:
@@ -361,6 +559,28 @@ def _candidate_payload(candidate: PracticeCandidate) -> dict[str, Any]:
         raise TypeError("Authoring candidate must encode to a JSON object.")
     payload: dict[str, Any] = encoded
     payload["status"] = candidate.status
+    payload["is_approved"] = candidate.is_approved
+    payload["validation"] = {
+        "structural_errors": list(candidate.validation.structural_errors),
+        "feedback_errors": list(candidate.validation.feedback_errors),
+        "content_warnings": list(candidate.validation.content_warnings),
+        "is_approvable": candidate.validation.is_approvable,
+    }
+    payload["revision"] = candidate.revision
+    payload["reviewer"] = candidate.reviewer
+    payload["decided_at"] = (
+        candidate.decided_at.isoformat() if candidate.decided_at else None
+    )
+    payload["history"] = [
+        {
+            "version": h.version,
+            "title": h.title,
+            "description": h.description,
+            "edited_at": h.edited_at.isoformat(),
+            "editor": h.editor,
+        }
+        for h in candidate.history
+    ]
     return payload
 
 
@@ -507,10 +727,63 @@ async def authoring_candidates(request: Request) -> Response:
     )
 
 
+@router.get("/candidates/{candidate_id}")
+async def authoring_candidate_detail(request: Request, candidate_id: str) -> Response:
+    """Retrieve details for a single practice candidate (SPEC-032 §8)."""
+    require_author_access(request)
+    store = _candidate_store(request)
+    try:
+        candidate = store.get(candidate_id)
+    except CandidateNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Candidate {candidate_id} not found.",
+        ) from None
+    accept = request.headers.get("accept", "")
+    if "text/html" in accept and "application/json" not in accept:
+        return templates.TemplateResponse(
+            request,
+            "authoring.html",
+            {
+                "candidate": candidate,
+                "brief": candidate.brief,
+                "candidates": store.list(),
+            },
+        )
+    return JSONResponse(_candidate_payload(candidate))
+
+
 @router.post("/candidates/{candidate_id}/approve")
 async def authoring_approve_candidate(request: Request, candidate_id: str) -> Response:
     """Human review approval gate (SPEC-032 §8)."""
     require_author_access(request)
+    store = _candidate_store(request)
+    try:
+        candidate = store.get(candidate_id)
+    except CandidateNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Candidate {candidate_id} not found.",
+        ) from None
+    try:
+        approved = store.approve(candidate.id, reviewer="author")
+    except CandidateNotApprovableError as error:
+        err_msg = str(error)
+        if (
+            "already approved" in err_msg
+            or "already rejected" in err_msg
+            or "Rejected candidate" in err_msg
+            or "Approved candidate" in err_msg
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=err_msg,
+            ) from error
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=err_msg,
+        ) from error
+
     accept = request.headers.get("accept", "")
     content_type = request.headers.get("content-type", "")
     if (
@@ -518,11 +791,18 @@ async def authoring_approve_candidate(request: Request, candidate_id: str) -> Re
         or "application/json" in content_type
         or ("text/html" not in accept and "*/*" in accept)
     ):
-        return JSONResponse({"status": "approved", "candidate_id": candidate_id})
+        return JSONResponse(
+            {"status": "approved", "candidate_id": str(candidate_id)},
+            status_code=status.HTTP_200_OK,
+        )
     return templates.TemplateResponse(
         request,
         "authoring.html",
-        {"message": f"Candidate {candidate_id} approved for curated library."},
+        {
+            "message": f"Candidate {candidate_id} approved for curated library.",
+            "candidate": approved,
+            "candidates": store.list(),
+        },
     )
 
 
@@ -530,6 +810,22 @@ async def authoring_approve_candidate(request: Request, candidate_id: str) -> Re
 async def authoring_reject_candidate(request: Request, candidate_id: str) -> Response:
     """Human review rejection gate (SPEC-032 §8)."""
     require_author_access(request)
+    store = _candidate_store(request)
+    try:
+        candidate = store.get(candidate_id)
+    except CandidateNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Candidate {candidate_id} not found.",
+        ) from None
+    try:
+        rejected = store.reject(candidate.id, reviewer="author")
+    except CandidateNotApprovableError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(error),
+        ) from error
+
     accept = request.headers.get("accept", "")
     content_type = request.headers.get("content-type", "")
     if (
@@ -537,9 +833,68 @@ async def authoring_reject_candidate(request: Request, candidate_id: str) -> Res
         or "application/json" in content_type
         or ("text/html" not in accept and "*/*" in accept)
     ):
-        return JSONResponse({"status": "rejected", "candidate_id": candidate_id})
+        return JSONResponse(
+            {"status": "rejected", "candidate_id": str(candidate_id)},
+            status_code=status.HTTP_200_OK,
+        )
     return templates.TemplateResponse(
         request,
         "authoring.html",
-        {"message": f"Candidate {candidate_id} rejected."},
+        {
+            "message": f"Candidate {candidate_id} rejected.",
+            "candidate": rejected,
+            "candidates": store.list(),
+        },
+    )
+
+
+@router.post("/candidates/{candidate_id}/edit")
+async def authoring_edit_candidate(request: Request, candidate_id: str) -> Response:
+    """Author editing gate: revalidates candidate and increments revision."""
+    require_author_access(request)
+    store = _candidate_store(request)
+    try:
+        candidate = store.get(candidate_id)
+    except CandidateNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Candidate {candidate_id} not found.",
+        ) from None
+
+    content_type = request.headers.get("content-type", "")
+    updates: dict[str, Any] = {}
+    if "application/json" in content_type:
+        try:
+            parsed = await request.json()
+            if isinstance(parsed, dict):
+                updates = parsed
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Invalid JSON payload.",
+            ) from None
+    else:
+        form = await request.form()
+        for key, value in form.items():
+            if isinstance(value, str) and value.strip():
+                updates[key] = value.strip()
+
+    edited = store.edit(candidate.id, updates=updates, editor="author")
+
+    accept = request.headers.get("accept", "")
+    if "text/html" in accept and "application/json" not in accept:
+        return templates.TemplateResponse(
+            request,
+            "authoring.html",
+            {
+                "message": (
+                    f"Candidate {candidate_id} updated (revision {edited.revision})."
+                ),
+                "candidate": edited,
+                "candidates": store.list(),
+            },
+        )
+    return JSONResponse(
+        _candidate_payload(edited),
+        status_code=status.HTTP_200_OK,
     )

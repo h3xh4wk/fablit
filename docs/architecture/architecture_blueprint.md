@@ -1,9 +1,9 @@
 # Fablit Architecture Blueprint
 
 **Document ID:** AB-001
-**Version:** 0.16.0
+**Version:** 0.17.0
 **Status:** Draft
-**Last Updated:** 2026-10-07
+**Last Updated:** 2026-10-11
 
 ---
 

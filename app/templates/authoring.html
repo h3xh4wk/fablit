@@ -100,9 +100,48 @@
     <h2 class="subheading" style="margin-top: 0;">Generated Candidate Practice</h2>
     <div style="margin-bottom: 1rem;">
       <p><strong>Status:</strong> <span class="tag">{{ candidate.status }}</span></p>
+      <p><strong>Revision:</strong> {{ candidate.revision }}</p>
+      {% if candidate.reviewer %}
+      <p><strong>Reviewer:</strong> {{ candidate.reviewer }}</p>
+      {% endif %}
+      {% if candidate.decided_at %}
+      <p><strong>Decided at:</strong> <time datetime="{{ candidate.decided_at.isoformat() }}">{{ candidate.decided_at.isoformat() }}</time></p>
+      {% endif %}
       <p><strong>Provider:</strong> {{ candidate.provider }}</p>
       <p><strong>Model:</strong> {{ candidate.model }}</p>
       <p><strong>Generated:</strong> <time datetime="{{ candidate.generated_at.isoformat() }}">{{ candidate.generated_at.isoformat() }}</time></p>
+
+      {% if candidate.validation %}
+        {% if not candidate.validation.is_approvable %}
+        <div class="validation-errors" role="alert" style="margin: 1rem 0; padding: 1rem; border: 1px solid #e53e3e; background: #fff5f5; border-radius: 0.375rem;">
+          <h4 style="margin-top: 0; color: #c53030;">Validation Issues (SPEC-029 / SPEC-030)</h4>
+          <p style="margin-bottom: 0.5rem; color: #c53030;">This candidate cannot be approved until these issues are resolved:</p>
+          <ul style="margin: 0; padding-left: 1.25rem;">
+            {% for err in candidate.validation.structural_errors %}
+            <li style="color: #c53030;">{{ err }}</li>
+            {% endfor %}
+            {% for err in candidate.validation.feedback_errors %}
+            <li style="color: #c53030;">{{ err }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% else %}
+        <div class="validation-success" role="status" style="margin: 1rem 0; padding: 0.75rem 1rem; border: 1px solid #38a169; background: #f0fff4; border-radius: 0.375rem; color: #276749;">
+          Candidate passed structural (SPEC-029) and feedback quality (SPEC-030) validation.
+        </div>
+        {% endif %}
+        {% if candidate.validation.content_warnings %}
+        <div class="validation-warnings" role="status" style="margin: 1rem 0; padding: 1rem; border: 1px solid #d69e2e; background: #fffaf0; border-radius: 0.375rem;">
+          <h4 style="margin-top: 0; color: #b7791f;">Review Considerations</h4>
+          <ul style="margin: 0; padding-left: 1.25rem;">
+            {% for warn in candidate.validation.content_warnings %}
+            <li style="color: #b7791f;">{{ warn }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+      {% endif %}
+
       <h3>Authoring brief</h3>
       <dl>
         <dt>Practice area</dt>
@@ -168,14 +207,88 @@
       <p>{{ candidate.candidate_data.contract }}</p>
       {% endif %}
     </div>
-    <div class="form-actions" style="display: flex; gap: 1rem;">
+
+    <details style="margin: 1.5rem 0; padding: 1rem; border: 1px solid var(--color-border, #cbd5e0); border-radius: 0.375rem;">
+      <summary style="font-weight: bold; cursor: pointer;">Edit Candidate Draft (Revalidate on Save)</summary>
+      <form method="post" action="/authoring/candidates/{{ candidate.id }}/edit" style="margin-top: 1rem; display: flex; flex-direction: column; gap: 1rem;">
+        <div>
+          <label for="edit_title" style="display: block; font-weight: bold; margin-bottom: 0.25rem;">Title</label>
+          <input type="text" id="edit_title" name="title" value="{{ candidate.candidate_data.get('title', '') }}" style="width: 100%; padding: 0.5rem;" required>
+        </div>
+        <div>
+          <label for="edit_description" style="display: block; font-weight: bold; margin-bottom: 0.25rem;">Description</label>
+          <textarea id="edit_description" name="description" rows="2" style="width: 100%; padding: 0.5rem;" required>{{ candidate.candidate_data.get('description', '') }}</textarea>
+        </div>
+        {% set contract_map = candidate.candidate_data.get('contract') if candidate.candidate_data.get('contract') is mapping else {} %}
+        <fieldset style="border: 1px solid var(--color-border, #e2e8f0); padding: 1rem; border-radius: 0.375rem;">
+          <legend style="font-weight: bold;">SPEC-029 Practice Content Contract</legend>
+          <div style="margin-bottom: 0.75rem;">
+            <label for="edit_purpose" style="display: block; font-weight: bold; margin-bottom: 0.25rem;">Purpose</label>
+            <textarea id="edit_purpose" name="purpose" rows="2" style="width: 100%; padding: 0.5rem;">{{ contract_map.get('purpose', '') }}</textarea>
+          </div>
+          <div style="margin-bottom: 0.75rem;">
+            <label for="edit_task" style="display: block; font-weight: bold; margin-bottom: 0.25rem;">Task</label>
+            <textarea id="edit_task" name="task" rows="2" style="width: 100%; padding: 0.5rem;">{{ contract_map.get('task', '') }}</textarea>
+          </div>
+          <div style="margin-bottom: 0.75rem;">
+            <label for="edit_expected_thinking" style="display: block; font-weight: bold; margin-bottom: 0.25rem;">Expected Thinking</label>
+            <textarea id="edit_expected_thinking" name="expected_thinking" rows="2" style="width: 100%; padding: 0.5rem;">{{ contract_map.get('expected_thinking', '') }}</textarea>
+          </div>
+          <div style="margin-bottom: 0.75rem;">
+            <label for="edit_response_contract" style="display: block; font-weight: bold; margin-bottom: 0.25rem;">Response Contract</label>
+            <textarea id="edit_response_contract" name="response_contract" rows="2" style="width: 100%; padding: 0.5rem;">{{ contract_map.get('response_contract', '') }}</textarea>
+          </div>
+          <div style="margin-bottom: 0.75rem;">
+            <label for="edit_evaluation_intent" style="display: block; font-weight: bold; margin-bottom: 0.25rem;">Evaluation Intent</label>
+            <textarea id="edit_evaluation_intent" name="evaluation_intent" rows="2" style="width: 100%; padding: 0.5rem;">{{ contract_map.get('evaluation_intent', '') }}</textarea>
+          </div>
+          <div style="margin-bottom: 0.75rem;">
+            <label for="edit_feedback_intent" style="display: block; font-weight: bold; margin-bottom: 0.25rem;">Feedback Intent</label>
+            <textarea id="edit_feedback_intent" name="feedback_intent" rows="2" style="width: 100%; padding: 0.5rem;">{{ contract_map.get('feedback_intent', '') }}</textarea>
+          </div>
+          <div style="margin-bottom: 0.75rem;">
+            <label for="edit_reflection_intent" style="display: block; font-weight: bold; margin-bottom: 0.25rem;">Reflection Intent</label>
+            <textarea id="edit_reflection_intent" name="reflection_intent" rows="2" style="width: 100%; padding: 0.5rem;">{{ contract_map.get('reflection_intent', '') }}</textarea>
+          </div>
+          <div>
+            <label for="edit_continuation_intent" style="display: block; font-weight: bold; margin-bottom: 0.25rem;">Continuation Intent</label>
+            <textarea id="edit_continuation_intent" name="continuation_intent" rows="2" style="width: 100%; padding: 0.5rem;">{{ contract_map.get('continuation_intent', '') }}</textarea>
+          </div>
+        </fieldset>
+        <div>
+          <button type="submit" class="button button--secondary">Save and Revalidate</button>
+        </div>
+      </form>
+    </details>
+
+    {% if candidate.history %}
+    <details style="margin: 1rem 0; padding: 1rem; border: 1px solid var(--color-border, #cbd5e0); border-radius: 0.375rem;">
+      <summary style="font-weight: bold; cursor: pointer;">Revision History ({{ candidate.history|length }})</summary>
+      <ul style="margin-top: 0.5rem; padding-left: 1.25rem;">
+        {% for rev in candidate.history %}
+        <li style="margin-bottom: 0.5rem;">
+          <strong>Revision {{ rev.version }}</strong> (edited by {{ rev.editor }} at {{ rev.edited_at.isoformat() }}):
+          <em>{{ rev.title }}</em> — {{ rev.description }}
+        </li>
+        {% endfor %}
+      </ul>
+    </details>
+    {% endif %}
+
+    <div class="form-actions" style="display: flex; gap: 1rem; align-items: center; margin-top: 1rem;">
       {% set candidate_id = candidate.id %}
-      <form method="post" action="/authoring/candidates/{{ candidate_id }}/approve">
-        <button type="submit" class="button">Approve for Library</button>
-      </form>
-      <form method="post" action="/authoring/candidates/{{ candidate_id }}/reject">
-        <button type="submit" class="button button--secondary">Reject Candidate</button>
-      </form>
+      {% if candidate.status != "approved" and candidate.status != "rejected" %}
+        <form method="post" action="/authoring/candidates/{{ candidate_id }}/approve">
+          <button type="submit" class="button" {% if candidate.validation and not candidate.validation.is_approvable %}disabled title="Candidate has validation errors that must be resolved before approval"{% endif %}>Approve for Library</button>
+        </form>
+        <form method="post" action="/authoring/candidates/{{ candidate_id }}/reject">
+          <button type="submit" class="button button--secondary">Reject Candidate</button>
+        </form>
+      {% elif candidate.status == "approved" %}
+        <span class="tag tag--success">Approved for Library</span>
+      {% elif candidate.status == "rejected" %}
+        <span class="tag tag--danger">Rejected</span>
+      {% endif %}
     </div>
   </section>
   {% endif %}
@@ -185,10 +298,13 @@
     <h2 id="candidate-list-heading" class="subheading">Candidate history</h2>
     <ul>
       {% for item in candidates %}
-      <li>
-        {{ item.candidate_data.get("title", "Untitled candidate") }}
+      <li style="margin-bottom: 0.5rem;">
+        <a href="/authoring/candidates/{{ item.id }}" style="text-decoration: underline; font-weight: bold;">
+          {{ item.candidate_data.get("title", "Untitled candidate") }}
+        </a>
         <span class="tag">{{ item.status }}</span>
-        <span>{{ item.generated_at.isoformat() }}</span>
+        <span>(rev {{ item.revision }})</span>
+        <time datetime="{{ item.generated_at.isoformat() }}">{{ item.generated_at.isoformat() }}</time>
       </li>
       {% endfor %}
     </ul>
