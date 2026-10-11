@@ -369,3 +369,36 @@ def test_ai_provider_model_blank_falls_back_to_default(
     config = load_config()
 
     assert config.ai_provider_model == "gemini-2.5-flash"
+
+
+def test_authoring_candidate_store_defaults_to_memory() -> None:
+    config = AppConfig.model_validate({})
+    assert config.authoring_candidate_store == "memory"
+    assert config.authoring_candidate_retention_days == 30
+
+
+def test_authoring_candidate_store_accepts_datastore() -> None:
+    config = AppConfig.model_validate({"authoring_candidate_store": "datastore"})
+    assert config.authoring_candidate_store == "datastore"
+
+
+def test_authoring_candidate_store_normalised_to_lowercase() -> None:
+    config = AppConfig.model_validate({"authoring_candidate_store": "  DATASTORE "})
+    assert config.authoring_candidate_store == "datastore"
+
+
+def test_authoring_candidate_store_unsupported_raises() -> None:
+    with pytest.raises(ValidationError, match="Unsupported authoring candidate store"):
+        AppConfig.model_validate({"authoring_candidate_store": "redis"})
+
+
+def test_authoring_candidate_store_and_retention_read_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FABLIT_AUTHORING_CANDIDATE_STORE", "datastore")
+    monkeypatch.setenv("FABLIT_AUTHORING_CANDIDATE_RETENTION_DAYS", "45")
+
+    config = load_config()
+
+    assert config.authoring_candidate_store == "datastore"
+    assert config.authoring_candidate_retention_days == 45

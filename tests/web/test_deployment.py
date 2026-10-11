@@ -16,9 +16,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import _build_artifact_storage, create_app
+from app.main import (
+    _build_artifact_storage,
+    _build_authoring_candidate_store,
+    create_app,
+)
 from fablit.application.artifact_storage import FileArtifactStorage
 from fablit.config import AppConfig, load_config
+from fablit.platform.datastore_authoring_store import DatastoreAuthoringCandidateStore
 from fablit.platform.gcs_artifact_storage import GCSArtifactStorage
 
 
@@ -294,3 +299,32 @@ def test_gcs_artifact_storage_web_roundtrip() -> None:
         assert artifact_missing.status_code == 404
         review_after_deletion = client.get(review_href)
         assert review_after_deletion.status_code == 200
+
+
+def test_production_authoring_candidate_store_builds_datastore() -> None:
+    config = load_config(
+        overrides={
+            "environment": "production",
+            "authoring_candidate_store": "datastore",
+            "authoring_candidate_retention_days": 45,
+        }
+    )
+    fake_datastore = MagicMock()
+    fake_client = MagicMock()
+    fake_datastore.Client.return_value = fake_client
+
+    google_cloud = MagicMock()
+    google_cloud.datastore = fake_datastore
+
+    with patch.dict(
+        "sys.modules",
+        {
+            "google": MagicMock(cloud=google_cloud),
+            "google.cloud": google_cloud,
+            "google.cloud.datastore": fake_datastore,
+        },
+    ):
+        store = _build_authoring_candidate_store(config)
+        assert isinstance(store, DatastoreAuthoringCandidateStore)
+        assert store.retention_days == 45
+        assert store._client is fake_client

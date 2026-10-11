@@ -211,6 +211,48 @@ def _build_history_repository(
         return None
 
 
+def _build_authoring_candidate_store(
+    app_config: AppConfig,
+) -> AuthoringCandidateStore:
+    """Build the authoring candidate store based on configuration (FIX-7).
+
+    Defaults to in-memory store for local development and unit tests.
+    In production on App Engine, uses Google Cloud Datastore so candidate
+    state is shared consistently across application instances.
+    """
+    backend = app_config.authoring_candidate_store
+    retention_days = app_config.authoring_candidate_retention_days
+
+    if backend == "datastore":
+        try:
+            from google.cloud import datastore
+
+            from fablit.platform.datastore_authoring_store import (
+                DatastoreAuthoringCandidateStore,
+            )
+
+            client: datastore.Client = datastore.Client()
+            logger.info(
+                "initialized Datastore authoring candidate store",
+                extra={
+                    "project_id": client.project,
+                    "retention_days": retention_days,
+                },
+            )
+            return DatastoreAuthoringCandidateStore(
+                client=client, retention_days=retention_days
+            )
+        except Exception as e:
+            logger.exception("failed to initialize datastore authoring candidate store")
+            raise RuntimeError(
+                "Could not initialize Google Cloud Datastore for authoring "
+                "candidate store. Check GCP configuration and credentials."
+            ) from e
+
+    logger.info("initialized in-memory authoring candidate store")
+    return AuthoringCandidateStore(retention_days=retention_days)
+
+
 def _activity_id(value: str) -> UUID:
     """Parse an activity identity, raising ActivityNotFoundError when invalid."""
     try:
@@ -424,7 +466,7 @@ def create_app(config: AppConfig) -> FastAPI:
         app.state.ready = True
         app.state.config = config
         app.state.authoring_ai_provider = _build_authoring_provider(config)
-        app.state.authoring_candidate_store = AuthoringCandidateStore()
+        app.state.authoring_candidate_store = _build_authoring_candidate_store(config)
         app.state.demo_content, app.state.learner_applications = (
             _build_learner_applications(config)
         )
@@ -451,7 +493,7 @@ def create_app(config: AppConfig) -> FastAPI:
     app.state.ready = False
     app.state.config = config
     app.state.authoring_ai_provider = _build_authoring_provider(config)
-    app.state.authoring_candidate_store = AuthoringCandidateStore()
+    app.state.authoring_candidate_store = _build_authoring_candidate_store(config)
     app.state.demo_content, app.state.learner_applications = (
         _build_learner_applications(config)
     )
