@@ -220,3 +220,188 @@ def test_gemini_provider_adapter_integration_with_authoring_endpoint() -> None:
     assert (
         data["brief"]["purpose"] == "Distinguish visible evidence from interpretation."
     )
+
+
+def _complete_contract() -> dict[str, str]:
+    return {
+        "purpose": (
+            "Distinguish visible evidence from interpretation in Visual analysis."
+        ),
+        "task": "Identify three visible details in the provided stimulus.",
+        "expected_thinking": "Connect visible details directly to interpretations.",
+        "response_contract": "Three concise bullet points citing evidence.",
+        "evaluation_intent": "Check for concrete descriptive language.",
+        "feedback_intent": (
+            "Highlight the most specific observation and suggest next step."
+        ),
+        "reflection_intent": "Notice which visual feature guided your analysis.",
+        "continuation_intent": "Apply the observation method to a contrasting scene.",
+    }
+
+
+def test_candidate_detail_and_approval_workflow() -> None:
+    client, provider = _client()
+    provider.generate.return_value = SimpleNamespace(
+        candidate_data={
+            "title": "Evidence-based observation",
+            "description": "Describe one detail.",
+            "contract": _complete_contract(),
+        },
+        provider="test-provider",
+        model="test-model",
+        generated_at=datetime(2026, 10, 11, 9, tzinfo=UTC),
+    )
+
+    gen_resp = client.post("/authoring/generate", headers=HEADERS, json=BRIEF)
+    assert gen_resp.status_code == 200
+    candidate_id = gen_resp.json()["id"]
+
+    # Detail JSON
+    detail_resp = client.get(f"/authoring/candidates/{candidate_id}", headers=HEADERS)
+    assert detail_resp.status_code == 200
+    detail_data = detail_resp.json()
+    assert detail_data["id"] == candidate_id
+    assert detail_data["validation"]["is_approvable"] is True
+
+    # Detail HTML
+    html_resp = client.get(
+        f"/authoring/candidates/{candidate_id}",
+        headers={**HEADERS, "Accept": "text/html"},
+    )
+    assert html_resp.status_code == 200
+    assert "Generated Candidate Practice" in html_resp.text
+    assert "Evidence-based observation" in html_resp.text
+
+    # Approve valid candidate
+    app_resp = client.post(
+        f"/authoring/candidates/{candidate_id}/approve", headers=HEADERS
+    )
+    assert app_resp.status_code == 200
+    assert app_resp.json()["status"] == "approved"
+
+    # Conflicting state transitions
+    dup_app = client.post(
+        f"/authoring/candidates/{candidate_id}/approve", headers=HEADERS
+    )
+    assert dup_app.status_code == 409
+    assert "already approved" in dup_app.json()["detail"]
+
+    dup_rej = client.post(
+        f"/authoring/candidates/{candidate_id}/reject", headers=HEADERS
+    )
+    assert dup_rej.status_code == 409
+    assert "cannot be rejected" in dup_rej.json()["detail"]
+
+
+def test_candidate_approval_gate_blocks_invalid_candidate() -> None:
+    client, provider = _client()
+    # Contract missing required fields
+    provider.generate.return_value = SimpleNamespace(
+        candidate_data={
+            "title": "Invalid Incomplete Practice",
+            "description": "Incomplete practice without full contract.",
+            "contract": {"task": "Just a task."},
+        },
+        provider="test-provider",
+        model="test-model",
+        generated_at=datetime(2026, 10, 11, 9, tzinfo=UTC),
+    )
+
+    gen_resp = client.post("/authoring/generate", headers=HEADERS, json=BRIEF)
+    assert gen_resp.status_code == 200
+    candidate_id = gen_resp.json()["id"]
+    assert gen_resp.json()["validation"]["is_approvable"] is False
+
+    # Attempt to approve
+    app_resp = client.post(
+        f"/authoring/candidates/{candidate_id}/approve", headers=HEADERS
+    )
+    assert app_resp.status_code == 422
+    assert "validation errors and cannot be approved" in app_resp.json()["detail"]
+
+
+def test_candidate_edit_and_revalidation_flow() -> None:
+    client, provider = _client()
+    # Candidate with forbidden evaluative language in feedback intent
+    invalid_contract = _complete_contract()
+    invalid_contract["feedback_intent"] = "Assign a score and assess mastery."
+    provider.generate.return_value = SimpleNamespace(
+        candidate_data={
+            "title": "Evaluative Draft",
+            "description": "Close observation.",
+            "contract": invalid_contract,
+        },
+        provider="test-provider",
+        model="test-model",
+        generated_at=datetime(2026, 10, 11, 9, tzinfo=UTC),
+    )
+
+    gen_resp = client.post("/authoring/generate", headers=HEADERS, json=BRIEF)
+    assert gen_resp.status_code == 200
+    cand_id = gen_resp.json()["id"]
+    assert gen_resp.json()["validation"]["is_approvable"] is False
+
+    # Approval blocked
+    assert (
+        client.post(
+            f"/authoring/candidates/{cand_id}/approve", headers=HEADERS
+        ).status_code
+        == 422
+    )
+
+    # Edit via API to fix feedback intent
+    edit_resp = client.post(
+        f"/authoring/candidates/{cand_id}/edit",
+        headers=HEADERS,
+        json={
+            "feedback_intent": (
+                "Identify specific concrete evidence and suggest one next step."
+            )
+        },
+    )
+    assert edit_resp.status_code == 200
+    edited_data = edit_resp.json()
+    assert edited_data["revision"] == 2
+    assert edited_data["validation"]["is_approvable"] is True
+    assert len(edited_data["history"]) == 1
+
+    # Edit HTML flow works
+    edit_html = client.post(
+        f"/authoring/candidates/{cand_id}/edit",
+        headers={**HEADERS, "Accept": "text/html"},
+        data={"title": "Updated Observation Title"},
+    )
+    assert edit_html.status_code == 200
+    assert "revision 3" in edit_html.text
+
+    # Now approvable
+    final_app = client.post(f"/authoring/candidates/{cand_id}/approve", headers=HEADERS)
+    assert final_app.status_code == 200
+    assert final_app.json()["status"] == "approved"
+
+
+def test_authoring_candidates_are_isolated_from_learner_library() -> None:
+    client, provider = _client()
+    provider.generate.return_value = SimpleNamespace(
+        candidate_data={
+            "title": "Secret Internal Authoring Activity",
+            "description": "Internal activity not yet published.",
+            "contract": _complete_contract(),
+        },
+        provider="test-provider",
+        model="test-model",
+        generated_at=datetime(2026, 10, 11, 9, tzinfo=UTC),
+    )
+
+    gen_resp = client.post("/authoring/generate", headers=HEADERS, json=BRIEF)
+    cand_id = gen_resp.json()["id"]
+    client.post(f"/authoring/candidates/{cand_id}/approve", headers=HEADERS)
+
+    # Learner activities list on dashboard and practice pages
+    dashboard_resp = client.get("/")
+    assert dashboard_resp.status_code == 200
+    assert "Secret Internal Authoring Activity" not in dashboard_resp.text
+
+    practice_resp = client.get("/practice")
+    assert practice_resp.status_code == 200
+    assert "Secret Internal Authoring Activity" not in practice_resp.text

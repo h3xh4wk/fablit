@@ -56,7 +56,18 @@ def _configured_client(
         candidate_data={
             "title": "Generated Test Practice",
             "description": "Observe and describe a visual detail.",
-            "contract": {"task": "Describe one visible detail."},
+            "contract": {
+                "purpose": (
+                    "Practise distinguishing visible evidence from interpretation."
+                ),
+                "task": "Describe one visible detail.",
+                "expected_thinking": "Move from concrete evidence to a reasoned claim.",
+                "response_contract": "A short evidence-based response.",
+                "evaluation_intent": "Look for specific observable details.",
+                "feedback_intent": "Identify useful evidence and one next step.",
+                "reflection_intent": "Notice which observation strategy was useful.",
+                "continuation_intent": "Extend observation with a second pass.",
+            },
         },
         provider="test-provider",
         model="test-model",
@@ -200,13 +211,31 @@ def test_candidate_review_endpoints_when_authorized() -> None:
     list_resp = client.get("/authoring/candidates", headers=headers)
     assert list_resp.status_code == 200
 
-    app_resp = client.post("/authoring/candidates/c1/approve", headers=headers)
+    # Non-existent candidate returns 404
+    assert (
+        client.post("/authoring/candidates/c1/approve", headers=headers).status_code
+        == 404
+    )
+
+    # Generate candidate and test approval
+    gen1 = client.post("/authoring/generate", headers=headers, json=AUTHORING_BRIEF)
+    assert gen1.status_code == 200
+    cand1_id = gen1.json()["id"]
+
+    app_resp = client.post(f"/authoring/candidates/{cand1_id}/approve", headers=headers)
     assert app_resp.status_code == 200
     assert app_resp.json()["status"] == "approved"
+    assert app_resp.json()["candidate_id"] == str(cand1_id)
 
-    rej_resp = client.post("/authoring/candidates/c1/reject", headers=headers)
+    # Generate second candidate and test rejection
+    gen2 = client.post("/authoring/generate", headers=headers, json=AUTHORING_BRIEF)
+    assert gen2.status_code == 200
+    cand2_id = gen2.json()["id"]
+
+    rej_resp = client.post(f"/authoring/candidates/{cand2_id}/reject", headers=headers)
     assert rej_resp.status_code == 200
     assert rej_resp.json()["status"] == "rejected"
+    assert rej_resp.json()["candidate_id"] == str(cand2_id)
 
 
 # --- Browser Login & Logout Lifecycle ---
@@ -381,19 +410,41 @@ def test_candidate_approval_and_rejection_browser_html_flow() -> None:
     client.cookies.set(AUTHORING_COOKIE_NAME, SECRET)
 
     headers = {"Accept": "text/html"}
+    # Non-existent candidate returns 404
+    assert (
+        client.post(
+            "/authoring/candidates/cand-123/approve", headers=headers
+        ).status_code
+        == 404
+    )
+
+    # Generate first candidate and approve
+    client.post("/authoring/generate", headers=headers, data=AUTHORING_BRIEF)
+    list_resp = client.get(
+        "/authoring/candidates", headers={"Authorization": f"Bearer {SECRET}"}
+    )
+    cand1_id = list_resp.json()["candidates"][0]["id"]
+
     app_resp = client.post(
-        "/authoring/candidates/cand-123/approve",
+        f"/authoring/candidates/{cand1_id}/approve",
         headers=headers,
     )
     assert app_resp.status_code == 200
-    assert "Candidate cand-123 approved for curated library." in app_resp.text
+    assert f"Candidate {cand1_id} approved for curated library." in app_resp.text
+
+    # Generate second candidate and reject
+    client.post("/authoring/generate", headers=headers, data=AUTHORING_BRIEF)
+    list_resp2 = client.get(
+        "/authoring/candidates", headers={"Authorization": f"Bearer {SECRET}"}
+    )
+    cand2_id = list_resp2.json()["candidates"][-1]["id"]
 
     rej_resp = client.post(
-        "/authoring/candidates/cand-123/reject",
+        f"/authoring/candidates/{cand2_id}/reject",
         headers=headers,
     )
     assert rej_resp.status_code == 200
-    assert "Candidate cand-123 rejected." in rej_resp.text
+    assert f"Candidate {cand2_id} rejected." in rej_resp.text
 
 
 def test_login_post_in_production_sets_secure_cookie() -> None:

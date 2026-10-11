@@ -14,6 +14,10 @@ from app.authoring import (
     InvalidAuthoringBriefError,
     PracticeCandidate,
 )
+from fablit.application.errors import (
+    CandidateNotApprovableError,
+    CandidateNotFoundError,
+)
 from fablit.application.practice_modes import PracticeMode
 
 
@@ -141,3 +145,213 @@ def test_candidate_store_lists_and_retrieves_actual_candidates() -> None:
     assert store.get(candidate.id) is candidate
     assert store.list() == (candidate,)
     assert candidate.status == "rejected"
+
+
+def _valid_candidate_data(
+    title: str = "Test Observation", **contract_overrides: str
+) -> dict[str, object]:
+    contract = {
+        "purpose": (
+            "Distinguish visible evidence from interpretation in Visual analysis."
+        ),
+        "task": "Identify three visible details in the provided stimulus.",
+        "expected_thinking": "Connect visible details directly to interpretations.",
+        "response_contract": "Three concise bullet points citing evidence.",
+        "evaluation_intent": "Check for concrete descriptive language.",
+        "feedback_intent": (
+            "Highlight the most specific observation and suggest next step."
+        ),
+        "reflection_intent": "Notice which visual feature guided your analysis.",
+        "continuation_intent": "Apply the observation method to a contrasting scene.",
+    }
+    contract.update(contract_overrides)
+    return {
+        "title": title,
+        "description": "Practice close visual observation without grading.",
+        "contract": contract,
+    }
+
+
+def test_candidate_validation_evaluates_contract_and_feedback_quality() -> None:
+    brief = AuthoringBrief.from_mapping(_brief_values())
+    valid_candidate = PracticeCandidate(
+        brief=brief,
+        candidate_data=_valid_candidate_data(),
+        provider="test-provider",
+        model="test-model",
+        generated_at=datetime.now(UTC),
+    )
+    assert valid_candidate.validation.is_approvable is True
+    assert len(valid_candidate.validation.structural_errors) == 0
+    assert len(valid_candidate.validation.feedback_errors) == 0
+
+    # Missing contract field
+    invalid_data = _valid_candidate_data()
+    assert isinstance(invalid_data["contract"], dict)
+    del invalid_data["contract"]["continuation_intent"]
+    invalid_candidate = PracticeCandidate(
+        brief=brief,
+        candidate_data=invalid_data,
+        provider="test-provider",
+        model="test-model",
+        generated_at=datetime.now(UTC),
+    )
+    assert invalid_candidate.validation.is_approvable is False
+    assert any(
+        "continuation_intent" in err
+        for err in invalid_candidate.validation.structural_errors
+    )
+
+    # Evaluative term in feedback_intent (SPEC-030)
+    eval_candidate = PracticeCandidate(
+        brief=brief,
+        candidate_data=_valid_candidate_data(
+            feedback_intent="Assign a score and assess learner mastery."
+        ),
+        provider="test-provider",
+        model="test-model",
+        generated_at=datetime.now(UTC),
+    )
+    assert eval_candidate.validation.is_approvable is False
+    assert any("mastery" in err for err in eval_candidate.validation.feedback_errors)
+    assert any("score" in err for err in eval_candidate.validation.feedback_errors)
+
+
+def test_candidate_store_lifecycle_and_transition_guards() -> None:
+    brief = AuthoringBrief.from_mapping(_brief_values())
+    store = AuthoringCandidateStore()
+
+    candidate = PracticeCandidate(
+        brief=brief,
+        candidate_data=_valid_candidate_data("Candidate Alpha"),
+        provider="test-provider",
+        model="test-model",
+        generated_at=datetime.now(UTC),
+    )
+    store.add(candidate)
+
+    # Retrieve valid candidate
+    retrieved = store.get(str(candidate.id))
+    assert retrieved.id == candidate.id
+
+    # Unknown candidate returns CandidateNotFoundError
+    with pytest.raises(CandidateNotFoundError):
+        store.get(uuid4())
+    with pytest.raises(CandidateNotFoundError):
+        store.get("not-a-uuid")
+
+    # Approve candidate
+    approved = store.approve(candidate.id, reviewer="reviewer-jane")
+    assert approved.status == "approved"
+    assert approved.is_approved is True
+    assert approved.reviewer == "reviewer-jane"
+    assert approved.decided_at is not None
+    assert store.approved_practices() == (approved,)
+
+    # Conflict: cannot approve already approved candidate
+    with pytest.raises(CandidateNotApprovableError, match="already approved"):
+        store.approve(candidate.id)
+
+    # Conflict: cannot reject already approved candidate
+    with pytest.raises(CandidateNotApprovableError, match="cannot be rejected"):
+        store.reject(candidate.id)
+
+    # Rejection lifecycle
+    cand_beta = PracticeCandidate(
+        brief=brief,
+        candidate_data=_valid_candidate_data("Candidate Beta"),
+        provider="test-provider",
+        model="test-model",
+        generated_at=datetime.now(UTC),
+    )
+    store.add(cand_beta)
+    rejected = store.reject(cand_beta.id, reviewer="reviewer-bob")
+    assert rejected.status == "rejected"
+    assert rejected.reviewer == "reviewer-bob"
+
+    # Conflict: cannot reject already rejected candidate
+    with pytest.raises(CandidateNotApprovableError, match="already rejected"):
+        store.reject(cand_beta.id)
+
+    # Conflict: cannot approve rejected candidate
+    with pytest.raises(CandidateNotApprovableError, match="cannot be approved"):
+        store.approve(cand_beta.id)
+
+
+def test_candidate_store_blocks_approval_of_invalid_candidate() -> None:
+    brief = AuthoringBrief.from_mapping(_brief_values())
+    store = AuthoringCandidateStore()
+
+    invalid_candidate = PracticeCandidate(
+        brief=brief,
+        candidate_data=_valid_candidate_data(
+            feedback_intent="Grade learner performance on a 1-5 scale."
+        ),
+        provider="test-provider",
+        model="test-model",
+        generated_at=datetime.now(UTC),
+    )
+    store.add(invalid_candidate)
+
+    with pytest.raises(CandidateNotApprovableError, match="validation errors"):
+        store.approve(invalid_candidate.id)
+
+
+def test_candidate_store_detects_duplicate_titles() -> None:
+    brief = AuthoringBrief.from_mapping(_brief_values())
+    store = AuthoringCandidateStore()
+
+    cand1 = PracticeCandidate(
+        brief=brief,
+        candidate_data=_valid_candidate_data("Unique Practice Name"),
+        provider="test-provider",
+        model="test-model",
+        generated_at=datetime.now(UTC),
+    )
+    cand2 = PracticeCandidate(
+        brief=brief,
+        candidate_data=_valid_candidate_data("unique practice name"),
+        provider="test-provider",
+        model="test-model",
+        generated_at=datetime.now(UTC),
+    )
+    store.add(cand1)
+    added2 = store.add(cand2)
+    assert any("possible duplicate" in w for w in added2.validation.content_warnings)
+
+
+def test_candidate_store_edit_revalidates_and_archives_history() -> None:
+    brief = AuthoringBrief.from_mapping(_brief_values())
+    store = AuthoringCandidateStore()
+
+    invalid_candidate = PracticeCandidate(
+        brief=brief,
+        candidate_data=_valid_candidate_data(
+            feedback_intent="Grade learner output against peers."
+        ),
+        provider="test-provider",
+        model="test-model",
+        generated_at=datetime.now(UTC),
+    )
+    store.add(invalid_candidate)
+    assert invalid_candidate.validation.is_approvable is False
+
+    # Edit candidate to fix forbidden feedback language
+    updated = store.edit(
+        invalid_candidate.id,
+        updates={
+            "feedback_intent": (
+                "Highlight descriptive detail and offer a constructive next step."
+            )
+        },
+        editor="author-editor",
+    )
+    assert updated.revision == 2
+    assert updated.validation.is_approvable is True
+    assert len(updated.history) == 1
+    assert updated.history[0].version == 1
+    assert updated.history[0].editor == "author-editor"
+
+    # Now that it's validated, it can be approved
+    approved = store.approve(updated.id, reviewer="final-reviewer")
+    assert approved.status == "approved"

@@ -1,7 +1,7 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 1.11.0
+**Version:** 1.12.0
 **Status:** Draft
 **Last Updated:** 2026-10-11
 
@@ -992,11 +992,12 @@ no learner personal data.
 
 A **Practice Candidate** is an untrusted, structured draft returned by an AI
 provider. It retains the Authoring Brief and provider-neutral provenance
-(provider, model, and timezone-aware generation time). The candidate remains
-separate from curated learner-facing practices until deterministic
-SPEC-029/SPEC-030 validation and explicit human review are implemented. The
-current workflow store is process-local; it is not a durable authoring history
-or publication mechanism.
+(provider, model, and timezone-aware generation time). The candidate undergoes
+deterministic validation against the SPEC-029 Practice Content Contract and
+SPEC-030 feedback quality rules before entering the human review lifecycle. Approved
+candidates remain isolated from learner-facing practices until explicitly curated.
+The candidate store tracks revision history across edits and prevents unvalidated
+or conflicting approval transitions.
 
 ```
 Authoring Brief
@@ -1007,7 +1008,9 @@ Untrusted Practice Candidate + provenance
       ↓
 SPEC-029 / SPEC-030 validation
       ↓
-Human review → curated library
+Human review (inspect · edit · reject · approve)
+      ↓
+Curated library isolation
 ```
 
 ### Rules
@@ -1019,6 +1022,9 @@ Human review → curated library
 | AA-003 | Provider output remains untrusted candidate data; this model does not imply educational validation or approval. |
 | AA-004 | Provenance identifies provider, model, and timezone-aware UTC generation time, and never contains credentials or provider SDK objects. |
 | AA-005 | Authoring candidates and provenance are internal workflow data, never learner-facing progress or content until curated. |
+| AA-006 | Deterministic validation checks all 8 SPEC-029 contract fields and forbids evaluative language (SPEC-030); candidates failing validation cannot be approved. |
+| AA-007 | Candidate editing produces a new revision with preserved history and re-triggers contract validation. |
+| AA-008 | Candidate review outcomes (`pending`, `approved`, `rejected`) follow strict state transitions; approved candidates stay separate from public learner routes. |
 
 ## Learner Practice Application Flow (SPEC-012)
 
