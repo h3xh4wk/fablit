@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **FIX-6 — Structured Authoring Brief and Candidate Provenance**: the internal authoring form now captures a validated, typed SPEC-032 brief with optional exam/context, creative-thinking lens, constraints, stimulus, and continuation fields. Provider-neutral generation results are represented as untrusted candidates that retain their brief and provider/model/UTC-time provenance in a process-local store. Missing provider configuration no longer creates a fabricated draft; generation returns a clear unavailable response. Contract validation and the real review/approval lifecycle remain follow-up work.
+
 - **SEC-001 — Protect Internal AI Authoring Access**: the internal AI-assisted practice authoring workflow and candidate generation endpoints are now protected by a server-side security boundary before SPEC-032 implementation, ensuring only authorized internal authors can access authoring tools or trigger AI provider calls while preserving open, anonymous public access for learners.
   - Protected endpoints & UI: authoring UI routes (`/authoring`, `/authoring/`) and candidate generation/review endpoints (`/authoring/generate`, `/authoring/candidates`) enforce authorization server-side and reject unauthenticated requests with `401 Unauthorized`.
   - Secret & session management: constant-time comparison via `hmac.compare_digest` in `fablit.platform.authoring_auth`, supporting `Authorization: Bearer <secret>`, HTTP Basic (`author:<secret>`), `X-Author-Key`, and a path-restricted session cookie (`fablit_author_token`, `Path=/authoring`, HttpOnly, SameSite=Lax, Secure in production) established via `/authoring/login`.
