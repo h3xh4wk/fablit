@@ -3,7 +3,7 @@
 **Document ID:** DL-001
 **Version:** 1.11.0
 **Status:** Draft
-**Last Updated:** 2026-10-07
+**Last Updated:** 2026-10-11
 
 ---
 
@@ -981,6 +981,44 @@ anywhere but the learner's device.
 | LPD-003 | A draft is an offer, never a gate: resuming or discarding is always the learner's choice, and missing storage degrades to standard practice. |
 | LPD-004 | A draft is removed when the corresponding artifact commits (successful submission) or after 24 hours, so no stale state outlives its usefulness. |
 | LPD-005 | A draft is never scored, analysed, or graded; recovery copy stays calm and factual, with no urgency or progress language. |
+
+## Internal Authoring Brief and Candidate (SPEC-032)
+
+An **Authoring Brief** is a typed, validated request from an internal content
+author describing the educational intent and context for a proposed practice.
+It may include optional examination context, a primary creative-thinking
+lens, stimulus requirements, constraints, and continuation intent. It contains
+no learner personal data.
+
+A **Practice Candidate** is an untrusted, structured draft returned by an AI
+provider. It retains the Authoring Brief and provider-neutral provenance
+(provider, model, and timezone-aware generation time). The candidate remains
+separate from curated learner-facing practices until deterministic
+SPEC-029/SPEC-030 validation and explicit human review are implemented. The
+current workflow store is process-local; it is not a durable authoring history
+or publication mechanism.
+
+```
+Authoring Brief
+      ↓
+Provider-neutral generation
+      ↓
+Untrusted Practice Candidate + provenance
+      ↓
+SPEC-029 / SPEC-030 validation
+      ↓
+Human review → curated library
+```
+
+### Rules
+
+| Rule | Description |
+|------|-------------|
+| AA-001 | The brief requires practice area, learner context, purpose, mode, response form, evaluation intent, feedback intent, and reflection intent. |
+| AA-002 | Examination context, creative-thinking lens, constraints, stimulus requirements, and continuation intent are optional. |
+| AA-003 | Provider output remains untrusted candidate data; this model does not imply educational validation or approval. |
+| AA-004 | Provenance identifies provider, model, and timezone-aware UTC generation time, and never contains credentials or provider SDK objects. |
+| AA-005 | Authoring candidates and provenance are internal workflow data, never learner-facing progress or content until curated. |
 
 ## Learner Practice Application Flow (SPEC-012)
 

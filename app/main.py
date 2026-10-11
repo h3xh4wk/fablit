@@ -35,6 +35,7 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from app.authoring import AuthoringCandidateStore
 from app.authoring import router as authoring_router
 from app.learner_session import (
     DemoContent,
@@ -46,7 +47,6 @@ from app.learner_session import (
 from fablit.application import (
     ActivityNotFoundError,
     ArtifactStorage,
-    AuthoringCandidateStore,
     AuthoringLlmProvider,
     CompletionNotFoundError,
     EvaluationFailedError,
@@ -424,14 +424,14 @@ def create_app(config: AppConfig) -> FastAPI:
         app.state.ready = True
         app.state.config = config
         app.state.authoring_ai_provider = _build_authoring_provider(config)
-        app.state.authoring_candidates = AuthoringCandidateStore()
+        app.state.authoring_candidate_store = AuthoringCandidateStore()
         app.state.demo_content, app.state.learner_applications = (
             _build_learner_applications(config)
         )
         yield
         app.state.ready = False
         app.state.authoring_ai_provider = None
-        app.state.authoring_candidates = None
+        app.state.authoring_candidate_store = None
         app.state.demo_content = None
         app.state.learner_applications = None
         logger.info("application shutdown")
@@ -451,7 +451,7 @@ def create_app(config: AppConfig) -> FastAPI:
     app.state.ready = False
     app.state.config = config
     app.state.authoring_ai_provider = _build_authoring_provider(config)
-    app.state.authoring_candidates = AuthoringCandidateStore()
+    app.state.authoring_candidate_store = AuthoringCandidateStore()
     app.state.demo_content, app.state.learner_applications = (
         _build_learner_applications(config)
     )

@@ -792,6 +792,9 @@ Authoring Authentication Guard (require_author_access)
 - **Transport mechanisms:** Supports interactive author login via `/authoring/login` (setting an HttpOnly, SameSite=Lax, Path-restricted session cookie `fablit_author_token`, marked Secure in production) as well as header-based authentication (`Authorization: Bearer <secret>`, Basic auth, or `X-Author-Key`).
 - **Complete learner isolation:** Existing learner routes remain completely anonymous, public, and unaffected. Provider credentials (`FABLIT_AI_PROVIDER_API_KEY`) stay server-side and are never exposed in HTML or client responses.
 - **Minimal scope:** SEC-001 provides the smallest secure boundary for internal authoring, intentionally omitting learner authentication, multi-author RBAC, or public author registration.
+- **Typed authoring brief (FIX-6 / issue #129):** the authoring boundary validates required practice area, learner context, purpose, mode, response form, evaluation intent, feedback intent, and reflection intent before generation. Optional context, lens, constraints, stimulus, and continuation fields remain optional.
+- **Candidate provenance:** provider-neutral generation results become process-local `PracticeCandidate` records retaining the original brief, untrusted candidate mapping, provider, model, and timezone-aware UTC generation time. The provider adapter owns vendor configuration; candidate data remains subject to deterministic SPEC-029/SPEC-030 validation before approval.
+- **Unavailable provider behavior:** no fabricated draft is returned when no provider is configured. Generation returns a service-unavailable response; the candidate store is in-memory and is not a durable history or publication mechanism.
 
 ---
 
