@@ -344,3 +344,28 @@ def test_authoring_secret_and_ai_provider_whitespace_normalized_to_none(
 
     assert config.authoring_secret is None
     assert config.ai_provider_api_key is None
+
+
+def test_ai_provider_model_defaults_to_gemini() -> None:
+    config = AppConfig.model_validate({})
+    assert config.ai_provider_model == "gemini-2.5-flash"
+
+
+def test_ai_provider_model_reads_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FABLIT_AI_PROVIDER_MODEL", "gemini-2.5-pro")
+
+    config = load_config()
+
+    assert config.ai_provider_model == "gemini-2.5-pro"
+
+
+def test_ai_provider_model_blank_falls_back_to_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FABLIT_AI_PROVIDER_MODEL", "   ")
+
+    config = load_config()
+
+    assert config.ai_provider_model == "gemini-2.5-flash"

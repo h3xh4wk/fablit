@@ -27,26 +27,66 @@
     <h2 class="subheading" style="margin-top: 0;">Authoring Brief</h2>
     <form method="post" action="/authoring/generate">
       <div style="margin-bottom: 1rem;">
-        <label class="form-label" for="practice_area">Practice Area / Skill</label>
-        <input type="text" id="practice_area" name="practice_area" class="form-control" value="{{ brief.practice_area if brief else '' }}" placeholder="e.g. Visual Analysis or Critical Observation" required style="width: 100%; padding: 0.5rem;">
+        <label class="form-label" for="practice_area">Practice area</label>
+        <input type="text" id="practice_area" name="practice_area" class="form-control" value="{{ brief.practice_area if brief else '' }}" required style="width: 100%; padding: 0.5rem;">
       </div>
-
       <div style="margin-bottom: 1rem;">
-        <label class="form-label" for="learning_focus">Learning Focus</label>
-        <textarea id="learning_focus" name="learning_focus" class="form-control" rows="3" placeholder="What skill or insight should this practice develop?" required style="width: 100%; padding: 0.5rem;">{{ brief.learning_focus if brief else '' }}</textarea>
+        <label class="form-label" for="learner_context">Intended learner context</label>
+        <textarea id="learner_context" name="learner_context" class="form-control" rows="2" required style="width: 100%; padding: 0.5rem;">{{ brief.learner_context if brief else '' }}</textarea>
       </div>
-
       <div style="margin-bottom: 1rem;">
-        <label class="form-label" for="mode_intent">Practice Mode Intent</label>
-        <select id="mode_intent" name="mode_intent" class="form-control" style="width: 100%; max-width: 20rem; padding: 0.5rem;">
-          <option value="short-drill" {% if brief and brief.mode_intent == 'short-drill' %}selected{% endif %}>Short Drill (5–10 min)</option>
-          <option value="full-practice" {% if brief and brief.mode_intent == 'full-practice' %}selected{% endif %}>Full Practice</option>
+        <label class="form-label" for="purpose">Practice purpose</label>
+        <textarea id="purpose" name="purpose" class="form-control" rows="2" required style="width: 100%; padding: 0.5rem;">{{ brief.purpose if brief else '' }}</textarea>
+      </div>
+      <div style="margin-bottom: 1rem;">
+        <label class="form-label" for="intended_mode">Intended practice mode</label>
+        <select id="intended_mode" name="intended_mode" class="form-control" required style="width: 100%; max-width: 20rem; padding: 0.5rem;">
+          <option value="short-drill" {% if brief and brief.intended_mode == 'short-drill' %}selected{% endif %}>Short Drill</option>
+          <option value="full-practice" {% if brief and brief.intended_mode == 'full-practice' %}selected{% endif %}>Full Practice</option>
         </select>
       </div>
-
       <div style="margin-bottom: 1rem;">
-        <label class="form-label" for="stimulus_intent">Stimulus Intent (Optional)</label>
-        <input type="text" id="stimulus_intent" name="stimulus_intent" class="form-control" value="{{ brief.stimulus_intent if brief else '' }}" placeholder="e.g. Urban architecture photograph or abstract composition" style="width: 100%; padding: 0.5rem;">
+        <label class="form-label" for="response_form">Desired response form</label>
+        <input type="text" id="response_form" name="response_form" class="form-control" value="{{ brief.response_form if brief else '' }}" required style="width: 100%; padding: 0.5rem;">
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+        <div>
+          <label class="form-label" for="examination_context">Examination context (optional)</label>
+          <input type="text" id="examination_context" name="examination_context" class="form-control" value="{{ brief.examination_context if brief else '' }}" style="width: 100%; padding: 0.5rem;">
+        </div>
+        <div>
+          <label class="form-label" for="primary_creative_thinking_lens">Primary thinking lens (optional)</label>
+          <select id="primary_creative_thinking_lens" name="primary_creative_thinking_lens" class="form-control" style="width: 100%; padding: 0.5rem;">
+            <option value="">Not applicable</option>
+            {% for lens in ["Observe", "Interpret", "Ideate", "Articulate", "Reflect"] %}
+            <option value="{{ lens }}" {% if brief and brief.primary_creative_thinking_lens == lens %}selected{% endif %}>{{ lens }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div style="margin-bottom: 1rem;">
+        <label class="form-label" for="constraints">Constraints (optional)</label>
+        <textarea id="constraints" name="constraints" class="form-control" rows="2" style="width: 100%; padding: 0.5rem;">{{ brief.constraints if brief else '' }}</textarea>
+      </div>
+      <div style="margin-bottom: 1rem;">
+        <label class="form-label" for="stimulus_requirements">Stimulus or context requirements (optional)</label>
+        <textarea id="stimulus_requirements" name="stimulus_requirements" class="form-control" rows="2" style="width: 100%; padding: 0.5rem;">{{ brief.stimulus_requirements if brief else '' }}</textarea>
+      </div>
+      <div style="margin-bottom: 1rem;">
+        <label class="form-label" for="evaluation_intent">Evaluation intent</label>
+        <textarea id="evaluation_intent" name="evaluation_intent" class="form-control" rows="2" required style="width: 100%; padding: 0.5rem;">{{ brief.evaluation_intent if brief else '' }}</textarea>
+      </div>
+      <div style="margin-bottom: 1rem;">
+        <label class="form-label" for="feedback_intent">Feedback intent</label>
+        <textarea id="feedback_intent" name="feedback_intent" class="form-control" rows="2" required style="width: 100%; padding: 0.5rem;">{{ brief.feedback_intent if brief else '' }}</textarea>
+      </div>
+      <div style="margin-bottom: 1rem;">
+        <label class="form-label" for="reflection_intent">Reflection intent</label>
+        <textarea id="reflection_intent" name="reflection_intent" class="form-control" rows="2" required style="width: 100%; padding: 0.5rem;">{{ brief.reflection_intent if brief else '' }}</textarea>
+      </div>
+      <div style="margin-bottom: 1rem;">
+        <label class="form-label" for="continuation_intent">Continuation intent (optional)</label>
+        <textarea id="continuation_intent" name="continuation_intent" class="form-control" rows="2" style="width: 100%; padding: 0.5rem;">{{ brief.continuation_intent if brief else '' }}</textarea>
       </div>
 
       <p class="form-actions">
@@ -59,14 +99,77 @@
   <section class="card" style="padding: 1.5rem; border: 1px solid var(--color-border, #e2e8f0); border-radius: 0.5rem; background: var(--color-surface-raised, #f8fafc);">
     <h2 class="subheading" style="margin-top: 0;">Generated Candidate Practice</h2>
     <div style="margin-bottom: 1rem;">
-      <p><strong>Status:</strong> <span class="tag">{{ candidate.status or 'candidate' }}</span></p>
-      {% if candidate.activity %}
-      <p><strong>Title:</strong> {{ candidate.activity.title or 'Untitled Practice' }}</p>
-      <p><strong>Instructions:</strong> {{ candidate.activity.instructions or '' }}</p>
+      <p><strong>Status:</strong> <span class="tag">{{ candidate.status }}</span></p>
+      <p><strong>Provider:</strong> {{ candidate.provider }}</p>
+      <p><strong>Model:</strong> {{ candidate.model }}</p>
+      <p><strong>Generated:</strong> <time datetime="{{ candidate.generated_at.isoformat() }}">{{ candidate.generated_at.isoformat() }}</time></p>
+      <h3>Authoring brief</h3>
+      <dl>
+        <dt>Practice area</dt>
+        <dd>{{ candidate.brief.practice_area }}</dd>
+        <dt>Intended learner context</dt>
+        <dd>{{ candidate.brief.learner_context }}</dd>
+        {% if candidate.brief.examination_context %}
+        <dt>Examination context</dt>
+        <dd>{{ candidate.brief.examination_context }}</dd>
+        {% endif %}
+        {% if candidate.brief.primary_creative_thinking_lens %}
+        <dt>Primary thinking lens</dt>
+        <dd>{{ candidate.brief.primary_creative_thinking_lens }}</dd>
+        {% endif %}
+        <dt>Purpose</dt>
+        <dd>{{ candidate.brief.purpose }}</dd>
+        <dt>Intended mode</dt>
+        <dd>{{ candidate.brief.intended_mode }}</dd>
+        <dt>Response form</dt>
+        <dd>{{ candidate.brief.response_form }}</dd>
+        {% if candidate.brief.constraints %}
+        <dt>Constraints</dt>
+        <dd>{{ candidate.brief.constraints }}</dd>
+        {% endif %}
+        {% if candidate.brief.stimulus_requirements %}
+        <dt>Stimulus requirements</dt>
+        <dd>{{ candidate.brief.stimulus_requirements }}</dd>
+        {% endif %}
+        <dt>Evaluation intent</dt>
+        <dd>{{ candidate.brief.evaluation_intent }}</dd>
+        <dt>Feedback intent</dt>
+        <dd>{{ candidate.brief.feedback_intent }}</dd>
+        <dt>Reflection intent</dt>
+        <dd>{{ candidate.brief.reflection_intent }}</dd>
+        {% if candidate.brief.continuation_intent %}
+        <dt>Continuation intent</dt>
+        <dd>{{ candidate.brief.continuation_intent }}</dd>
+        {% endif %}
+      </dl>
+      <h3>Candidate details</h3>
+      {% if candidate.candidate_data.title is defined %}
+      <p><strong>Title:</strong> {{ candidate.candidate_data.title }}</p>
+      {% endif %}
+      {% if candidate.candidate_data.description is defined %}
+      <p><strong>Description:</strong> {{ candidate.candidate_data.description }}</p>
+      {% endif %}
+      <dl>
+        {% for key, value in candidate.candidate_data.items() %}
+        {% if key not in ["title", "description", "contract"] %}
+        <dt>{{ key.replace("_", " ")|title }}</dt>
+        <dd>{{ value }}</dd>
+        {% endif %}
+        {% endfor %}
+      </dl>
+      {% if candidate.candidate_data.contract is mapping %}
+      <dl>
+        {% for key, value in candidate.candidate_data.contract.items() %}
+        <dt>{{ key.replace("_", " ")|title }}</dt>
+        <dd>{{ value }}</dd>
+        {% endfor %}
+      </dl>
+      {% elif candidate.candidate_data.contract is defined %}
+      <p>{{ candidate.candidate_data.contract }}</p>
       {% endif %}
     </div>
     <div class="form-actions" style="display: flex; gap: 1rem;">
-      {% set candidate_id = candidate.id or 'current' %}
+      {% set candidate_id = candidate.id %}
       <form method="post" action="/authoring/candidates/{{ candidate_id }}/approve">
         <button type="submit" class="button">Approve for Library</button>
       </form>
@@ -74,6 +177,21 @@
         <button type="submit" class="button button--secondary">Reject Candidate</button>
       </form>
     </div>
+  </section>
+  {% endif %}
+
+  {% if candidates %}
+  <section style="margin-top: 2rem;" aria-labelledby="candidate-list-heading">
+    <h2 id="candidate-list-heading" class="subheading">Candidate history</h2>
+    <ul>
+      {% for item in candidates %}
+      <li>
+        {{ item.candidate_data.get("title", "Untitled candidate") }}
+        <span class="tag">{{ item.status }}</span>
+        <span>{{ item.generated_at.isoformat() }}</span>
+      </li>
+      {% endfor %}
+    </ul>
   </section>
   {% endif %}
 </article>

@@ -11,9 +11,12 @@ SEC-001 establishes the security boundary:
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
+from pytest import LogCaptureFixture
 
 from app.main import create_app
 from fablit.config import AppConfig, load_config
@@ -21,6 +24,16 @@ from fablit.platform.authoring_auth import AUTHORING_COOKIE_NAME
 
 SECRET = "test-internal-authoring-secret-42"
 AI_KEY = "test-ai-provider-api-key-999"
+AUTHORING_BRIEF = {
+    "practice_area": "Visual analysis",
+    "learner_context": "A learner practising close observation.",
+    "purpose": "Practise distinguishing visible evidence from interpretation.",
+    "intended_mode": "short-drill",
+    "response_form": "A short written observation.",
+    "evaluation_intent": "Look for specific observable details.",
+    "feedback_intent": "Identify useful evidence and one next step.",
+    "reflection_intent": "Notice which observation strategy was useful.",
+}
 
 
 def _configured_client(
@@ -39,14 +52,16 @@ def _configured_client(
     )
     app = create_app(config)
     spy_provider = MagicMock()
-    spy_provider.generate_candidate.return_value = {
-        "status": "candidate",
-        "id": "candidate-xyz",
-        "activity": {
+    spy_provider.generate.return_value = SimpleNamespace(
+        candidate_data={
             "title": "Generated Test Practice",
-            "instructions": "Follow these steps.",
+            "description": "Observe and describe a visual detail.",
+            "contract": {"task": "Describe one visible detail."},
         },
-    }
+        provider="test-provider",
+        model="test-model",
+        generated_at=datetime.now(UTC),
+    )
     app.state.authoring_ai_provider = spy_provider
     return (
         TestClient(app, base_url="https://testserver", raise_server_exceptions=False),
@@ -117,7 +132,7 @@ def test_unauthorized_request_cannot_trigger_ai_provider_call() -> None:
 
     # 1. No credentials
     client.post("/authoring/generate", json={"practice_area": "Visual Analysis"})
-    assert spy_provider.generate_candidate.called is False
+    assert spy_provider.generate.called is False
 
     # 2. Invalid credentials
     client.post(
@@ -125,12 +140,12 @@ def test_unauthorized_request_cannot_trigger_ai_provider_call() -> None:
         headers={"Authorization": "Bearer invalid-token"},
         json={"practice_area": "Visual Analysis"},
     )
-    assert spy_provider.generate_candidate.called is False
+    assert spy_provider.generate.called is False
 
     # 3. Invalid cookie
     client.cookies.set(AUTHORING_COOKIE_NAME, "bad-cookie")
     client.post("/authoring/generate", json={"practice_area": "Visual Analysis"})
-    assert spy_provider.generate_candidate.called is False
+    assert spy_provider.generate.called is False
 
 
 # --- Authorized Access (SEC-001 AC-4) ---
@@ -148,13 +163,16 @@ def test_authorized_access_via_bearer_token() -> None:
         "/authoring/generate",
         headers=headers,
         json={
-            "practice_area": "Observation Drill",
-            "learning_focus": "Focus on details.",
+            **AUTHORING_BRIEF,
         },
     )
     assert generate_resp.status_code == 200
-    assert spy_provider.generate_candidate.called is True
+    assert spy_provider.generate.called is True
     assert generate_resp.json()["status"] == "candidate"
+    assert generate_resp.json()["provider"] == "test-provider"
+    assert generate_resp.json()["brief"]["learner_context"] == (
+        "A learner practising close observation."
+    )
 
 
 def test_authorized_access_via_custom_header() -> None:
@@ -310,7 +328,7 @@ def test_provider_credentials_and_secrets_never_leak() -> None:
     gen_resp = client.post(
         "/authoring/generate",
         headers={"Authorization": f"Bearer {SECRET}"},
-        json={"practice_area": "Test Area"},
+        json=AUTHORING_BRIEF,
     )
     assert AI_KEY not in gen_resp.text
     assert SECRET not in gen_resp.text
@@ -331,9 +349,11 @@ def test_unauthenticated_request_with_trailing_slash_rejected() -> None:
     assert "Internal Authoring Access" in response.text
 
 
-def test_ai_provider_failure_returns_502_without_leaks() -> None:
+def test_ai_provider_failure_returns_502_without_leaks(
+    caplog: LogCaptureFixture,
+) -> None:
     client, spy_provider = _configured_client()
-    spy_provider.generate_candidate.side_effect = RuntimeError(
+    spy_provider.generate.side_effect = RuntimeError(
         "Sensitive internal connection failed: api-key-leak-attempt"
     )
 
@@ -341,7 +361,7 @@ def test_ai_provider_failure_returns_502_without_leaks() -> None:
     response = client.post(
         "/authoring/generate",
         headers=headers,
-        json={"practice_area": "Creative Exercise"},
+        json=AUTHORING_BRIEF,
     )
     assert response.status_code == 502
     assert response.json()["error"] == "Error"
@@ -351,6 +371,9 @@ def test_ai_provider_failure_returns_502_without_leaks() -> None:
     )
     assert "api-key-leak-attempt" not in response.text
     assert "RuntimeError" not in response.text
+    assert "api-key-leak-attempt" not in caplog.text
+    candidates = client.get("/authoring/candidates", headers=headers)
+    assert candidates.json() == {"candidates": []}
 
 
 def test_candidate_approval_and_rejection_browser_html_flow() -> None:

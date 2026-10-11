@@ -49,3 +49,38 @@ class InvalidContentContractError(ApplicationError):
 
 class UnknownPracticeModeError(ApplicationError):
     """Raised when a requested practice mode does not exist (SPEC-022)."""
+
+
+class InvalidAuthoringBriefError(ApplicationError):
+    """Raised when an authoring brief is incomplete or invalid (SPEC-032 §4)."""
+
+
+class CandidateNotFoundError(ApplicationError):
+    """Raised when an authoring candidate does not exist (SPEC-032 §9)."""
+
+
+class CandidateNotApprovableError(ApplicationError):
+    """Raised when a malformed or invalid candidate cannot be approved.
+
+    SPEC-032 §7: validation is a hard gate — malformed AI output can never
+    enter the approval path.
+    """
+
+
+class AuthoringProviderError(ApplicationError):
+    """Raised when an authoring LLM provider cannot produce a candidate.
+
+    ARCH-001: provider API failures, timeouts, and unusable responses are
+    translated into this application-level error at the provider boundary so
+    the authoring workflow never depends on a specific provider's exceptions
+    and ordinary learner practice never fails because AI is unavailable.
+    """
+
+
+class AuthoringProviderConfigurationError(AuthoringProviderError):
+    """Raised when an authoring LLM provider is misconfigured.
+
+    ARCH-001: for example a concrete adapter is requested without the
+    credentials it needs. Configuration failures are surfaced cleanly rather
+    than deferring to a confusing runtime error.
+    """

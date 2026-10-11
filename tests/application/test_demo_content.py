@@ -467,6 +467,12 @@ def test_capability_data_never_reaches_learner_facing_templates() -> None:
     pattern = re.compile(r"capability|primary_capab|secondary_capab", re.IGNORECASE)
 
     for template in sorted(template_dir.glob("*.html")):
+        # SPEC-032: the internal authoring workspace (``authoring*.html``)
+        # legitimately names the thinking lens as an internal review aid. It
+        # is behind the SEC-001 authoring boundary and never learner-facing,
+        # so the learner-facing guarantee covers only public templates.
+        if template.name.startswith("authoring"):
+            continue
         matches = pattern.findall(template.read_text(encoding="utf-8"))
         assert not matches, f"{template.name} references capability data: {matches}"
 

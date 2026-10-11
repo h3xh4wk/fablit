@@ -124,6 +124,14 @@ class AppConfig(BaseSettings):
             "learners."
         ),
     )
+    ai_provider_model: str = Field(
+        "gemini-2.5-flash",
+        description=(
+            "Model identifier for the AI practice authoring provider "
+            "(SPEC-032 / ARCH-001), retained as authoring provenance. Only "
+            "used when ai_provider_api_key is configured."
+        ),
+    )
     config_file: Path | None = Field(None, description="Path to optional config file.")
     version: str = Field("0.1.0", description="Application version.")
 
@@ -245,6 +253,14 @@ class AppConfig(BaseSettings):
             return stripped if stripped else None
         return str(value)
 
+    @field_validator("ai_provider_model", mode="before")
+    def normalize_ai_provider_model(cls, value: object) -> str:
+        """Strip whitespace from the model name; blank falls back to default."""
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped if stripped else "gemini-2.5-flash"
+        return str(value)
+
     @model_validator(mode="after")
     def validate_gcs_bucket(self) -> AppConfig:
         """Ensure GCS backend is configured with a non-empty bucket name."""
@@ -303,6 +319,7 @@ def _resolve_environment_overrides() -> dict[str, Any]:
         "artifact_storage_dir": "FABLIT_ARTIFACT_STORAGE_DIR",
         "authoring_secret": "FABLIT_AUTHORING_SECRET",
         "ai_provider_api_key": "FABLIT_AI_PROVIDER_API_KEY",
+        "ai_provider_model": "FABLIT_AI_PROVIDER_MODEL",
         "version": "FABLIT_VERSION",
     }
     resolved: dict[str, Any] = {}
