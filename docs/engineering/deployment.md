@@ -306,3 +306,37 @@ To revoke authoring access immediately, remove or clear `FABLIT_AUTHORING_SECRET
 ```bash
 gcloud app deploy app.yaml --set-env-vars FABLIT_AUTHORING_SECRET=""
 ```
+
+---
+
+## 12. Shared Authoring Candidate State (FIX-7)
+
+Production App Engine deployments may run multiple concurrent application instances. To ensure authoring candidates, revisions, and approval decisions remain consistent across instances, Fablit provides a shared persistence adapter backed by Google Cloud Datastore (`DatastoreAuthoringCandidateStore`).
+
+### Architecture & Namespace Isolation
+
+- **Datastore Adapter (`fablit.platform.datastore_authoring_store`):**
+  - Configured via `FABLIT_AUTHORING_CANDIDATE_STORE="datastore"`.
+  - Stored under Kind `AuthoringCandidate` within dedicated Datastore namespace `authoring`.
+- **Zero Exposure to Learner Routes:**
+  - Authoring candidates and review states are strictly isolated from learner-facing routes (`/`, `/activities/*`, `/history`).
+  - Candidate records are never accessible to learners or exposed in public activity catalogues.
+  - Learner practice routes do not depend on the authoring store; outages or transient errors in the authoring store have zero impact on learner practice sessions.
+
+### Candidate Retention & Lifetime Policy
+
+- **Retention Window (`FABLIT_AUTHORING_CANDIDATE_RETENTION_DAYS`):**
+  - Configurable retention window for unapproved candidates (default: 30 days, integer $\ge 1$).
+  - Unapproved candidates (draft, candidate, under review, rejected) older than the retention threshold expire:
+    - Attempting to retrieve an expired candidate returns `404 Not Found`.
+    - Expired candidates are automatically excluded from the candidate review list.
+    - Automated cleanup via `store.cleanup_expired()` removes expired entities.
+- **Approved Candidate Preservation:**
+  - Approved candidates represent human-reviewed curriculum artifacts and are preserved indefinitely for curated library handoff, regardless of age.
+
+### Storage Failure & Safety Guarantees
+
+- **Fail-Safe Operation:**
+  - All Datastore client exceptions are translated into `fablit.application.persistence.PersistenceError`.
+  - Authoring mutation routes (`/generate`, `/candidates/{id}/edit`, `/candidates/{id}/approve`, `/candidates/{id}/reject`) catch storage errors and return HTTP `503 Service Unavailable`.
+  - Persistence failures will **never** return HTTP `200 OK` or `303 See Other` to ensure false authoring success is prevented.

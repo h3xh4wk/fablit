@@ -22,6 +22,7 @@ SUPPORTED_LOG_FORMATS = {"json", "text"}
 SUPPORTED_STIMULUS_PROVIDERS = {"builtin", "wikimedia"}
 SUPPORTED_PRACTICE_HISTORY_REPOSITORIES = {"memory", "datastore"}
 SUPPORTED_ARTIFACT_STORAGE_BACKENDS = {"file", "gcs"}
+SUPPORTED_AUTHORING_CANDIDATE_STORES = {"memory", "datastore"}
 
 
 class ConfigError(RuntimeError):
@@ -132,6 +133,22 @@ class AppConfig(BaseSettings):
             "used when ai_provider_api_key is configured."
         ),
     )
+    authoring_candidate_store: str = Field(
+        "memory",
+        description=(
+            "Authoring candidate store backend (SPEC-032 / FIX-7): 'memory' "
+            "(in-memory, for tests and local development) or 'datastore' "
+            "(Google Cloud Datastore, for the deployed App Engine environment)."
+        ),
+    )
+    authoring_candidate_retention_days: int = Field(
+        30,
+        ge=1,
+        description=(
+            "Retention window in days for authoring candidates (FIX-7). "
+            "Unapproved candidates older than this window are considered expired."
+        ),
+    )
     config_file: Path | None = Field(None, description="Path to optional config file.")
     version: str = Field("0.1.0", description="Application version.")
 
@@ -233,6 +250,24 @@ class AppConfig(BaseSettings):
             return normalized
         return str(value)
 
+    @field_validator("authoring_candidate_store", mode="before")
+    def normalize_authoring_candidate_store(cls, value: object) -> str:
+        """Normalize the authoring candidate store; defaults to 'memory'."""
+        if value is None:
+            return "memory"
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if not normalized:
+                return "memory"
+            if normalized not in SUPPORTED_AUTHORING_CANDIDATE_STORES:
+                allowed = ", ".join(sorted(SUPPORTED_AUTHORING_CANDIDATE_STORES))
+                raise ValueError(
+                    f"Unsupported authoring candidate store '{value}'. "
+                    f"Must be one of: {allowed}."
+                )
+            return normalized
+        return str(value)
+
     @field_validator("artifact_storage_bucket", mode="before")
     def normalize_artifact_storage_bucket(cls, value: object) -> str | None:
         """Strip whitespace from bucket name; empty string becomes None."""
@@ -318,6 +353,10 @@ def _resolve_environment_overrides() -> dict[str, Any]:
         "artifact_storage_bucket": "FABLIT_ARTIFACT_STORAGE_BUCKET",
         "artifact_storage_dir": "FABLIT_ARTIFACT_STORAGE_DIR",
         "authoring_secret": "FABLIT_AUTHORING_SECRET",
+        "authoring_candidate_store": "FABLIT_AUTHORING_CANDIDATE_STORE",
+        "authoring_candidate_retention_days": (
+            "FABLIT_AUTHORING_CANDIDATE_RETENTION_DAYS"
+        ),
         "ai_provider_api_key": "FABLIT_AI_PROVIDER_API_KEY",
         "ai_provider_model": "FABLIT_AI_PROVIDER_MODEL",
         "version": "FABLIT_VERSION",

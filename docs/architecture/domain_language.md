@@ -1025,6 +1025,9 @@ Curated library isolation
 | AA-006 | Deterministic validation checks all 8 SPEC-029 contract fields and forbids evaluative language (SPEC-030); candidates failing validation cannot be approved. |
 | AA-007 | Candidate editing produces a new revision with preserved history and re-triggers contract validation. |
 | AA-008 | Candidate review outcomes (`pending`, `approved`, `rejected`) follow strict state transitions; approved candidates stay separate from public learner routes. |
+| AA-009 | Shared candidate state is persisted across application instances in an authoring-scoped namespace, strictly isolating candidate storage from learner routes. |
+| AA-010 | Unapproved candidates are governed by a configurable retention policy (default 30 days); approved candidates are retained indefinitely for curation. |
+| AA-011 | Candidate store failures result in service unavailable (503) responses and never report false authoring success. |
 
 ## Learner Practice Application Flow (SPEC-012)
 

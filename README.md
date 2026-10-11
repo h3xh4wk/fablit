@@ -88,6 +88,8 @@ Key settings include:
 - `FABLIT_ARTIFACT_STORAGE_BUCKET` — GCS bucket name for private sketchbook artifacts (required when `FABLIT_ARTIFACT_STORAGE_BACKEND=gcs`)
 - `FABLIT_ARTIFACT_STORAGE_DIR` — optional filesystem directory for file-backed storage (when backend is `file`)
 - `FABLIT_AUTHORING_SECRET` — shared secret for internal AI authoring access (SEC-001). When unset, internal authoring routes reject all requests by default
+- `FABLIT_AUTHORING_CANDIDATE_STORE` — shared candidate store for internal authoring (FIX-7): `memory` (default; in-memory for tests and local development) or `datastore` (Google Cloud Datastore for multi-instance production)
+- `FABLIT_AUTHORING_CANDIDATE_RETENTION_DAYS` — candidate retention window in days for unapproved authoring drafts (default `30`)
 - `FABLIT_AI_PROVIDER_API_KEY` — optional server-side API key for the AI practice authoring provider (SPEC-032 / SEC-001). Kept strictly server-side and never exposed to learners or browsers
 - `FABLIT_AI_PROVIDER_MODEL` — model identifier for the AI practice authoring provider (default `gemini-2.5-flash`), retained as authoring provenance. Only used when `FABLIT_AI_PROVIDER_API_KEY` is configured
 
@@ -142,6 +144,7 @@ SPEC-012 introduces the first application layer under `fablit.application`, sepa
 - LLM provider adapter boundary (ARCH-001 / issue #123) — the authoring workflow depends on a provider-neutral LLM port (`fablit/application/authoring_llm.py`), not a specific vendor SDK. The initial concrete adapter (`fablit/platform/gemini_authoring_provider.py`) implements it against Google Gemini: credentials, request construction, response parsing, provider/model provenance, and provider failures stay inside that server-side boundary. Tests use a deterministic fake provider and an injectable transport, so the suite makes no live API calls.
 - Candidate validation against SPEC-029 and SPEC-030 (FIX-4 / issue #127) — deterministic validation checks generated candidate output against the 8 required dimensions of the SPEC-029 `PracticeContentContract` and SPEC-030 feedback quality rules (forbidding scores, grades, mastery, rank, and ability language); unvalidated candidates cannot be approved.
 - Real authoring candidate review and approval lifecycle (FIX-5 / issue #128) — internal authoring candidate store manages review state transitions (`pending`, `approved`, `rejected`), maintains revision history across candidate and contract edits with automatic re-validation, rejects unvalidated candidate approvals with HTTP 422, and isolates approved practices from the learner library.
+- Shared candidate state for production authoring (FIX-7 / issue #132) — `fablit/platform/datastore_authoring_store.py` provides `DatastoreAuthoringCandidateStore` persisting active candidates, revisions, and approval outcomes across instances in the `authoring` Datastore namespace. Candidates follow a 30-day retention lifetime policy while preserving approved content indefinitely. Storage failures fail safe with HTTP 503 rather than false success, and learner routes remain completely decoupled.
 
 The learner experience introduces no learner authentication, scoring, Progress, mastery, recommendations, gamification, or examination-specific logic.
 

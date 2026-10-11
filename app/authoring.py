@@ -35,6 +35,7 @@ from fablit.application.errors import (
     CandidateNotApprovableError,
     CandidateNotFoundError,
 )
+from fablit.application.persistence import PersistenceError
 from fablit.application.practice_modes import PracticeMode
 from fablit.application.store import PracticeContentContract
 from fablit.config import AppConfig
@@ -283,17 +284,49 @@ class PracticeCandidate:
 
 
 class AuthoringCandidateStore:
-    """In-memory candidate store providing stateful lifecycle review (SPEC-032)."""
+    """Base/in-memory authoring candidate store (SPEC-032 / FIX-7)."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, retention_days: int = 30) -> None:
+        self.retention_days = retention_days
         self._candidates: dict[UUID, PracticeCandidate] = {}
+        self._order: list[UUID] = []
+
+    def _get_entity(self, candidate_id: UUID) -> PracticeCandidate | None:
+        """Fetch raw candidate from storage."""
+        return self._candidates.get(candidate_id)
+
+    def _put_entity(self, candidate: PracticeCandidate) -> None:
+        """Save candidate to storage."""
+        if candidate.id not in self._candidates:
+            self._order.append(candidate.id)
+        self._candidates[candidate.id] = candidate
+
+    def _delete_entity(self, candidate_id: UUID) -> None:
+        """Delete candidate from storage."""
+        self._candidates.pop(candidate_id, None)
+        if candidate_id in self._order:
+            self._order.remove(candidate_id)
+
+    def _all_entities(self) -> list[PracticeCandidate]:
+        """Fetch all stored candidates in insertion order."""
+        return [self._candidates[cid] for cid in self._order if cid in self._candidates]
+
+    def _is_expired(
+        self, candidate: PracticeCandidate, *, now: datetime | None = None
+    ) -> bool:
+        """Check if an unapproved candidate has expired by retention policy."""
+        if candidate.is_approved:
+            return False
+        current_time = now or datetime.now(UTC)
+        cutoff = current_time - timedelta(days=self.retention_days)
+        return candidate.generated_at < cutoff
 
     def add(self, candidate: PracticeCandidate) -> PracticeCandidate:
         """Store a candidate under its stable identity and attach duplicate warnings."""
-        if candidate.id in self._candidates:
+        if self._get_entity(candidate.id) is not None:
             raise ValueError(f"candidate already exists: {candidate.id}")
         if candidate.title:
-            for existing in self._candidates.values():
+            for existing in self._all_entities():
                 if existing.title and existing.title.lower() == candidate.title.lower():
                     warnings = candidate.validation.content_warnings + (
                         f"possible duplicate of existing candidate {existing.title!r}",
@@ -305,7 +338,7 @@ class AuthoringCandidateStore:
                         ),
                     )
                     break
-        self._candidates[candidate.id] = candidate
+        self._put_entity(candidate)
         return candidate
 
     def get(self, candidate_id: UUID | str) -> PracticeCandidate:
@@ -323,13 +356,18 @@ class AuthoringCandidateStore:
         else:
             raise CandidateNotFoundError(f"Candidate {candidate_id} not found.")
 
-        if uuid_val not in self._candidates:
+        candidate = self._get_entity(uuid_val)
+        if candidate is None or self._is_expired(candidate):
             raise CandidateNotFoundError(f"Candidate {candidate_id} not found.")
-        return self._candidates[uuid_val]
+        return candidate
 
     def list(self) -> tuple[PracticeCandidate, ...]:
-        """Return stored candidates in insertion order."""
-        return tuple(self._candidates.values())
+        """Return active candidates within the retention window."""
+        return tuple(
+            candidate
+            for candidate in self._all_entities()
+            if not self._is_expired(candidate)
+        )
 
     def list_candidates(self) -> tuple[PracticeCandidate, ...]:
         """Alias for list to maintain consistency across authoring layers."""
@@ -363,7 +401,7 @@ class AuthoringCandidateStore:
             reviewer=reviewer,
             decided_at=datetime.now(UTC),
         )
-        self._candidates[approved.id] = approved
+        self._put_entity(approved)
         return approved
 
     def reject(
@@ -385,7 +423,7 @@ class AuthoringCandidateStore:
             reviewer=reviewer,
             decided_at=datetime.now(UTC),
         )
-        self._candidates[rejected.id] = rejected
+        self._put_entity(rejected)
         return rejected
 
     def edit(
@@ -438,12 +476,24 @@ class AuthoringCandidateStore:
             validation=CandidateValidation(),
         )
         updated = dataclasses.replace(updated, validation=validate_candidate(updated))
-        self._candidates[updated.id] = updated
+        self._put_entity(updated)
         return updated
 
     def approved_practices(self) -> tuple[PracticeCandidate, ...]:
         """Return approved practices isolated from learner library until curated."""
-        return tuple(c for c in self._candidates.values() if c.is_approved)
+        return tuple(c for c in self.list() if c.is_approved)
+
+    def cleanup_expired(self, *, now: datetime | None = None) -> int:
+        """Remove unapproved candidates exceeding the retention window."""
+        count = 0
+        for candidate in self._all_entities():
+            if self._is_expired(candidate, now=now):
+                self._delete_entity(candidate.id)
+                count += 1
+        return count
+
+
+InMemoryAuthoringCandidateStore = AuthoringCandidateStore
 
 
 def verify_author_access(request: Request) -> bool:
@@ -558,6 +608,8 @@ def _candidate_payload(candidate: PracticeCandidate) -> dict[str, Any]:
     if not isinstance(encoded, dict):
         raise TypeError("Authoring candidate must encode to a JSON object.")
     payload: dict[str, Any] = encoded
+    payload["title"] = candidate.title
+    payload["description"] = candidate.description
     payload["status"] = candidate.status
     payload["is_approved"] = candidate.is_approved
     payload["validation"] = {
@@ -640,10 +692,23 @@ async def authoring_logout(request: Request) -> Response:
 async def authoring_workspace(request: Request) -> Response:
     """Render the internal authoring workspace UI (SPEC-032 / SEC-001)."""
     require_author_access(request)
+    try:
+        candidates = _candidate_store(request).list()
+    except PersistenceError:
+        logger.exception("Failed to load authoring candidates")
+        return templates.TemplateResponse(
+            request,
+            "authoring.html",
+            {
+                "message": "The authoring candidate store is temporarily unavailable.",
+                "candidates": (),
+            },
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
     return templates.TemplateResponse(
         request,
         "authoring.html",
-        {"candidates": _candidate_store(request).list()},
+        {"candidates": candidates},
     )
 
 
@@ -680,13 +745,17 @@ async def authoring_generate(request: Request) -> Response:
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=message,
             ) from error
+        try:
+            candidates = _candidate_store(request).list()
+        except PersistenceError:
+            candidates = ()
         return templates.TemplateResponse(
             request,
             "authoring.html",
             {
                 "message": message,
                 "brief": brief_values,
-                "candidates": _candidate_store(request).list(),
+                "candidates": candidates,
             },
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         )
@@ -699,7 +768,26 @@ async def authoring_generate(request: Request) -> Response:
         )
     result = await _invoke_ai_provider(ai_provider, brief)
     candidate = _candidate_from_generation_result(result, brief)
-    _candidate_store(request).add(candidate)
+    accept = request.headers.get("accept", "")
+    try:
+        _candidate_store(request).add(candidate)
+    except PersistenceError as error:
+        logger.exception("Failed to persist generated authoring candidate")
+        if "application/json" in accept or "application/json" in content_type:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="The authoring candidate store is temporarily unavailable.",
+            ) from error
+        return templates.TemplateResponse(
+            request,
+            "authoring.html",
+            {
+                "message": "The authoring candidate store is temporarily unavailable.",
+                "brief": brief_values,
+                "candidates": (),
+            },
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
     candidate_payload = _candidate_payload(candidate)
 
     accept = request.headers.get("accept", "")
@@ -721,7 +809,14 @@ async def authoring_generate(request: Request) -> Response:
 async def authoring_candidates(request: Request) -> Response:
     """Retrieve practice candidates for human review (SPEC-032 §8)."""
     require_author_access(request)
-    candidates = _candidate_store(request).list()
+    try:
+        candidates = _candidate_store(request).list()
+    except PersistenceError as error:
+        logger.exception("Failed to query authoring candidates from store")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The authoring candidate store is temporarily unavailable.",
+        ) from error
     return JSONResponse(
         {"candidates": [_candidate_payload(candidate) for candidate in candidates]}
     )
@@ -739,15 +834,26 @@ async def authoring_candidate_detail(request: Request, candidate_id: str) -> Res
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Candidate {candidate_id} not found.",
         ) from None
+    except PersistenceError as error:
+        logger.exception("Failed to retrieve candidate from store")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The authoring candidate store is temporarily unavailable.",
+        ) from error
+
     accept = request.headers.get("accept", "")
     if "text/html" in accept and "application/json" not in accept:
+        try:
+            candidates = store.list()
+        except PersistenceError:
+            candidates = ()
         return templates.TemplateResponse(
             request,
             "authoring.html",
             {
                 "candidate": candidate,
                 "brief": candidate.brief,
-                "candidates": store.list(),
+                "candidates": candidates,
             },
         )
     return JSONResponse(_candidate_payload(candidate))
@@ -765,6 +871,13 @@ async def authoring_approve_candidate(request: Request, candidate_id: str) -> Re
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Candidate {candidate_id} not found.",
         ) from None
+    except PersistenceError as error:
+        logger.exception("Failed to retrieve candidate before approval")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The authoring candidate store is temporarily unavailable.",
+        ) from error
+
     try:
         approved = store.approve(candidate.id, reviewer="author")
     except CandidateNotApprovableError as error:
@@ -783,6 +896,12 @@ async def authoring_approve_candidate(request: Request, candidate_id: str) -> Re
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=err_msg,
         ) from error
+    except PersistenceError as error:
+        logger.exception("Failed to save approval to store")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The authoring candidate store is temporarily unavailable.",
+        ) from error
 
     accept = request.headers.get("accept", "")
     content_type = request.headers.get("content-type", "")
@@ -795,13 +914,17 @@ async def authoring_approve_candidate(request: Request, candidate_id: str) -> Re
             {"status": "approved", "candidate_id": str(candidate_id)},
             status_code=status.HTTP_200_OK,
         )
+    try:
+        candidates = store.list()
+    except PersistenceError:
+        candidates = ()
     return templates.TemplateResponse(
         request,
         "authoring.html",
         {
             "message": f"Candidate {candidate_id} approved for curated library.",
             "candidate": approved,
-            "candidates": store.list(),
+            "candidates": candidates,
         },
     )
 
@@ -818,12 +941,25 @@ async def authoring_reject_candidate(request: Request, candidate_id: str) -> Res
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Candidate {candidate_id} not found.",
         ) from None
+    except PersistenceError as error:
+        logger.exception("Failed to retrieve candidate before rejection")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The authoring candidate store is temporarily unavailable.",
+        ) from error
+
     try:
         rejected = store.reject(candidate.id, reviewer="author")
     except CandidateNotApprovableError as error:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(error),
+        ) from error
+    except PersistenceError as error:
+        logger.exception("Failed to save rejection to store")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The authoring candidate store is temporarily unavailable.",
         ) from error
 
     accept = request.headers.get("accept", "")
@@ -837,13 +973,17 @@ async def authoring_reject_candidate(request: Request, candidate_id: str) -> Res
             {"status": "rejected", "candidate_id": str(candidate_id)},
             status_code=status.HTTP_200_OK,
         )
+    try:
+        candidates = store.list()
+    except PersistenceError:
+        candidates = ()
     return templates.TemplateResponse(
         request,
         "authoring.html",
         {
             "message": f"Candidate {candidate_id} rejected.",
             "candidate": rejected,
-            "candidates": store.list(),
+            "candidates": candidates,
         },
     )
 
@@ -860,6 +1000,12 @@ async def authoring_edit_candidate(request: Request, candidate_id: str) -> Respo
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Candidate {candidate_id} not found.",
         ) from None
+    except PersistenceError as error:
+        logger.exception("Failed to retrieve candidate before edit")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The authoring candidate store is temporarily unavailable.",
+        ) from error
 
     content_type = request.headers.get("content-type", "")
     updates: dict[str, Any] = {}
@@ -879,10 +1025,21 @@ async def authoring_edit_candidate(request: Request, candidate_id: str) -> Respo
             if isinstance(value, str) and value.strip():
                 updates[key] = value.strip()
 
-    edited = store.edit(candidate.id, updates=updates, editor="author")
+    try:
+        edited = store.edit(candidate.id, updates=updates, editor="author")
+    except PersistenceError as error:
+        logger.exception("Failed to save edited candidate to store")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The authoring candidate store is temporarily unavailable.",
+        ) from error
 
     accept = request.headers.get("accept", "")
     if "text/html" in accept and "application/json" not in accept:
+        try:
+            candidates = store.list()
+        except PersistenceError:
+            candidates = ()
         return templates.TemplateResponse(
             request,
             "authoring.html",
@@ -891,7 +1048,7 @@ async def authoring_edit_candidate(request: Request, candidate_id: str) -> Respo
                     f"Candidate {candidate_id} updated (revision {edited.revision})."
                 ),
                 "candidate": edited,
-                "candidates": store.list(),
+                "candidates": candidates,
             },
         )
     return JSONResponse(

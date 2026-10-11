@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **FIX-7 — Use Shared Candidate State for Production Authoring**: active authoring candidate state, revisions, and approval decisions are now available consistently across application instances with a documented retention policy and complete isolation from learner routes.
+  - Multi-instance state sharing: `DatastoreAuthoringCandidateStore` in `fablit.platform.datastore_authoring_store` implements the `AuthoringCandidateStore` interface using Google Cloud Datastore under kind `AuthoringCandidate` within dedicated namespace `authoring`.
+  - Learner route isolation: authoring candidates live strictly in the `authoring` namespace and are never exposed to learner practice surfaces (`/`, `/activities/*`, `/history`). Learner practice routes remain operational even during authoring store outages.
+  - Retention & lifetime policy: unapproved candidates (draft, candidate, under review, rejected) older than `FABLIT_AUTHORING_CANDIDATE_RETENTION_DAYS` (default: 30 days) expire and return 404 / are excluded from listing, while approved candidates are preserved indefinitely for curated library handoff.
+  - Fail-safe semantics: storage exceptions translate to `PersistenceError` and HTTP `503 Service Unavailable`, preventing false success reports (HTTP 200/303) when persistence fails.
+  - Configuration: `FABLIT_AUTHORING_CANDIDATE_STORE` selects `memory` (default) or `datastore`; `app.yaml` defaults production to `datastore`.
+  - Documentation: documented in `docs/engineering/deployment.md` Section 12, `docs/architecture/domain_language.md`, `docs/architecture/architecture_blueprint.md`, and `README.md`.
+
+See issue [#132](https://github.com/h3xh4wk/fablit/issues/132) for details.
+
 - **FIX-4 — Validate AI Practice Candidates Against SPEC-029 and SPEC-030**: deterministic candidate validation in `fablit.application.authoring` enforces the 8 required dimensions of the SPEC-029 `PracticeContentContract` (purpose, task, expected thinking, response contract, evaluation intent, feedback intent, reflection intent, continuation intent) and SPEC-030 feedback quality rules (forbidding scores, grades, mastery, rank, ability, and gamification language). Unvalidated candidates cannot enter the approval path, and actionable structural and feedback errors are surfaced directly to authors. See issue [#127](https://github.com/h3xh4wk/fablit/issues/127).
 
 - **FIX-5 — Real Authoring Candidate Review and Approval Lifecycle**: a stateful review lifecycle replaces simulation endpoints. Authors can inspect candidate validation status, edit candidate drafts across all contract fields with automatic re-validation and revision history tracking (`AuthoringRevision`), and explicitly approve or reject candidates via `POST /authoring/candidates/{id}/approve` and `POST /authoring/candidates/{id}/reject`. Unvalidated candidates are rejected with HTTP 422, conflicting transitions are rejected with HTTP 409, and approved practices remain strictly isolated from the learner library until curated. See issue [#128](https://github.com/h3xh4wk/fablit/issues/128).

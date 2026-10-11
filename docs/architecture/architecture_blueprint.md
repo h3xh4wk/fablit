@@ -844,6 +844,27 @@ Google Gemini REST API
 - **Testable without live calls:** `FakeAuthoringProvider` (shipped beside the port) and an injectable adapter transport let the suite exercise the workflow with no external API call. SEC-001 remains the access-control boundary for every authoring route.
 - **Deliberately out of scope:** multi-provider routing, provider fallback, model-selection logic, agent frameworks, and learner-facing AI.
 
+### Shared Candidate State & Production Authoring Persistence (FIX-7 / SPEC-032)
+
+In multi-instance production environments (such as Google App Engine), active authoring candidate state, revisions, and approval decisions must be shared consistently across instances without exposing draft content to learner journeys.
+
+```text
+Authoring Router (app/authoring.py)
+        │
+        ▼
+AuthoringCandidateStore (app/authoring.py)
+        │
+        ├── In-Memory Store (InMemoryAuthoringCandidateStore) [local / testing]
+        │
+        └── Datastore Store (DatastoreAuthoringCandidateStore) [production / multi-instance]
+                └── Google Cloud Datastore (namespace="authoring", kind="AuthoringCandidate")
+```
+
+- **Shared persistence adapter:** `fablit/platform/datastore_authoring_store.py` provides `DatastoreAuthoringCandidateStore`, which connects via the official Datastore client and serializes candidate briefs, contracts, diagnostics, revision history, and review states.
+- **Namespace isolation:** all authoring candidate entities are isolated within the `authoring` namespace, completely separate from learner data (such as default namespace `PracticeCompletion` entities). Learner practice routes never query the authoring store.
+- **Retention & lifetime policy:** unapproved candidates expire after `authoring_candidate_retention_days` (default 30 days, integer $\ge 1$), after which retrieval raises `CandidateNotFoundError` (HTTP 404) and candidate listing excludes them. Approved candidates are preserved indefinitely for curated library handoff.
+- **Fail-safe mutation handling:** persistence failures are translated to `PersistenceError` and mapped to HTTP `503 Service Unavailable`, guaranteeing that storage failures never report false success.
+
 ---
 
 ## Progress
