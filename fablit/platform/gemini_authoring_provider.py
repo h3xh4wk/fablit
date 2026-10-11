@@ -185,18 +185,36 @@ class GeminiAuthoringProvider:
         feedback boundary so generated guidance stays grounded (AA-003).
         """
         brief = request.as_payload()
+        practice_area = brief.get("practice_area", "")
+        purpose = brief.get("purpose") or brief.get("practice_purpose") or ""
+        task = brief.get("task")
+        response_form = brief.get("response_form", "")
+        lens = (
+            brief.get("primary_creative_thinking_lens")
+            or brief.get("primary_capability")
+            or ""
+        )
+        if hasattr(lens, "value"):
+            lens = lens.value
+        mode = brief.get("intended_mode") or brief.get("practice_mode") or ""
+        if hasattr(mode, "value"):
+            mode = mode.value
+
         lines = [
             "You are drafting one candidate practice for Fablit's curated "
             "library. A human author reviews and approves every candidate, so "
             "return a complete draft, not commentary.",
             "",
             "Authoring brief:",
-            f"- practice area: {brief['practice_area']}",
-            f"- practice purpose: {brief['practice_purpose']}",
-            f"- learner task: {brief['task']}",
-            f"- response form: {brief['response_form']}",
-            f"- primary thinking lens: {brief['primary_capability']}",
-            f"- practice mode: {brief['practice_mode']}",
+            f"- practice area: {practice_area}",
+            f"- practice purpose: {purpose}",
+        ]
+        if task:
+            lines.append(f"- learner task: {task}")
+        lines += [
+            f"- response form: {response_form}",
+            f"- primary thinking lens: {lens}",
+            f"- practice mode: {mode}",
         ]
         optional = (
             ("learner context", brief.get("learner_context")),
@@ -212,8 +230,10 @@ class GeminiAuthoringProvider:
         for label, value in optional:
             if isinstance(value, str) and value.strip():
                 lines.append(f"- {label}: {value}")
-        constraints = brief.get("constraints", ())
-        if constraints:
+        constraints = brief.get("constraints")
+        if isinstance(constraints, str) and constraints.strip():
+            lines.append(f"- constraints: {constraints.strip()}")
+        elif isinstance(constraints, list | tuple) and constraints:
             lines.append(f"- constraints: {'; '.join(constraints)}")
 
         continuation_intent = brief.get("continuation_intent")

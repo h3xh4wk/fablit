@@ -28,7 +28,7 @@ storage, so the boundary stays server-side and compatible with SEC-001.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, is_dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
@@ -62,6 +62,8 @@ class AuthoringGenerationRequest:
             result = self.brief.as_payload()
             if isinstance(result, Mapping):
                 return dict(result)
+        if is_dataclass(self.brief) and not isinstance(self.brief, type):
+            return asdict(self.brief)
         if isinstance(self.brief, Mapping):
             return dict(self.brief)
         raise ValueError(f"cannot convert brief {self.brief!r} to payload")

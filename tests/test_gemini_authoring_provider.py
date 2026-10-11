@@ -12,6 +12,7 @@ import json
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from email.message import Message
 from typing import Any
@@ -199,6 +200,35 @@ def test_prompt_marks_continuation_intent_optional_when_brief_omits_it() -> None
     prompt = json.loads(body)["contents"][0]["parts"][0]["text"]
     assert "continuation_intent" in prompt
     assert "optional" in prompt.lower()
+
+
+@dataclass(frozen=True)
+class _Issue129Brief:
+    practice_area: str = "Visual analysis"
+    learner_context: str = "A learner practising close observation."
+    purpose: str = "Distinguish visible evidence from interpretation."
+    intended_mode: str = "short-drill"
+    response_form: str = "A short written observation."
+    evaluation_intent: str = "Look for specific observable details."
+    feedback_intent: str = "Identify useful evidence and one next step."
+    reflection_intent: str = "Notice which observation strategy was useful."
+    primary_creative_thinking_lens: str = "Observe"
+    constraints: str = "Keep it concise."
+
+
+def test_generate_supports_issue_129_brief_dataclass() -> None:
+    transport = _Transport(_gemini_response(_candidate_json()))
+    provider = _provider(transport)
+
+    result = provider.generate(_Issue129Brief())
+
+    assert isinstance(result, LlmGenerationResult)
+    assert result.provider == GEMINI_PROVIDER_ID
+    assert result.candidate_data["title"] == "Reading Composition — Observe Practice"
+    _, body, _ = transport.calls[0]
+    prompt = json.loads(body)["contents"][0]["parts"][0]["text"]
+    assert "Distinguish visible evidence from interpretation." in prompt
+    assert "Keep it concise." in prompt
 
 
 def test_api_key_is_sent_as_a_header_and_never_in_the_url() -> None:
