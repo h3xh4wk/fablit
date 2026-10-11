@@ -12,6 +12,7 @@ import json
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
+from datetime import datetime
 from email.message import Message
 from typing import Any
 
@@ -39,16 +40,18 @@ from fablit.platform.gemini_authoring_provider import (
 API_KEY = "gemini-api-key-secret-123"
 
 
-def _brief() -> PracticeAuthoringBrief:
-    return PracticeAuthoringBrief(
-        practice_area="Visual Analysis",
-        practice_purpose="Practise reading structure in a composition.",
-        task="Describe the dominant structure you notice.",
-        response_form="A short evidence-based paragraph.",
-        primary_capability="Observe",
-        practice_mode=PracticeMode.FULL_PRACTICE,
-        feedback_intent="Name one strength, why it matters, and one next move.",
-    )
+def _brief(**overrides: Any) -> PracticeAuthoringBrief:
+    base: dict[str, Any] = {
+        "practice_area": "Visual Analysis",
+        "practice_purpose": "Practise reading structure in a composition.",
+        "task": "Describe the dominant structure you notice.",
+        "response_form": "A short evidence-based paragraph.",
+        "primary_capability": "Observe",
+        "practice_mode": PracticeMode.FULL_PRACTICE,
+        "feedback_intent": "Name one strength, why it matters, and one next move.",
+    }
+    base.update(overrides)
+    return PracticeAuthoringBrief(**base)
 
 
 def _candidate_json() -> str:
@@ -102,6 +105,20 @@ def test_adapter_satisfies_the_authoring_provider_port() -> None:
     assert provider.model_id == DEFAULT_GEMINI_MODEL
 
 
+def test_generate_returns_structured_result_with_provenance_and_timestamp() -> None:
+    provider = _provider(_Transport(_gemini_response(_candidate_json())))
+
+    result = provider.generate(_brief())
+
+    assert isinstance(result, LlmGenerationResult)
+    assert result.provider == GEMINI_PROVIDER_ID
+    assert result.model == DEFAULT_GEMINI_MODEL
+    assert result.candidate_data["title"] == "Reading Composition — Observe Practice"
+    assert result.output["title"] == "Reading Composition — Observe Practice"
+    assert isinstance(result.generated_at, datetime)
+    assert result.generated_at.tzinfo is not None
+
+
 def test_generate_candidate_returns_structured_result_with_provenance() -> None:
     provider = _provider(_Transport(_gemini_response(_candidate_json())))
 
@@ -115,10 +132,10 @@ def test_generate_candidate_returns_structured_result_with_provenance() -> None:
 
 def test_provider_output_flows_into_spec_032_validation() -> None:
     provider = _provider(_Transport(_gemini_response(_candidate_json())))
-    result = provider.generate_candidate(AuthoringGenerationRequest(brief=_brief()))
+    result = provider.generate(_brief())
 
     candidate = candidate_from_provider_output(
-        result.output, _brief(), provider=result.provider, model=result.model
+        result.candidate_data, _brief(), provider=result.provider, model=result.model
     )
 
     assert candidate.validation.is_approvable is True
@@ -131,10 +148,10 @@ def test_incomplete_provider_output_is_surfaced_to_validation() -> None:
     provider = _provider(
         _Transport(_gemini_response(json.dumps({"title": "Only a title"})))
     )
-    result = provider.generate_candidate(AuthoringGenerationRequest(brief=_brief()))
+    result = provider.generate(_brief())
 
     candidate = candidate_from_provider_output(
-        result.output, _brief(), provider=result.provider, model=result.model
+        result.candidate_data, _brief(), provider=result.provider, model=result.model
     )
 
     assert candidate.validation.is_approvable is False
@@ -148,7 +165,7 @@ def test_request_targets_the_selected_model_and_json_response_mode() -> None:
     transport = _Transport(_gemini_response(_candidate_json()))
     provider = _provider(transport, model="gemini-2.5-pro")
 
-    provider.generate_candidate(AuthoringGenerationRequest(brief=_brief()))
+    provider.generate(_brief())
 
     url, body, headers = transport.calls[0]
     assert url.endswith("/models/gemini-2.5-pro:generateContent")
@@ -161,21 +178,34 @@ def test_prompt_grounds_generation_in_the_brief_and_feedback_contract() -> None:
     transport = _Transport(_gemini_response(_candidate_json()))
     provider = _provider(transport)
 
-    provider.generate_candidate(AuthoringGenerationRequest(brief=_brief()))
+    provider.generate(_brief(continuation_intent="Try an iterative follow-up move."))
 
     _, body, _ = transport.calls[0]
     prompt = json.loads(body)["contents"][0]["parts"][0]["text"]
     assert "Visual Analysis" in prompt
     assert "Describe the dominant structure you notice." in prompt
     assert "reflection_intent" in prompt
+    assert "continuation_intent" in prompt
     assert "must not grade" in prompt
+
+
+def test_prompt_marks_continuation_intent_optional_when_brief_omits_it() -> None:
+    transport = _Transport(_gemini_response(_candidate_json()))
+    provider = _provider(transport)
+
+    provider.generate(_brief(continuation_intent=""))
+
+    _, body, _ = transport.calls[0]
+    prompt = json.loads(body)["contents"][0]["parts"][0]["text"]
+    assert "continuation_intent" in prompt
+    assert "optional" in prompt.lower()
 
 
 def test_api_key_is_sent_as_a_header_and_never_in_the_url() -> None:
     transport = _Transport(_gemini_response(_candidate_json()))
     provider = _provider(transport)
 
-    provider.generate_candidate(AuthoringGenerationRequest(brief=_brief()))
+    provider.generate(_brief())
 
     url, _, headers = transport.calls[0]
     assert headers["x-goog-api-key"] == API_KEY
@@ -186,7 +216,16 @@ def test_code_fenced_json_response_is_accepted() -> None:
     fenced = f"```json\n{_candidate_json()}\n```"
     provider = _provider(_Transport(_gemini_response(fenced)))
 
-    result = provider.generate_candidate(AuthoringGenerationRequest(brief=_brief()))
+    result = provider.generate(_brief())
+
+    assert result.output["title"] == "Reading Composition — Observe Practice"
+
+
+def test_loose_json_with_surrounding_text_is_accepted() -> None:
+    text_with_json = f"Here is the candidate:\n{_candidate_json()}\nHope that helps!"
+    provider = _provider(_Transport(_gemini_response(text_with_json)))
+
+    result = provider.generate(_brief())
 
     assert result.output["title"] == "Reading Composition — Observe Practice"
 
@@ -220,7 +259,7 @@ def test_network_failure_becomes_a_provider_error() -> None:
     provider = _provider(_raising_fetch(OSError("connection refused")))
 
     with pytest.raises(AuthoringProviderError):
-        provider.generate_candidate(AuthoringGenerationRequest(brief=_brief()))
+        provider.generate(_brief())
 
 
 def test_http_error_status_becomes_a_provider_error() -> None:
@@ -230,7 +269,7 @@ def test_http_error_status_becomes_a_provider_error() -> None:
     provider = _provider(_raising_fetch(http_error))
 
     with pytest.raises(AuthoringProviderError, match="429"):
-        provider.generate_candidate(AuthoringGenerationRequest(brief=_brief()))
+        provider.generate(_brief())
 
 
 @pytest.mark.parametrize(
@@ -248,14 +287,14 @@ def test_unusable_provider_response_becomes_a_provider_error(
     provider = _provider(_Transport(response))
 
     with pytest.raises(AuthoringProviderError):
-        provider.generate_candidate(AuthoringGenerationRequest(brief=_brief()))
+        provider.generate(_brief())
 
 
 def test_provider_errors_never_leak_the_api_key() -> None:
     provider = _provider(_raising_fetch(OSError(f"failed with {API_KEY}")))
 
     with pytest.raises(AuthoringProviderError) as excinfo:
-        provider.generate_candidate(AuthoringGenerationRequest(brief=_brief()))
+        provider.generate(_brief())
 
     assert API_KEY not in str(excinfo.value)
 
@@ -271,7 +310,7 @@ def test_http_error_body_is_not_surfaced() -> None:
     provider = _provider(_raising_fetch(http_error))
 
     with pytest.raises(AuthoringProviderError) as excinfo:
-        provider.generate_candidate(AuthoringGenerationRequest(brief=_brief()))
+        provider.generate(_brief())
 
     assert "Sensitive" not in str(excinfo.value)
 
@@ -331,7 +370,7 @@ def test_default_transport_posts_with_credentials(
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
     provider = GeminiAuthoringProvider(api_key=API_KEY)
 
-    result = provider.generate_candidate(AuthoringGenerationRequest(brief=_brief()))
+    result = provider.generate(_brief())
 
     assert result.output["title"] == "Reading Composition — Observe Practice"
     sent = captured[0]

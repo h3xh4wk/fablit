@@ -10,7 +10,8 @@ SPEC-032. It owns everything provider-specific:
   Gemini ``generateContent`` request that asks for JSON output);
 - response parsing (the model's JSON text becomes the structured generation
   result SPEC-032 validates);
-- provider/model identity for authoring provenance; and
+- provider/model identity and timezone-aware generation timestamp for
+  authoring provenance; and
 - failure translation (network, HTTP, and unusable-response failures become
   :class:`~fablit.application.errors.AuthoringProviderError`).
 
@@ -27,7 +28,8 @@ import logging
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
-from typing import Any, Final
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any, Final
 
 from fablit.application.authoring_llm import (
     AuthoringGenerationRequest,
@@ -37,6 +39,9 @@ from fablit.application.errors import (
     AuthoringProviderConfigurationError,
     AuthoringProviderError,
 )
+
+if TYPE_CHECKING:
+    from fablit.application.authoring_llm import AuthoringBrief
 
 logger = logging.getLogger("fablit.authoring.gemini")
 
@@ -108,10 +113,14 @@ class GeminiAuthoringProvider:
     def model_id(self) -> str:
         return self._model
 
-    def generate_candidate(
-        self, request: AuthoringGenerationRequest
-    ) -> LlmGenerationResult:
+    def generate(self, brief: AuthoringBrief | Any) -> LlmGenerationResult:
         """Ask Gemini for a structured candidate and parse its JSON response."""
+        now = datetime.now(UTC)
+        request = (
+            brief
+            if isinstance(brief, AuthoringGenerationRequest)
+            else AuthoringGenerationRequest(brief=brief)
+        )
         url = f"{self._endpoint}/models/{self._model}:generateContent"
         body = json.dumps(self._build_payload(request)).encode("utf-8")
         headers = {
@@ -133,10 +142,17 @@ class GeminiAuthoringProvider:
 
         output = self._parse_response(payload)
         return LlmGenerationResult(
-            output=output,
+            candidate_data=output,
             provider=self.provider_id,
             model=self.model_id,
+            generated_at=now,
         )
+
+    def generate_candidate(
+        self, request: AuthoringGenerationRequest
+    ) -> LlmGenerationResult:
+        """Compatibility method accepting an AuthoringGenerationRequest wrapper."""
+        return self.generate(request)
 
     def _default_fetch(self, url: str, body: bytes, headers: Mapping[str, str]) -> str:
         request = urllib.request.Request(
@@ -169,7 +185,6 @@ class GeminiAuthoringProvider:
         feedback boundary so generated guidance stays grounded (AA-003).
         """
         brief = request.as_payload()
-        contract_fields = ", ".join(_CONTRACT_FIELDS)
         lines = [
             "You are drafting one candidate practice for Fablit's curated "
             "library. A human author reviews and approves every candidate, so "
@@ -184,30 +199,49 @@ class GeminiAuthoringProvider:
             f"- practice mode: {brief['practice_mode']}",
         ]
         optional = (
-            ("learner context", brief["learner_context"]),
-            ("expected thinking", brief["expected_thinking"]),
-            ("evaluation intent", brief["evaluation_intent"]),
-            ("feedback intent", brief["feedback_intent"]),
-            ("reflection intent", brief["reflection_intent"]),
-            ("continuation intent", brief["continuation_intent"]),
-            ("examination context", brief["examination_context"]),
-            ("secondary thinking lens", brief["secondary_capability"]),
-            ("stimulus requirements", brief["stimulus_requirements"]),
+            ("learner context", brief.get("learner_context")),
+            ("expected thinking", brief.get("expected_thinking")),
+            ("evaluation intent", brief.get("evaluation_intent")),
+            ("feedback intent", brief.get("feedback_intent")),
+            ("reflection intent", brief.get("reflection_intent")),
+            ("continuation intent", brief.get("continuation_intent")),
+            ("examination context", brief.get("examination_context")),
+            ("secondary thinking lens", brief.get("secondary_capability")),
+            ("stimulus requirements", brief.get("stimulus_requirements")),
         )
         for label, value in optional:
             if isinstance(value, str) and value.strip():
                 lines.append(f"- {label}: {value}")
-        constraints = brief["constraints"]
+        constraints = brief.get("constraints", ())
         if constraints:
             lines.append(f"- constraints: {'; '.join(constraints)}")
+
+        continuation_intent = brief.get("continuation_intent")
+        continuation_requested = bool(
+            isinstance(continuation_intent, str) and continuation_intent.strip()
+        )
+        if continuation_requested:
+            contract_desc = (
+                '- "contract": an object with the keys '
+                f"{', '.join(_CONTRACT_FIELDS)}, each a non-blank string "
+                "grounded in the brief above."
+            )
+        else:
+            base_fields = [f for f in _CONTRACT_FIELDS if f != "continuation_intent"]
+            contract_desc = (
+                '- "contract": an object with the required keys '
+                f"{', '.join(base_fields)}, each a non-blank string grounded "
+                'in the brief above. The key "continuation_intent" is '
+                "optional and should be omitted or null as no continuation "
+                "was requested in the brief."
+            )
+
         lines += [
             "",
             "Return a single JSON object with exactly these keys:",
             '- "title": a short learner-facing title;',
             '- "description": a learner-facing description of the practice;',
-            '- "contract": an object with the keys '
-            f"{contract_fields}, each a non-blank string grounded in the "
-            "brief above.",
+            contract_desc,
             "",
             "The evaluation and feedback guidance must stay evidence-based and "
             "must not grade, score, rank, or label the learner, infer ability, "
@@ -243,7 +277,7 @@ class GeminiAuthoringProvider:
             )
 
         try:
-            output = json.loads(_strip_code_fence(text))
+            output = json.loads(_extract_json_object(text))
         except (ValueError, TypeError) as exc:
             raise AuthoringProviderError(
                 f"{_UNAVAILABLE_MESSAGE} (unreadable candidate)"
@@ -277,13 +311,17 @@ def _candidate_text(data: Mapping[str, Any]) -> str:
     return "".join(chunks).strip()
 
 
-def _strip_code_fence(text: str) -> str:
-    """Drop a Markdown code fence if the model wrapped its JSON despite the
-    ``application/json`` request."""
+def _extract_json_object(text: str) -> str:
+    """Extract JSON object from raw response text, removing code fences if present."""
     stripped = text.strip()
-    if not stripped.startswith("```"):
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        if len(lines) >= 2 and lines[-1].strip().startswith("```"):
+            stripped = "\n".join(lines[1:-1]).strip()
+    if stripped.startswith("{") and stripped.endswith("}"):
         return stripped
-    lines = stripped.splitlines()
-    if len(lines) >= 2 and lines[-1].strip().startswith("```"):
-        return "\n".join(lines[1:-1]).strip()
+    first_brace = stripped.find("{")
+    last_brace = stripped.rfind("}")
+    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+        return stripped[first_brace : last_brace + 1]
     return stripped

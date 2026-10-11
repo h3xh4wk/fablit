@@ -1,12 +1,14 @@
 """Provider-neutral LLM boundary behaviour (ARCH-001).
 
 These tests protect the boundary SPEC-032 depends on: a structured request,
-a structured generation result carrying provider/model metadata, and a
-deterministic fake provider that makes the workflow testable without any
+a structured generation result carrying provider/model metadata and timestamp,
+and a deterministic fake provider that makes the workflow testable without any
 real external API call.
 """
 
 from __future__ import annotations
+
+from datetime import UTC, datetime
 
 import pytest
 
@@ -74,20 +76,33 @@ def test_request_carries_the_structured_brief() -> None:
 def test_fake_provider_returns_a_structured_result_with_metadata() -> None:
     provider = FakeAuthoringProvider(_output(), provider="acme", model="acme-1")
 
-    result = provider.generate_candidate(AuthoringGenerationRequest(brief=_brief()))
+    result = provider.generate(_brief())
 
     assert isinstance(result, LlmGenerationResult)
     assert result.provider == "acme"
     assert result.model == "acme-1"
+    assert result.candidate_data["title"] == "Reading Composition — Observe Practice"
     assert result.output["title"] == "Reading Composition — Observe Practice"
+    assert isinstance(result.generated_at, datetime)
+    assert result.generated_at.tzinfo is not None
 
 
 def test_fake_provider_records_requests_without_network_io() -> None:
     provider = FakeAuthoringProvider(_output())
+    brief = _brief()
+
+    provider.generate(brief)
+
+    assert provider.calls == [brief]
+
+
+def test_fake_provider_generate_candidate_compatibility() -> None:
+    provider = FakeAuthoringProvider(_output())
     request = AuthoringGenerationRequest(brief=_brief())
 
-    provider.generate_candidate(request)
+    result = provider.generate_candidate(request)
 
+    assert isinstance(result, LlmGenerationResult)
     assert provider.calls == [request]
 
 
@@ -98,20 +113,40 @@ def test_generation_result_requires_provider_and_model_metadata() -> None:
         LlmGenerationResult(output={}, provider="p", model="  ")
 
 
+def test_generation_result_requires_timezone_aware_generated_at() -> None:
+    naive_dt = datetime(2026, 1, 1, 12, 0, 0)
+    with pytest.raises(AuthoringProviderError, match="timezone-aware"):
+        LlmGenerationResult(
+            candidate_data=_output(),
+            provider="p",
+            model="m",
+            generated_at=naive_dt,
+        )
+
+    aware_dt = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+    result = LlmGenerationResult(
+        candidate_data=_output(),
+        provider="p",
+        model="m",
+        generated_at=aware_dt,
+    )
+    assert result.generated_at == aware_dt
+
+
 def test_fake_provider_can_surface_a_provider_failure() -> None:
     provider = FakeAuthoringProvider(error=AuthoringProviderError("boom"))
 
     with pytest.raises(AuthoringProviderError, match="boom"):
-        provider.generate_candidate(AuthoringGenerationRequest(brief=_brief()))
+        provider.generate(_brief())
 
 
 def test_fake_provider_output_flows_into_spec_032_validation() -> None:
     """The port's result feeds SPEC-032's existing validation unchanged."""
     provider = FakeAuthoringProvider(_output())
-    result = provider.generate_candidate(AuthoringGenerationRequest(brief=_brief()))
+    result = provider.generate(_brief())
 
     candidate = candidate_from_provider_output(
-        result.output, _brief(), provider=result.provider, model=result.model
+        result.candidate_data, _brief(), provider=result.provider, model=result.model
     )
 
     assert candidate.validation.is_approvable is True
