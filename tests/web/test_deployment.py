@@ -19,11 +19,14 @@ from fastapi.testclient import TestClient
 from app.main import (
     _build_artifact_storage,
     _build_authoring_candidate_store,
+    _build_published_practice_store,
     create_app,
 )
 from fablit.application.artifact_storage import FileArtifactStorage
+from fablit.application.publishing import InMemoryPublishedPracticeStore
 from fablit.config import AppConfig, load_config
 from fablit.platform.datastore_authoring_store import DatastoreAuthoringCandidateStore
+from fablit.platform.datastore_published_store import DatastorePublishedPracticeStore
 from fablit.platform.gcs_artifact_storage import GCSArtifactStorage
 
 
@@ -328,3 +331,49 @@ def test_production_authoring_candidate_store_builds_datastore() -> None:
         assert isinstance(store, DatastoreAuthoringCandidateStore)
         assert store.retention_days == 45
         assert store._client is fake_client
+
+
+# --- Published practice store (SPEC-035 §5) ----------------------------------
+
+
+def test_published_practice_store_defaults_to_in_memory() -> None:
+    store = _build_published_practice_store(load_config(overrides={}))
+
+    assert isinstance(store, InMemoryPublishedPracticeStore)
+
+
+def test_app_exposes_the_published_practice_store() -> None:
+    app = create_app(load_config(overrides={"environment": "testing"}))
+
+    assert isinstance(
+        app.state.published_practice_store, InMemoryPublishedPracticeStore
+    )
+    assert app.state.learner_applications.publications == ()
+
+
+def test_production_published_practice_store_builds_datastore() -> None:
+    config = load_config(
+        overrides={
+            "environment": "production",
+            "published_practice_store": "datastore",
+        }
+    )
+    fake_datastore = MagicMock()
+    fake_client = MagicMock()
+    fake_datastore.Client.return_value = fake_client
+
+    google_cloud = MagicMock()
+    google_cloud.datastore = fake_datastore
+
+    with patch.dict(
+        "sys.modules",
+        {
+            "google": MagicMock(cloud=google_cloud),
+            "google.cloud": google_cloud,
+            "google.cloud.datastore": fake_datastore,
+        },
+    ):
+        store = _build_published_practice_store(config)
+
+    assert isinstance(store, DatastorePublishedPracticeStore)
+    assert store._client is fake_client

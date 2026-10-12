@@ -49,8 +49,9 @@ from .demo_data import (
     REFLECTION_PROMPT,
     REFLECTION_SAVE_LABEL,
     REFLECTION_SKIP_LABEL,
+    build_demo_activity_map,
 )
-from .demo_evaluator import Evaluator
+from .demo_evaluator import DemoEvaluator, Evaluator
 from .errors import (
     CompletionNotFoundError,
     EvaluationFailedError,
@@ -70,6 +71,7 @@ from .practice_modes import (
     PracticeModeDefinition,
     build_practice_mode_definitions,
 )
+from .publishing import PublishedPractice
 from .stimulus import StimulusProvider
 from .store import DemoActivity, LearnerJourneyStore, PracticeCompletion
 from .view_models import (
@@ -119,6 +121,7 @@ class PracticeApplication:
         history_repository: PracticeHistoryRepository | None = None,
         artifact_storage: ArtifactStorage | None = None,
         clock: Callable[[], datetime] | None = None,
+        publications: tuple[PublishedPractice, ...] = (),
     ) -> None:
         self._store = store
         self._evaluator = evaluator
@@ -144,6 +147,58 @@ class PracticeApplication:
         self._practice_transitions = build_practice_transition_map(
             store.list_activities()
         )
+        # SPEC-035 §6/§7: the explicitly published learner-library practices
+        # reconciled into this learner's catalogue. The fingerprint makes the
+        # reconciliation a cheap no-op on requests where nothing changed.
+        self._publication_fingerprint: tuple[tuple[UUID, int, bool], ...] = ()
+        self._published_activity_ids: set[UUID] = set()
+        self.apply_publications(publications)
+
+    # SPEC-035 — published practice catalogue reconciliation
+
+    def apply_publications(self, records: tuple[PublishedPractice, ...]) -> None:
+        """Reconcile this learner's catalogue with the current published set.
+
+        Publication is a runtime event (SPEC-035), so a learner application
+        built before an author publishes still discovers the new practice on
+        its next request, and a withdrawal takes effect the same way. Only
+        the shared catalogue content is touched: learner journey state
+        (submissions, feedback, reflections, history) is never rebuilt or
+        discarded, and nothing here consults the authoring workflow.
+
+        Reconciliation is idempotent: while the published set is unchanged
+        (same identities, revisions, and withdrawal states) this is a no-op.
+        """
+        fingerprint = tuple(
+            (record.activity_id, record.source_revision, record.is_withdrawn)
+            for record in records
+        )
+        if fingerprint == self._publication_fingerprint:
+            return
+
+        current_ids: set[UUID] = set()
+        for record in records:
+            # Republishing a re-approved revision replaces the entry in place
+            # under its stable identity; withdrawal flips discovery only.
+            self._store.add_activity(record.activity, discoverable=record.is_visible)
+            current_ids.add(record.activity_id)
+        # A record that disappeared from the store is hidden defensively but
+        # stays resolvable so in-flight practice is never broken mid-journey.
+        for activity_id in self._published_activity_ids - current_ids:
+            self._store.set_discoverable(activity_id, False)
+        self._published_activity_ids |= current_ids
+
+        self._practice_modes = build_practice_mode_definitions(
+            self._store.list_activities()
+        )
+        self._practice_transitions = build_practice_transition_map(
+            self._store.list_activities()
+        )
+        if isinstance(self._evaluator, DemoEvaluator):
+            self._evaluator = DemoEvaluator(
+                build_demo_activity_map(self._store.all_activities())
+            )
+        self._publication_fingerprint = fingerprint
 
     # SPEC-022 — Practice Mode Choice
 

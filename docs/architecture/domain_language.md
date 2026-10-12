@@ -1,9 +1,9 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 1.12.0
+**Version:** 1.13.0
 **Status:** Draft
-**Last Updated:** 2026-10-11
+**Last Updated:** 2026-10-12
 
 ---
 
@@ -1024,10 +1024,49 @@ Curated library isolation
 | AA-005 | Authoring candidates and provenance are internal workflow data, never learner-facing progress or content until curated. |
 | AA-006 | Deterministic validation checks all 8 SPEC-029 contract fields and forbids evaluative language (SPEC-030); candidates failing validation cannot be approved. |
 | AA-007 | Candidate editing produces a new revision with preserved history and re-triggers contract validation. |
-| AA-008 | Candidate review outcomes (`pending`, `approved`, `rejected`) follow strict state transitions; approved candidates stay separate from public learner routes. |
+| AA-008 | Candidate review outcomes (`pending`, `approved`, `rejected`) follow strict state transitions; approved candidates stay separate from public learner routes until they are explicitly published (SPEC-035). |
 | AA-009 | Shared candidate state is persisted across application instances in an authoring-scoped namespace, strictly isolating candidate storage from learner routes. |
 | AA-010 | Unapproved candidates are governed by a configurable retention policy (default 30 days); approved candidates are retained indefinitely for curation. |
 | AA-011 | Candidate store failures result in service unavailable (503) responses and never report false authoring success. |
+
+## Published Practice Publication (SPEC-035)
+
+A **Published Practice** is approved, human-reviewed authoring content that an
+author has deliberately made available in the learner-facing curated practice
+library. Approval and publication are distinct decisions: *approved* records
+that a reviewer accepted the candidate's content quality; *published* means the
+approved content is discoverable by learners. Publication is an explicit human
+curation action — never a side effect of generation or approval.
+
+The publication record carries the existing learner-facing activity
+representation (`DemoActivity` / `AssessmentActivity`) plus internal
+provenance: the source authoring candidate identity, the approved revision,
+the publication time, and any withdrawal time. Provenance is authoring-side
+data and never appears on learner-facing routes.
+
+```
+Approved Practice Candidate
+           ↓ explicit publish action
+     Published Practice
+   (learner-facing activity + internal provenance)
+           ↓
+Learner discovery → Practice → Evaluation → Feedback → Reflection
+           ↓ explicit withdrawal
+hidden from discovery; completed history preserved
+```
+
+### Rules
+
+| Rule | Description |
+|------|-------------|
+| PUB-001 | Only an explicitly approved candidate may be published; generated, rejected, invalid, and edited-but-not-reapproved candidates are refused at the publication boundary. |
+| PUB-002 | Approval alone never makes content learner-visible; publication is a separate, explicit human action. |
+| PUB-003 | The publication boundary revalidates content (SPEC-029/SPEC-030) and approval state again before anything is written. |
+| PUB-004 | A published practice reuses the existing learner-facing activity representation; publication never introduces a parallel learner practice model. |
+| PUB-005 | Repeating the same publish request is idempotent and never creates a duplicate catalogue entry; republishing a re-approved revision replaces content in place under the same stable activity identity. |
+| PUB-006 | Publication state and provenance are kept behind the published practice store port; a storage failure is reported as a failure and never leaves misleading partial state. |
+| PUB-007 | Withdrawing a published practice removes it from learner discovery only: completed history stays readable, in-flight practice can finish, and the publication record is retained for traceability. |
+| PUB-008 | Learner-facing routes expose only published practice content — never authoring candidates, provenance, reviewer decisions, validation diagnostics, or provider details. |
 
 ## Learner Practice Application Flow (SPEC-012)
 

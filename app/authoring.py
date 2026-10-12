@@ -23,6 +23,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from app.learner_session import LearnerApplicationRegistry
 from fablit.application.authoring import (
     _CONTRACT_FIELDS,
     AuthoringRevision,
@@ -32,11 +33,20 @@ from fablit.application.authoring import (
 )
 from fablit.application.demo_data import PRACTICE_CAPABILITIES
 from fablit.application.errors import (
+    CandidateContentNotPublishableError,
     CandidateNotApprovableError,
     CandidateNotFoundError,
+    CandidateNotPublishableError,
+    PublishedPracticeNotFoundError,
 )
 from fablit.application.persistence import PersistenceError
 from fablit.application.practice_modes import PracticeMode
+from fablit.application.publishing import (
+    PublishedPractice,
+    PublishedPracticeStore,
+    publish_candidate,
+    withdraw_publication,
+)
 from fablit.application.store import PracticeContentContract
 from fablit.config import AppConfig
 from fablit.platform.authoring_auth import (
@@ -602,7 +612,10 @@ def _candidate_from_generation_result(
         ) from None
 
 
-def _candidate_payload(candidate: PracticeCandidate) -> dict[str, Any]:
+def _candidate_payload(
+    candidate: PracticeCandidate,
+    publication: PublishedPractice | None = None,
+) -> dict[str, Any]:
     """Encode a candidate for authoring responses without provider SDK objects."""
     encoded: object = jsonable_encoder(asdict(candidate))
     if not isinstance(encoded, dict):
@@ -633,6 +646,21 @@ def _candidate_payload(candidate: PracticeCandidate) -> dict[str, Any]:
         }
         for h in candidate.history
     ]
+    payload["publication"] = (
+        {
+            "activity_id": str(publication.activity_id),
+            "published_at": publication.published_at.isoformat(),
+            "published_revision": publication.source_revision,
+            "withdrawn_at": (
+                publication.withdrawn_at.isoformat()
+                if publication.withdrawn_at is not None
+                else None
+            ),
+            "is_withdrawn": publication.is_withdrawn,
+        }
+        if publication is not None
+        else None
+    )
     return payload
 
 
@@ -642,6 +670,71 @@ def _candidate_store(request: Request) -> AuthoringCandidateStore:
     if not isinstance(store, AuthoringCandidateStore):
         raise RuntimeError("Authoring candidate store is not initialized.")
     return store
+
+
+def _published_store(request: Request) -> PublishedPracticeStore:
+    """Resolve the app-scoped published practice store (SPEC-035 §5)."""
+    store: object = request.app.state.published_practice_store
+    if not isinstance(store, PublishedPracticeStore):
+        raise RuntimeError("Published practice store is not initialized.")
+    return store
+
+
+def _publication_map(request: Request) -> dict[UUID, PublishedPractice]:
+    """Publication records keyed by source candidate for workspace rendering.
+
+    Publication metadata is authoring-side only. A store that cannot be read
+    degrades the workspace to "no publication shown" (logged, never a false
+    publish), so listing candidates still works while publication storage is
+    unavailable.
+    """
+    try:
+        records = _published_store(request).list_records()
+    except PersistenceError:
+        logger.exception("Failed to load published practice records for the workspace")
+        return {}
+    return {record.source_candidate_id: record for record in records}
+
+
+def _learner_registry(request: Request) -> LearnerApplicationRegistry:
+    """Resolve the learner application registry publication writes into."""
+    registry: object = request.app.state.learner_applications
+    if not isinstance(registry, LearnerApplicationRegistry):
+        raise RuntimeError("Learner application registry is not initialized.")
+    return registry
+
+
+def _publication_error_response(
+    request: Request,
+    *,
+    status_code: int,
+    detail: str,
+    error: Exception,
+) -> Response:
+    """Surface a refused or failed publication transition to the author.
+
+    JSON clients keep the machine-readable error; an author working in the
+    browser gets the workspace back with the reason visible, so an invalid
+    state transition or a storage failure is never a bare status code
+    (SPEC-035 §9: failures are explicit and visibly explained).
+    """
+    accept = request.headers.get("accept", "")
+    if "text/html" in accept and "application/json" not in accept:
+        try:
+            candidates = _candidate_store(request).list()
+        except PersistenceError:
+            candidates = ()
+        return templates.TemplateResponse(
+            request,
+            "authoring.html",
+            {
+                "error": detail,
+                "candidates": candidates,
+                "publications": _publication_map(request),
+            },
+            status_code=status_code,
+        )
+    raise HTTPException(status_code=status_code, detail=detail) from error
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -708,7 +801,7 @@ async def authoring_workspace(request: Request) -> Response:
     return templates.TemplateResponse(
         request,
         "authoring.html",
-        {"candidates": candidates},
+        {"candidates": candidates, "publications": _publication_map(request)},
     )
 
 
@@ -801,6 +894,7 @@ async def authoring_generate(request: Request) -> Response:
             "candidate": candidate,
             "brief": brief,
             "candidates": _candidate_store(request).list(),
+            "publications": _publication_map(request),
         },
     )
 
@@ -817,8 +911,14 @@ async def authoring_candidates(request: Request) -> Response:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="The authoring candidate store is temporarily unavailable.",
         ) from error
+    publications = _publication_map(request)
     return JSONResponse(
-        {"candidates": [_candidate_payload(candidate) for candidate in candidates]}
+        {
+            "candidates": [
+                _candidate_payload(candidate, publications.get(candidate.id))
+                for candidate in candidates
+            ]
+        }
     )
 
 
@@ -854,9 +954,11 @@ async def authoring_candidate_detail(request: Request, candidate_id: str) -> Res
                 "candidate": candidate,
                 "brief": candidate.brief,
                 "candidates": candidates,
+                "publications": _publication_map(request),
             },
         )
-    return JSONResponse(_candidate_payload(candidate))
+    publication = _publication_map(request).get(candidate.id)
+    return JSONResponse(_candidate_payload(candidate, publication))
 
 
 @router.post("/candidates/{candidate_id}/approve")
@@ -925,6 +1027,7 @@ async def authoring_approve_candidate(request: Request, candidate_id: str) -> Re
             "message": f"Candidate {candidate_id} approved for curated library.",
             "candidate": approved,
             "candidates": candidates,
+            "publications": _publication_map(request),
         },
     )
 
@@ -984,6 +1087,7 @@ async def authoring_reject_candidate(request: Request, candidate_id: str) -> Res
             "message": f"Candidate {candidate_id} rejected.",
             "candidate": rejected,
             "candidates": candidates,
+            "publications": _publication_map(request),
         },
     )
 
@@ -1049,9 +1153,197 @@ async def authoring_edit_candidate(request: Request, candidate_id: str) -> Respo
                 ),
                 "candidate": edited,
                 "candidates": candidates,
+                "publications": _publication_map(request),
             },
         )
     return JSONResponse(
-        _candidate_payload(edited),
+        _candidate_payload(edited, _publication_map(request).get(edited.id)),
         status_code=status.HTTP_200_OK,
+    )
+
+
+def _publication_response(
+    request: Request,
+    *,
+    message: str,
+    record: PublishedPractice,
+    candidate_id: str,
+    status_text: str,
+) -> Response:
+    """Render the authoring outcome for JSON clients and the workspace UI."""
+    accept = request.headers.get("accept", "")
+    content_type = request.headers.get("content-type", "")
+    if (
+        "application/json" in accept
+        or "application/json" in content_type
+        or ("text/html" not in accept and "*/*" in accept)
+    ):
+        return JSONResponse(
+            {
+                "status": status_text,
+                "candidate_id": candidate_id,
+                "activity_id": str(record.activity_id),
+                "revision": record.source_revision,
+                "withdrawn_at": (
+                    record.withdrawn_at.isoformat()
+                    if record.withdrawn_at is not None
+                    else None
+                ),
+            },
+            status_code=status.HTTP_200_OK,
+        )
+    store = _candidate_store(request)
+    try:
+        candidates = store.list()
+        candidate: PracticeCandidate | None = store.get(candidate_id)
+    except (PersistenceError, CandidateNotFoundError):
+        candidates, candidate = (), None
+    return templates.TemplateResponse(
+        request,
+        "authoring.html",
+        {
+            "message": message,
+            "candidate": candidate,
+            "brief": candidate.brief if candidate is not None else None,
+            "candidates": candidates,
+            "publications": _publication_map(request),
+        },
+    )
+
+
+@router.post("/candidates/{candidate_id}/publish")
+async def authoring_publish_candidate(request: Request, candidate_id: str) -> Response:
+    """Explicit publish action: approved candidate → learner library (SPEC-035 §5).
+
+    Publication is a deliberate human action, never a side effect of
+    generation or approval. The boundary revalidates content and approval
+    state, writes the publication through the published practice store
+    first, and only then hands the record to the learner-facing registry —
+    so a storage failure is reported as a failure and never leaves content
+    learners can see but the store does not keep.
+    """
+    require_author_access(request)
+    store = _candidate_store(request)
+    try:
+        candidate = store.get(candidate_id)
+    except CandidateNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Candidate {candidate_id} not found.",
+        ) from None
+    except PersistenceError as error:
+        logger.exception("Failed to retrieve candidate before publication")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The authoring candidate store is temporarily unavailable.",
+        ) from error
+
+    registry = _learner_registry(request)
+    published_store = _published_store(request)
+    try:
+        record = publish_candidate(
+            candidate,
+            store=published_store,
+            position=registry.next_activity_position(),
+        )
+    except CandidateContentNotPublishableError as error:
+        return _publication_error_response(
+            request,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(error),
+            error=error,
+        )
+    except CandidateNotPublishableError as error:
+        return _publication_error_response(
+            request,
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(error),
+            error=error,
+        )
+    except PersistenceError as error:
+        logger.exception(
+            "Failed to persist candidate publication",
+            extra={"candidate_id": str(candidate.id)},
+        )
+        return _publication_error_response(
+            request,
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The published practice store is temporarily unavailable.",
+            error=error,
+        )
+
+    # Only after the write succeeded does the learner-facing catalogue learn
+    # about the publication (SPEC-035 §9: no misleading partial state).
+    registry.record_publication(record)
+    logger.info(
+        "practice candidate published",
+        extra={
+            "candidate_id": str(candidate.id),
+            "activity_id": str(record.activity_id),
+            "revision": record.source_revision,
+        },
+    )
+    return _publication_response(
+        request,
+        message=(
+            f"Candidate {candidate_id} published to the learner library "
+            f"(revision {record.source_revision})."
+        ),
+        record=record,
+        candidate_id=candidate_id,
+        status_text="published",
+    )
+
+
+@router.post("/candidates/{candidate_id}/withdraw")
+async def authoring_withdraw_candidate(request: Request, candidate_id: str) -> Response:
+    """Withdraw a published practice from learner discovery (SPEC-035 §8).
+
+    The minimal explicit withdrawal policy: the practice stops appearing in
+    learner discovery while completed learner history and the publication
+    record stay intact, and the source candidate can be republished later.
+    """
+    require_author_access(request)
+    try:
+        source_candidate_id = UUID(candidate_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Candidate {candidate_id} not found.",
+        ) from None
+
+    registry = _learner_registry(request)
+    published_store = _published_store(request)
+    try:
+        record = withdraw_publication(source_candidate_id, store=published_store)
+    except PublishedPracticeNotFoundError as error:
+        return _publication_error_response(
+            request,
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(error),
+            error=error,
+        )
+    except PersistenceError as error:
+        logger.exception(
+            "Failed to persist publication withdrawal",
+            extra={"candidate_id": candidate_id},
+        )
+        return _publication_error_response(
+            request,
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The published practice store is temporarily unavailable.",
+            error=error,
+        )
+
+    registry.record_publication(record)
+    logger.info(
+        "practice candidate withdrawn from the learner library",
+        extra={"candidate_id": candidate_id, "activity_id": str(record.activity_id)},
+    )
+    return _publication_response(
+        request,
+        message=f"Candidate {candidate_id} withdrawn from the learner library.",
+        record=record,
+        candidate_id=candidate_id,
+        status_text="withdrawn",
     )

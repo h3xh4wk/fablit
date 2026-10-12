@@ -38,3 +38,6 @@ env_variables:
   FABLIT_AUTHORING_CANDIDATE_STORE: "datastore"
   # Default retention window for unapproved candidates in days (FIX-7).
   FABLIT_AUTHORING_CANDIDATE_RETENTION_DAYS: "30"
+  # Published practice store for the learner library (SPEC-035).
+  # Use datastore on App Engine so published practices are shared across instances.
+  FABLIT_PUBLISHED_PRACTICE_STORE: "datastore"

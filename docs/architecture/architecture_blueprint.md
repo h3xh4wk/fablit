@@ -1,9 +1,9 @@
 # Fablit Architecture Blueprint
 
 **Document ID:** AB-001
-**Version:** 0.17.0
+**Version:** 0.18.0
 **Status:** Draft
-**Last Updated:** 2026-10-11
+**Last Updated:** 2026-10-12
 
 ---
 
@@ -864,6 +864,35 @@ AuthoringCandidateStore (app/authoring.py)
 - **Namespace isolation:** all authoring candidate entities are isolated within the `authoring` namespace, completely separate from learner data (such as default namespace `PracticeCompletion` entities). Learner practice routes never query the authoring store.
 - **Retention & lifetime policy:** unapproved candidates expire after `authoring_candidate_retention_days` (default 30 days, integer $\ge 1$), after which retrieval raises `CandidateNotFoundError` (HTTP 404) and candidate listing excludes them. Approved candidates are preserved indefinitely for curated library handoff.
 - **Fail-safe mutation handling:** persistence failures are translated to `PersistenceError` and mapped to HTTP `503 Service Unavailable`, guaranteeing that storage failures never report false success.
+
+## Publication to the Learner Library (SPEC-035)
+
+SPEC-035 completes the handoff from the human-reviewed authoring workflow to the existing learner-facing curated library. Approval and publication are distinct decisions: *approved* means a reviewer accepted the content quality, *published* means the approved content has been deliberately made discoverable to learners.
+
+```text
+Approved Practice Candidate (SPEC-032)
+        ↓ POST /authoring/candidates/{id}/publish   (SEC-001 protected)
+Publication gate: revalidate content + approval state
+        ↓
+PublishedPractice  (existing DemoActivity + internal provenance)
+        │
+        ├── InMemoryPublishedPracticeStore  [local / testing]
+        │
+        └── DatastorePublishedPracticeStore [production / multi-instance]
+                └── Google Cloud Datastore (namespace="library", kind="PublishedPractice")
+        ↓ only after the write succeeds
+LearnerApplicationRegistry.record_publication(...)
+        ↓ reconciled on each learner request
+Dashboard / Full Practice → Practice → Evaluation → Feedback → Reflection
+```
+
+- **Publication boundary (`fablit/application/publishing.py`):** `publish_candidate(...)` is written against the `PublishableCandidate` contract (satisfied by both candidate models), revalidates SPEC-029/SPEC-030 content and the approval state, and refuses generated, rejected, invalid, and edited-but-not-reapproved candidates (`CandidateNotPublishableError` → 409, `CandidateContentNotPublishableError` → 422).
+- **Existing learner representation:** a published practice is a `DemoActivity` / `AssessmentActivity` (written response, prompt taken from the approved contract's task, qualitative evaluation guidance derived from the approved contract). No parallel learner practice model is introduced, and no provenance is learner-facing.
+- **Idempotent, stable identity:** publishing the same approved revision twice returns the existing record; republishing a re-approved revision replaces content in place under the same activity identity, so catalogue entries never duplicate and completed learner history keeps pointing at the same practice.
+- **Publication persistence (§5):** `PublishedPracticeStore` is an application port with `InMemoryPublishedPracticeStore` and `DatastorePublishedPracticeStore` (kind `PublishedPractice`, namespace `library`); `FABLIT_PUBLISHED_PRACTICE_STORE` selects the backend (`memory` by default, `datastore` in `app.yaml`). Write failures surface as `PersistenceError` → HTTP 503, and the learner catalogue is updated only after a successful write.
+- **Runtime reconciliation:** `LearnerApplicationRegistry` owns the published set and `PracticeApplication.apply_publications(...)` reconciles it into each learner application on the next request (dashboard, Full Practice eligibility, evaluator activity map). Only shared catalogue content changes — in-flight learner journey state is never rebuilt or discarded.
+- **Withdrawal policy (§8):** `POST /authoring/candidates/{id}/withdraw` hides the practice from learner discovery (dashboard and practice modes) while the activity stays resolvable so in-flight practice finishes, completed history stays readable, and the publication record is retained; an explicit republish restores the same identity.
+- **Availability boundary (§9, §10):** a publication store that cannot be read at startup degrades to the seeded library (logged, never fatal) so learner practice never depends on the authoring workflow, and every publish/withdraw action remains behind SEC-001.
 
 ---
 

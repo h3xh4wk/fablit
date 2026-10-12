@@ -8,6 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **SPEC-035 — Publish Approved Practice Candidates to the Learner Library**: an explicit, human-only publication handoff from the SPEC-032 authoring workflow to the existing curated learner library. Approval and publication are now distinct decisions: approval accepts content quality, publication deliberately makes approved content discoverable to learners.
+  - Publication boundary: `fablit/application/publishing.py` (`PublishedPractice`, `PublishedPracticeStore`, `publish_candidate`, `withdraw_publication`) revalidates SPEC-029/SPEC-030 content and the approval state before writing; generated, invalid, rejected, and edited-but-not-reapproved candidates are refused (`CandidateContentNotPublishableError` → HTTP 422, `CandidateNotPublishableError` → HTTP 409).
+  - Existing learner representation: a published practice is the existing `DemoActivity`/`AssessmentActivity` with the approved contract as its SPEC-029 content contract and qualitative evaluation guidance derived from it — no parallel learner practice model, and no authoring provenance on learner-facing routes.
+  - Publication persistence: `PublishedPracticeStore` port with `InMemoryPublishedPracticeStore` (local/tests) and `DatastorePublishedPracticeStore` (kind `PublishedPractice`, namespace `library`); storage failures raise `PersistenceError` → HTTP 503 and never report success or leave partial state.
+  - Explicit actions: `POST /authoring/candidates/{id}/publish` and `POST /authoring/candidates/{id}/withdraw` (both behind SEC-001) with authoring-workspace controls and publication status feedback.
+  - Learner discovery & journey: `LearnerApplicationRegistry` owns the published set and `PracticeApplication.apply_publications(...)` reconciles it into each learner application on the next request, so published practices appear on the dashboard and in Full Practice and run the unchanged Practice → Evaluation → Feedback → Reflection journey; learner journey state is never rebuilt.
+  - Idempotency & stable identity: repeating a publish returns the same publication, republishing a re-approved revision replaces content in place under the same activity identity, and withdrawal is idempotent.
+  - Withdrawal policy: withdrawn practices leave learner discovery while the activity stays resolvable for in-flight practice, completed history stays readable, and the publication record is retained for traceability.
+  - Configuration: `FABLIT_PUBLISHED_PRACTICE_STORE` selects `memory` (default) or `datastore`; `app.yaml` defaults production to `datastore`.
+  - Documentation: documented in `docs/architecture/domain_language.md`, `docs/architecture/architecture_blueprint.md`, `docs/engineering/deployment.md`, and `README.md`.
+
+See [SPEC-035](specifications/platform/SPEC-035-publish-approved-practice-candidates.md) — issue [#135](https://github.com/h3xh4wk/fablit/issues/135) — for details.
+
 - **FIX-7 — Use Shared Candidate State for Production Authoring**: active authoring candidate state, revisions, and approval decisions are now available consistently across application instances with a documented retention policy and complete isolation from learner routes.
   - Multi-instance state sharing: `DatastoreAuthoringCandidateStore` in `fablit.platform.datastore_authoring_store` implements the `AuthoringCandidateStore` interface using Google Cloud Datastore under kind `AuthoringCandidate` within dedicated namespace `authoring`.
   - Learner route isolation: authoring candidates live strictly in the `authoring` namespace and are never exposed to learner practice surfaces (`/`, `/activities/*`, `/history`). Learner practice routes remain operational even during authoring store outages.
