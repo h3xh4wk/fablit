@@ -40,6 +40,7 @@ from fablit.application import (
     DemoEvaluator,
     LearnerJourneyStore,
     PracticeApplication,
+    PublishedPractice,
     StimulusProvider,
     build_demo_activities,
     build_demo_activity_map,
@@ -120,12 +121,59 @@ class LearnerApplicationRegistry:
         content: DemoContent,
         history_repository: PracticeHistoryRepository | None,
         artifact_storage: ArtifactStorage | None = None,
+        publications: tuple[PublishedPractice, ...] = (),
     ) -> None:
         self._content = content
         self._history_repository = history_repository
         self._artifact_storage = artifact_storage
+        # SPEC-035 §6: the explicitly published learner-library practices.
+        # Publication happens at runtime, so the registry — not the
+        # process-wide immutable demo content — owns this set and reconciles
+        # it into each live learner application on the next request.
+        self._publications: dict[UUID, PublishedPractice] = {
+            record.activity_id: record for record in publications
+        }
         self._applications: dict[UUID, PracticeApplication] = {}
         self._lock = Lock()
+
+    @property
+    def publications(self) -> tuple[PublishedPractice, ...]:
+        """The current publication records, ordered by catalogue position."""
+        with self._lock:
+            return self._publication_tuple()
+
+    def _publication_tuple(self) -> tuple[PublishedPractice, ...]:
+        return tuple(
+            sorted(
+                self._publications.values(),
+                key=lambda record: record.activity.activity.position,
+            )
+        )
+
+    def record_publication(self, record: PublishedPractice) -> None:
+        """Publish a record to every live learner application (SPEC-035 §5).
+
+        Called only after the publication has been persisted successfully, so
+        an in-process view never shows content the store refused to keep.
+        Each learner application reconciles on its next request.
+        """
+        with self._lock:
+            self._publications[record.activity_id] = record
+
+    def next_activity_position(self) -> int:
+        """The catalogue position a newly published practice should occupy.
+
+        Published practices sort after the seeded library and after anything
+        published before them, so first publication order is stable and
+        learners always see the curated library first.
+        """
+        with self._lock:
+            positions = [item.activity.position for item in self._content.activities]
+            positions.extend(
+                record.activity.activity.position
+                for record in self._publications.values()
+            )
+            return max(positions, default=-1) + 1
 
     def application_for(self, learner_id: UUID) -> PracticeApplication:
         """Return the learner-scoped application, building it on first use."""
@@ -138,6 +186,11 @@ class LearnerApplicationRegistry:
                     "learner application created",
                     extra={"learner_id": str(learner_id)},
                 )
+            else:
+                # SPEC-035: pick up publications and withdrawals made since
+                # this learner's application was built. Reconciliation is a
+                # no-op while the published set is unchanged.
+                application.apply_publications(self._publication_tuple())
             return application
 
     def _build_application(self, learner_id: UUID) -> PracticeApplication:
@@ -152,6 +205,7 @@ class LearnerApplicationRegistry:
             stimulus_provider=content.stimulus_provider,
             history_repository=self._history_repository,
             artifact_storage=self._artifact_storage,
+            publications=self._publication_tuple(),
         )
 
 

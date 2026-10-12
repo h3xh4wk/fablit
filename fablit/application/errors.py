@@ -67,6 +67,33 @@ class CandidateNotApprovableError(ApplicationError):
     """
 
 
+class CandidateNotPublishableError(ApplicationError):
+    """Raised when a candidate's lifecycle state forbids publication (SPEC-035 §5).
+
+    Approval and publication are distinct decisions: only an explicitly
+    approved candidate may cross the publication boundary. Generated,
+    edited-but-not-reapproved, and rejected candidates are refused with an
+    explanation the author can act on.
+    """
+
+
+class CandidateContentNotPublishableError(CandidateNotPublishableError):
+    """Raised when a candidate's content fails the publication gate (SPEC-035 §5).
+
+    The publication boundary revalidates content independently of the
+    approval decision, so a candidate whose SPEC-029/SPEC-030 contract is no
+    longer complete or approvable can never reach the learner library.
+    """
+
+
+class PublishedPracticeNotFoundError(ApplicationError):
+    """Raised when a candidate has no published practice to act on (SPEC-035 §6)."""
+
+
+class InvalidPublishedPracticeError(ApplicationError):
+    """Raised when a published practice record violates an invariant (SPEC-035 §8)."""
+
+
 class AuthoringProviderError(ApplicationError):
     """Raised when an authoring LLM provider cannot produce a candidate.
 

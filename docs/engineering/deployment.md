@@ -137,6 +137,7 @@ All settings are managed via environment variables (`FABLIT_*`), configured in `
 | `FABLIT_AUTHORING_SECRET` | `<shared-secret>` | Shared secret for internal AI authoring access (SEC-001). Unset disables authoring. |
 | `FABLIT_AI_PROVIDER_API_KEY` | `<provider-key>` | Optional server-side API key for the AI practice authoring provider (SPEC-032 / SEC-001). Never exposed to learners or clients. |
 | `FABLIT_AI_PROVIDER_MODEL` | `gemini-2.5-flash` | Gemini model used by the authoring provider adapter (ARCH-001), retained as authoring provenance. Only used when `FABLIT_AI_PROVIDER_API_KEY` is set. |
+| `FABLIT_PUBLISHED_PRACTICE_STORE` | `datastore` | Published learner-library practices (SPEC-035): `memory` locally, `datastore` on App Engine so published practices are shared across instances. |
 | `FABLIT_SERVICE_NAME` | `fablit` | Service name tag in structured logs |
 
 ---
@@ -340,3 +341,24 @@ Production App Engine deployments may run multiple concurrent application instan
   - All Datastore client exceptions are translated into `fablit.application.persistence.PersistenceError`.
   - Authoring mutation routes (`/generate`, `/candidates/{id}/edit`, `/candidates/{id}/approve`, `/candidates/{id}/reject`) catch storage errors and return HTTP `503 Service Unavailable`.
   - Persistence failures will **never** return HTTP `200 OK` or `303 See Other` to ensure false authoring success is prevented.
+
+---
+
+## 13. Published Practice Store (SPEC-035)
+
+Approval and publication are separate decisions: approval accepts a candidate's content quality, publication deliberately adds that approved content to the learner library. Publication state lives in its own store so the learner library is durable and consistent across instances.
+
+### Architecture & Isolation
+
+- **Datastore Adapter (`fablit.platform.datastore_published_store`):**
+  - Configured via `FABLIT_PUBLISHED_PRACTICE_STORE="datastore"` (default `memory` for local development and tests).
+  - Stored under Kind `PublishedPractice` within dedicated Datastore namespace `library`, separate from authoring candidates (`authoring`) and learner practice history (default namespace).
+- **What is stored:** the published learner-facing activity (title, description, prompt, SPEC-029 contract, catalogue position, stable activity identity) plus internal provenance (source candidate id, approved revision, publication time, withdrawal time). Learner routes render the activity only — provenance is never exposed.
+- **Learner independence:** published practices are loaded once at startup and reconciled into learner applications when publication changes; learner practice never queries the authoring store, and a publication store that cannot be read at startup degrades to the seeded library (logged, never fatal).
+
+### Publish, Replace & Withdraw Guarantees
+
+- **Explicit actions only:** `POST /authoring/candidates/{id}/publish` and `/withdraw`, both behind SEC-001.
+- **Idempotency:** repeating a publish of the same approved revision returns the existing record; republishing a re-approved revision replaces the entity in place under the same activity identity, so no duplicate catalogue entries are created and completed learner history keeps resolving.
+- **Withdrawal:** the record is retained with `withdrawn_at` set; the practice leaves learner discovery while completed history stays readable. Republishing restores the same identity.
+- **Fail-safe operation:** publication and withdrawal routes translate storage errors into `PersistenceError` → HTTP `503 Service Unavailable`, and the learner catalogue is only updated after a successful write — a failure is never reported as success.

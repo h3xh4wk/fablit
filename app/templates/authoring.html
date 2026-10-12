@@ -17,6 +17,12 @@
     Draft and review practice candidates with AI assistance before human approval. All generated content requires explicit author review before becoming learner-facing content.
   </p>
 
+  {% if error %}
+  <div class="validation-errors" role="alert" style="margin-bottom: 1.5rem; padding: 1rem; border: 1px solid #e53e3e; background: #fff5f5; border-radius: 0.375rem; color: #c53030;">
+    <p style="margin: 0;">{{ error }}</p>
+  </div>
+  {% endif %}
+
   {% if message %}
   <div class="feedback-observation" role="status" style="margin-bottom: 1.5rem;">
     <p>{{ message }}</p>
@@ -101,6 +107,16 @@
     <div style="margin-bottom: 1rem;">
       <p><strong>Status:</strong> <span class="tag">{{ candidate.status }}</span></p>
       <p><strong>Revision:</strong> {{ candidate.revision }}</p>
+      {% set publication = (publications|default({})).get(candidate.id) %}
+      <p><strong>Publication:</strong>
+        {% if publication and not publication.is_withdrawn %}
+        <span class="tag tag--success">Published (revision {{ publication.source_revision }})</span>
+        {% elif publication %}
+        <span class="tag">Withdrawn (revision {{ publication.source_revision }})</span>
+        {% else %}
+        <span class="tag">Not published</span>
+        {% endif %}
+      </p>
       {% if candidate.reviewer %}
       <p><strong>Reviewer:</strong> {{ candidate.reviewer }}</p>
       {% endif %}
@@ -275,8 +291,9 @@
     </details>
     {% endif %}
 
-    <div class="form-actions" style="display: flex; gap: 1rem; align-items: center; margin-top: 1rem;">
+    <div class="form-actions" style="display: flex; gap: 1rem; align-items: center; margin-top: 1rem; flex-wrap: wrap;">
       {% set candidate_id = candidate.id %}
+      {% set publication = (publications|default({})).get(candidate.id) %}
       {% if candidate.status != "approved" and candidate.status != "rejected" %}
         <form method="post" action="/authoring/candidates/{{ candidate_id }}/approve">
           <button type="submit" class="button" {% if candidate.validation and not candidate.validation.is_approvable %}disabled title="Candidate has validation errors that must be resolved before approval"{% endif %}>Approve for Library</button>
@@ -284,10 +301,30 @@
         <form method="post" action="/authoring/candidates/{{ candidate_id }}/reject">
           <button type="submit" class="button button--secondary">Reject Candidate</button>
         </form>
+        {% if publication and not publication.is_withdrawn %}
+        <form method="post" action="/authoring/candidates/{{ candidate_id }}/withdraw">
+          <button type="submit" class="button button--secondary">Withdraw from Library</button>
+        </form>
+        {% endif %}
       {% elif candidate.status == "approved" %}
         <span class="tag tag--success">Approved for Library</span>
+        {% if not publication or publication.is_withdrawn %}
+        <form method="post" action="/authoring/candidates/{{ candidate_id }}/publish">
+          <button type="submit" class="button">Publish to Learner Library</button>
+        </form>
+        {% else %}
+        <span class="tag tag--success">Published to Learner Library</span>
+        <form method="post" action="/authoring/candidates/{{ candidate_id }}/withdraw">
+          <button type="submit" class="button button--secondary">Withdraw from Library</button>
+        </form>
+        {% endif %}
       {% elif candidate.status == "rejected" %}
         <span class="tag tag--danger">Rejected</span>
+        {% if publication and not publication.is_withdrawn %}
+        <form method="post" action="/authoring/candidates/{{ candidate_id }}/withdraw">
+          <button type="submit" class="button button--secondary">Withdraw from Library</button>
+        </form>
+        {% endif %}
       {% endif %}
     </div>
   </section>
@@ -303,6 +340,10 @@
           {{ item.candidate_data.get("title", "Untitled candidate") }}
         </a>
         <span class="tag">{{ item.status }}</span>
+        {% set item_publication = (publications|default({})).get(item.id) %}
+        {% if item_publication %}
+        <span class="tag">{{ "Withdrawn" if item_publication.is_withdrawn else "Published" }}</span>
+        {% endif %}
         <span>(rev {{ item.revision }})</span>
         <time datetime="{{ item.generated_at.isoformat() }}">{{ item.generated_at.isoformat() }}</time>
       </li>

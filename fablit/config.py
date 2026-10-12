@@ -23,6 +23,7 @@ SUPPORTED_STIMULUS_PROVIDERS = {"builtin", "wikimedia"}
 SUPPORTED_PRACTICE_HISTORY_REPOSITORIES = {"memory", "datastore"}
 SUPPORTED_ARTIFACT_STORAGE_BACKENDS = {"file", "gcs"}
 SUPPORTED_AUTHORING_CANDIDATE_STORES = {"memory", "datastore"}
+SUPPORTED_PUBLISHED_PRACTICE_STORES = {"memory", "datastore"}
 
 
 class ConfigError(RuntimeError):
@@ -149,6 +150,16 @@ class AppConfig(BaseSettings):
             "Unapproved candidates older than this window are considered expired."
         ),
     )
+    published_practice_store: str = Field(
+        "memory",
+        description=(
+            "Published practice store backend (SPEC-035): 'memory' (in-memory, "
+            "for tests and local development) or 'datastore' (Google Cloud "
+            "Datastore, for the deployed App Engine environment). Holds the "
+            "explicitly published learner-library practices derived from "
+            "approved authoring candidates."
+        ),
+    )
     config_file: Path | None = Field(None, description="Path to optional config file.")
     version: str = Field("0.1.0", description="Application version.")
 
@@ -268,6 +279,24 @@ class AppConfig(BaseSettings):
             return normalized
         return str(value)
 
+    @field_validator("published_practice_store", mode="before")
+    def normalize_published_practice_store(cls, value: object) -> str:
+        """Normalize the published practice store; defaults to 'memory'."""
+        if value is None:
+            return "memory"
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if not normalized:
+                return "memory"
+            if normalized not in SUPPORTED_PUBLISHED_PRACTICE_STORES:
+                allowed = ", ".join(sorted(SUPPORTED_PUBLISHED_PRACTICE_STORES))
+                raise ValueError(
+                    f"Unsupported published practice store '{value}'. "
+                    f"Must be one of: {allowed}."
+                )
+            return normalized
+        return str(value)
+
     @field_validator("artifact_storage_bucket", mode="before")
     def normalize_artifact_storage_bucket(cls, value: object) -> str | None:
         """Strip whitespace from bucket name; empty string becomes None."""
@@ -354,6 +383,7 @@ def _resolve_environment_overrides() -> dict[str, Any]:
         "artifact_storage_dir": "FABLIT_ARTIFACT_STORAGE_DIR",
         "authoring_secret": "FABLIT_AUTHORING_SECRET",
         "authoring_candidate_store": "FABLIT_AUTHORING_CANDIDATE_STORE",
+        "published_practice_store": "FABLIT_PUBLISHED_PRACTICE_STORE",
         "authoring_candidate_retention_days": (
             "FABLIT_AUTHORING_CANDIDATE_RETENTION_DAYS"
         ),

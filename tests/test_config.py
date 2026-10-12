@@ -402,3 +402,33 @@ def test_authoring_candidate_store_and_retention_read_from_environment(
 
     assert config.authoring_candidate_store == "datastore"
     assert config.authoring_candidate_retention_days == 45
+
+
+def test_published_practice_store_defaults_to_memory() -> None:
+    config = AppConfig.model_validate({})
+    assert config.published_practice_store == "memory"
+
+
+def test_published_practice_store_accepts_datastore() -> None:
+    config = AppConfig.model_validate({"published_practice_store": "datastore"})
+    assert config.published_practice_store == "datastore"
+
+
+def test_published_practice_store_normalised_to_lowercase() -> None:
+    config = AppConfig.model_validate({"published_practice_store": "  DATASTORE "})
+    assert config.published_practice_store == "datastore"
+
+
+def test_published_practice_store_unsupported_raises() -> None:
+    with pytest.raises(ValidationError, match="Unsupported published practice store"):
+        AppConfig.model_validate({"published_practice_store": "redis"})
+
+
+def test_published_practice_store_reads_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FABLIT_PUBLISHED_PRACTICE_STORE", "datastore")
+
+    config = load_config()
+
+    assert config.published_practice_store == "datastore"

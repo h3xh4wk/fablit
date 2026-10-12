@@ -52,13 +52,16 @@ from fablit.application import (
     EvaluationFailedError,
     FeedbackNotFoundError,
     FileArtifactStorage,
+    InMemoryPublishedPracticeStore,
     InvalidPracticeResponseError,
     InvalidReflectionResponseError,
     PracticeApplication,
     PracticeMode,
+    PublishedPracticeStore,
     SketchbookArtifact,
     SubmissionInProgressError,
     UnknownPracticeModeError,
+    load_publications,
 )
 from fablit.application.persistence import (
     PersistenceError,
@@ -79,6 +82,7 @@ metrics_registry = MetricsRegistry()
 
 def _build_learner_applications(
     app_config: AppConfig,
+    published_store: PublishedPracticeStore,
 ) -> tuple[DemoContent, LearnerApplicationRegistry]:
     """Assemble the shared demo content and the learner application registry.
 
@@ -89,12 +93,20 @@ def _build_learner_applications(
     (SPEC-021) is shared — it is learner-scoped by contract — and may be
     ``None`` when persistence is not configured. The private artifact storage
     (SPEC-033/034) is likewise shared and deployment-configured.
+
+    SPEC-035 §6/§9: the registry also loads the explicitly published
+    learner-library practices. An unreadable publication store degrades to
+    the seeded library only (logged, never fatal), so learner practice never
+    depends on the authoring side being available.
     """
     content = DemoContent.build(app_config)
     history_repository = _build_history_repository(app_config)
     artifact_storage = _build_artifact_storage(app_config)
     return content, LearnerApplicationRegistry(
-        content, history_repository, artifact_storage
+        content,
+        history_repository,
+        artifact_storage,
+        publications=load_publications(published_store),
     )
 
 
@@ -251,6 +263,43 @@ def _build_authoring_candidate_store(
 
     logger.info("initialized in-memory authoring candidate store")
     return AuthoringCandidateStore(retention_days=retention_days)
+
+
+def _build_published_practice_store(
+    app_config: AppConfig,
+) -> PublishedPracticeStore:
+    """Build the published practice store from configuration (SPEC-035 §5).
+
+    Defaults to the in-memory store for local development and tests. In
+    production on App Engine, Google Cloud Datastore keeps the published
+    learner library consistent across application instances, mirroring the
+    authoring candidate store (FIX-7).
+    """
+    backend = app_config.published_practice_store
+
+    if backend == "datastore":
+        try:
+            from google.cloud import datastore
+
+            from fablit.platform.datastore_published_store import (
+                DatastorePublishedPracticeStore,
+            )
+
+            client: datastore.Client = datastore.Client()
+            logger.info(
+                "initialized Datastore published practice store",
+                extra={"project_id": client.project},
+            )
+            return DatastorePublishedPracticeStore(client)
+        except Exception as e:
+            logger.exception("failed to initialize datastore published practice store")
+            raise RuntimeError(
+                "Could not initialize Google Cloud Datastore for published "
+                "practices. Check GCP configuration and credentials."
+            ) from e
+
+    logger.info("initialized in-memory published practice store")
+    return InMemoryPublishedPracticeStore()
 
 
 def _activity_id(value: str) -> UUID:
@@ -467,13 +516,15 @@ def create_app(config: AppConfig) -> FastAPI:
         app.state.config = config
         app.state.authoring_ai_provider = _build_authoring_provider(config)
         app.state.authoring_candidate_store = _build_authoring_candidate_store(config)
+        app.state.published_practice_store = _build_published_practice_store(config)
         app.state.demo_content, app.state.learner_applications = (
-            _build_learner_applications(config)
+            _build_learner_applications(config, app.state.published_practice_store)
         )
         yield
         app.state.ready = False
         app.state.authoring_ai_provider = None
         app.state.authoring_candidate_store = None
+        app.state.published_practice_store = None
         app.state.demo_content = None
         app.state.learner_applications = None
         logger.info("application shutdown")
@@ -494,8 +545,9 @@ def create_app(config: AppConfig) -> FastAPI:
     app.state.config = config
     app.state.authoring_ai_provider = _build_authoring_provider(config)
     app.state.authoring_candidate_store = _build_authoring_candidate_store(config)
+    app.state.published_practice_store = _build_published_practice_store(config)
     app.state.demo_content, app.state.learner_applications = (
-        _build_learner_applications(config)
+        _build_learner_applications(config, app.state.published_practice_store)
     )
 
     app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")

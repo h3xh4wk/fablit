@@ -278,6 +278,11 @@ class LearnerJourneyStore:
         self._activities: dict[UUID, DemoActivity] = {
             item.activity.id: item for item in activities
         }
+        # SPEC-035 §8: published practices withdrawn from learner discovery
+        # stay resolvable here (so in-flight practice and the authored
+        # content contracts keep working) but are excluded from every
+        # discovery listing.
+        self._hidden_activity_ids: set[UUID] = set()
         self._skills: dict[UUID, Skill] = {skill.id: skill for skill in skills}
         self._stimuli: dict[UUID, StimulusInstance] = {}
         self._submissions: dict[UUID, Submission] = {}
@@ -302,10 +307,61 @@ class LearnerJourneyStore:
         return self._learner_id
 
     def list_activities(self) -> tuple[DemoActivity, ...]:
-        """Return the seeded demo activities in deterministic order."""
+        """Return the learner-discoverable activities in deterministic order.
+
+        SPEC-035 §7/§8: this is what every discovery surface (dashboard,
+        practice-mode selections) reads. Withdrawn publications are excluded;
+        use :meth:`all_activities` when the full set is needed.
+        """
         return tuple(
-            sorted(self._activities.values(), key=lambda item: item.activity.position)
+            sorted(
+                (
+                    item
+                    for activity_id, item in tuple(self._activities.items())
+                    if activity_id not in self._hidden_activity_ids
+                ),
+                key=lambda item: item.activity.position,
+            )
         )
+
+    def all_activities(self) -> tuple[DemoActivity, ...]:
+        """Return every activity the store can resolve, hidden ones included.
+
+        A withdrawn published practice stays resolvable so a learner who
+        already started it can finish the ordinary journey and completed
+        records stay coherent (SPEC-035 §8).
+        """
+        return tuple(
+            sorted(
+                tuple(self._activities.values()),
+                key=lambda item: item.activity.position,
+            )
+        )
+
+    def add_activity(self, item: DemoActivity, *, discoverable: bool = True) -> None:
+        """Register (or replace) one activity under its stable identity.
+
+        SPEC-035 §8: publication registers existing learner-facing content;
+        republishing a newer approved revision replaces the entry in place so
+        the identity learners know never changes.
+        """
+        self._activities[item.activity.id] = item
+        self.set_discoverable(item.activity.id, discoverable)
+
+    def set_discoverable(self, activity_id: UUID, discoverable: bool) -> None:
+        """Include or exclude an activity from discovery listings (SPEC-035 §8).
+
+        Discovery-only withdrawal: ``get_activity`` keeps resolving the
+        activity, so an in-flight practice completes normally, while
+        ``list_activities`` stops offering it. Unknown identities are left
+        untouched — this controls visibility, it does not create content.
+        """
+        if activity_id not in self._activities:
+            return
+        if discoverable:
+            self._hidden_activity_ids.discard(activity_id)
+        else:
+            self._hidden_activity_ids.add(activity_id)
 
     def get_activity(self, activity_id: UUID) -> DemoActivity:
         """Return a demo activity by identity, raising when unknown."""
