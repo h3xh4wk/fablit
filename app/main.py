@@ -455,12 +455,31 @@ async def _unhandled_exception_handler(request: Request, exc: Exception) -> Resp
     )
 
 
+def _trace_id_for_request(request: Request) -> str | None:
+    """Resolve the trace identifier for the current request (SPEC-003 FR-009).
+
+    Trace correlation is offered "when supplied" by the caller: an explicit
+    ``X-Trace-ID`` wins, and otherwise the managed-platform header is used so
+    production logs stay correlatable. App Engine and Cloud Run supply Cloud
+    Trace as ``X-Cloud-Trace-Context: <trace-id>/<span-id>;o=<option>``.
+    """
+    trace_id = request.headers.get("X-Trace-ID")
+    if trace_id:
+        return trace_id
+
+    cloud_trace = request.headers.get("X-Cloud-Trace-Context")
+    if cloud_trace:
+        return cloud_trace.split("/", 1)[0].strip() or None
+
+    return None
+
+
 async def request_logging_middleware(
     request: Request,
     call_next: Callable[[Request], Awaitable[Response]],
 ) -> Response:
     request_id = request.headers.get("X-Request-ID") or str(uuid4())
-    trace_id = request.headers.get("X-Trace-ID")
+    trace_id = _trace_id_for_request(request)
     token = set_request_context(request_id=request_id, trace_id=trace_id)
     metrics_registry.counter("requests_total").inc()
 

@@ -22,9 +22,11 @@ env_variables:
   FABLIT_PRACTICE_HISTORY_REPOSITORY: "datastore"
   FABLIT_ARTIFACT_STORAGE_BACKEND: "gcs"
   # Target GCS bucket for private sketchbook artifacts (SPEC-034).
-  # Specify your private bucket name here or override via:
-  # gcloud app deploy --set-env-vars FABLIT_ARTIFACT_STORAGE_BUCKET=<bucket-name>
-  # FABLIT_ARTIFACT_STORAGE_BUCKET: "<your-artifacts-bucket-name>"
+  # Required: AppConfig rejects the 'gcs' backend without a bucket name, so
+  # startup fails fast when this is unset. "<project-id>.appspot.com" is the
+  # default App Engine bucket and already exists in the project.
+  # Override with: gcloud app deploy --set-env-vars FABLIT_ARTIFACT_STORAGE_BUCKET=<bucket-name>
+  FABLIT_ARTIFACT_STORAGE_BUCKET: "fablit-app.appspot.com"
   # Shared secret for internal AI practice authoring access (SEC-001).
   # Unset or empty disables authoring routes by default.
   # FABLIT_AUTHORING_SECRET: "<your-authoring-secret>"

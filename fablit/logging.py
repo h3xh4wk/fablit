@@ -90,6 +90,13 @@ class StructuredLogHandler(logging.StreamHandler[TextIO]):
                 log_format=config.log_format,
             )
         )
+        # SPEC-003 FR-009/FR-010: correlation must reach every emitted record.
+        # Logger-level filters are only consulted for records created directly
+        # on that logger, so a filter on the root logger never sees records
+        # propagated from child loggers (``fablit.app``, ``uvicorn``). Handler
+        # filters run for every record the handler emits, so the correlation
+        # context is attached here instead.
+        self.addFilter(RequestContextFilter(config.service_name, config.environment))
 
 
 def get_request_context() -> dict[str, str | None]:
@@ -122,6 +129,5 @@ def init_logging(config: AppConfig) -> None:
     root_logger.handlers.clear()
     root_logger.setLevel(config.log_level)
     root_logger.addHandler(StructuredLogHandler(config))
-    root_logger.addFilter(RequestContextFilter(config.service_name, config.environment))
     _configure_library_loggers(config)
     logging.captureWarnings(True)
