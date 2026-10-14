@@ -1,355 +1,210 @@
 {% extends "base.html" %}
-{% block title %}Internal Authoring Workspace — Fablit{% endblock %}
+{% block title %}Authoring Workspace — Fablit{% endblock %}
 {% block content %}
 <article class="intention">
-  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-    <nav class="subnav" aria-label="Navigation">
-      <a href="/"><span aria-hidden="true">←</span> Learner Practice</a>
-    </nav>
-    <form method="post" action="/authoring/logout" style="margin: 0;">
-      <button type="submit" class="button button--secondary">Log out</button>
-    </form>
-  </div>
+  {% include "_authoring_nav.html" %}
 
   <h1 class="display">Internal Authoring Workspace</h1>
-  <p class="lede">AI-Assisted Practice Authoring (SPEC-032 / SEC-001)</p>
-  <p class="intention__prompt">
-    Draft and review practice candidates with AI assistance before human approval. All generated content requires explicit author review before becoming learner-facing content.
+  <p class="lede">Draft practice candidates with AI assistance, then review each one yourself.</p>
+  <p class="authoring__intro">
+    Generated content is untrusted until a human approves it, and approval is separate from
+    publication: approving accepts the content, publishing makes it visible to learners.
   </p>
 
   {% if error %}
-  <div class="validation-errors" role="alert" style="margin-bottom: 1.5rem; padding: 1rem; border: 1px solid #e53e3e; background: #fff5f5; border-radius: 0.375rem; color: #c53030;">
-    <p style="margin: 0;">{{ error }}</p>
+  <div class="validation-panel validation-panel--error" role="alert">
+    <p>{{ error }}</p>
   </div>
   {% endif %}
 
   {% if message %}
-  <div class="feedback-observation" role="status" style="margin-bottom: 1.5rem;">
+  <div class="authoring-outcome" role="status">
     <p>{{ message }}</p>
   </div>
   {% endif %}
 
-  <section class="card" style="margin-bottom: 2rem; padding: 1.5rem; border: 1px solid var(--color-border, #e2e8f0); border-radius: 0.5rem;">
-    <h2 class="subheading" style="margin-top: 0;">Authoring Brief</h2>
+  <section class="authoring-section" aria-labelledby="brief-heading">
+    <h2 id="brief-heading" class="subheading authoring-section__heading">Authoring brief</h2>
+    <p class="authoring-section__intro">
+      Describe the practice you want. The seven marked fields are required and grouped into three
+      steps; the optional ones stay out of the way until you need them.
+    </p>
+
     <form method="post" action="/authoring/generate">
-      <div style="margin-bottom: 1rem;">
-        <label class="form-label" for="practice_area">Practice area</label>
-        <input type="text" id="practice_area" name="practice_area" class="form-control" value="{{ brief.practice_area if brief else '' }}" required style="width: 100%; padding: 0.5rem;">
-      </div>
-      <div style="margin-bottom: 1rem;">
-        <label class="form-label" for="learner_context">Intended learner context</label>
-        <textarea id="learner_context" name="learner_context" class="form-control" rows="2" required style="width: 100%; padding: 0.5rem;">{{ brief.learner_context if brief else '' }}</textarea>
-      </div>
-      <div style="margin-bottom: 1rem;">
-        <label class="form-label" for="purpose">Practice purpose</label>
-        <textarea id="purpose" name="purpose" class="form-control" rows="2" required style="width: 100%; padding: 0.5rem;">{{ brief.purpose if brief else '' }}</textarea>
-      </div>
-      <div style="margin-bottom: 1rem;">
-        <label class="form-label" for="intended_mode">Intended practice mode</label>
-        <select id="intended_mode" name="intended_mode" class="form-control" required style="width: 100%; max-width: 20rem; padding: 0.5rem;">
-          <option value="short-drill" {% if brief and brief.intended_mode == 'short-drill' %}selected{% endif %}>Short Drill</option>
-          <option value="full-practice" {% if brief and brief.intended_mode == 'full-practice' %}selected{% endif %}>Full Practice</option>
-        </select>
-      </div>
-      <div style="margin-bottom: 1rem;">
-        <label class="form-label" for="response_form">Desired response form</label>
-        <input type="text" id="response_form" name="response_form" class="form-control" value="{{ brief.response_form if brief else '' }}" required style="width: 100%; padding: 0.5rem;">
-      </div>
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1rem; margin-bottom: 1rem;">
-        <div>
-          <label class="form-label" for="examination_context">Examination context (optional)</label>
-          <input type="text" id="examination_context" name="examination_context" class="form-control" value="{{ brief.examination_context if brief else '' }}" style="width: 100%; padding: 0.5rem;">
+      <fieldset class="form-section">
+        <legend class="form-section__legend">1. What the practice is for</legend>
+        <p class="form-section__intro">Who it is for and the thinking it is meant to develop.</p>
+
+        <div class="form-field">
+          <label class="form-label" for="practice_area">
+            Practice area <span class="form-required">Required</span>
+          </label>
+          <input type="text" id="practice_area" name="practice_area" class="form-control"
+                 value="{{ brief.practice_area if brief else '' }}" required
+                 aria-describedby="practice_area-hint">
+          <p class="form-hint" id="practice_area-hint">The subject area, for example visual analysis or writing.</p>
         </div>
-        <div>
-          <label class="form-label" for="primary_creative_thinking_lens">Primary thinking lens (optional)</label>
-          <select id="primary_creative_thinking_lens" name="primary_creative_thinking_lens" class="form-control" style="width: 100%; padding: 0.5rem;">
-            <option value="">Not applicable</option>
-            {% for lens in ["Observe", "Interpret", "Ideate", "Articulate", "Reflect"] %}
-            <option value="{{ lens }}" {% if brief and brief.primary_creative_thinking_lens == lens %}selected{% endif %}>{{ lens }}</option>
-            {% endfor %}
-          </select>
+
+        <div class="form-field">
+          <label class="form-label" for="learner_context">
+            Intended learner context <span class="form-required">Required</span>
+          </label>
+          <textarea id="learner_context" name="learner_context" class="form-control" rows="2" required
+                    aria-describedby="learner_context-hint">{{ brief.learner_context if brief else '' }}</textarea>
+          <p class="form-hint" id="learner_context-hint">Who the learner is and what they are working on.</p>
         </div>
-      </div>
-      <div style="margin-bottom: 1rem;">
-        <label class="form-label" for="constraints">Constraints (optional)</label>
-        <textarea id="constraints" name="constraints" class="form-control" rows="2" style="width: 100%; padding: 0.5rem;">{{ brief.constraints if brief else '' }}</textarea>
-      </div>
-      <div style="margin-bottom: 1rem;">
-        <label class="form-label" for="stimulus_requirements">Stimulus or context requirements (optional)</label>
-        <textarea id="stimulus_requirements" name="stimulus_requirements" class="form-control" rows="2" style="width: 100%; padding: 0.5rem;">{{ brief.stimulus_requirements if brief else '' }}</textarea>
-      </div>
-      <div style="margin-bottom: 1rem;">
-        <label class="form-label" for="evaluation_intent">Evaluation intent</label>
-        <textarea id="evaluation_intent" name="evaluation_intent" class="form-control" rows="2" required style="width: 100%; padding: 0.5rem;">{{ brief.evaluation_intent if brief else '' }}</textarea>
-      </div>
-      <div style="margin-bottom: 1rem;">
-        <label class="form-label" for="feedback_intent">Feedback intent</label>
-        <textarea id="feedback_intent" name="feedback_intent" class="form-control" rows="2" required style="width: 100%; padding: 0.5rem;">{{ brief.feedback_intent if brief else '' }}</textarea>
-      </div>
-      <div style="margin-bottom: 1rem;">
-        <label class="form-label" for="reflection_intent">Reflection intent</label>
-        <textarea id="reflection_intent" name="reflection_intent" class="form-control" rows="2" required style="width: 100%; padding: 0.5rem;">{{ brief.reflection_intent if brief else '' }}</textarea>
-      </div>
-      <div style="margin-bottom: 1rem;">
-        <label class="form-label" for="continuation_intent">Continuation intent (optional)</label>
-        <textarea id="continuation_intent" name="continuation_intent" class="form-control" rows="2" style="width: 100%; padding: 0.5rem;">{{ brief.continuation_intent if brief else '' }}</textarea>
-      </div>
+
+        <div class="form-field">
+          <label class="form-label" for="purpose">
+            Practice purpose <span class="form-required">Required</span>
+          </label>
+          <textarea id="purpose" name="purpose" class="form-control" rows="2" required
+                    aria-describedby="purpose-hint">{{ brief.purpose if brief else '' }}</textarea>
+          <p class="form-hint" id="purpose-hint">The capability the practice is designed to strengthen.</p>
+        </div>
+      </fieldset>
+
+      <fieldset class="form-section">
+        <legend class="form-section__legend">2. How the learner will work</legend>
+        <p class="form-section__intro">The shape of the practice and the response it asks for.</p>
+
+        <div class="form-grid">
+          <div class="form-field">
+            <label class="form-label" for="intended_mode">
+              Intended practice mode <span class="form-required">Required</span>
+            </label>
+            <select id="intended_mode" name="intended_mode" class="form-control" required>
+              <option value="short-drill" {% if brief and brief.intended_mode == 'short-drill' %}selected{% endif %}>Short Drill</option>
+              <option value="full-practice" {% if brief and brief.intended_mode == 'full-practice' %}selected{% endif %}>Full Practice</option>
+            </select>
+          </div>
+
+          <div class="form-field">
+            <label class="form-label" for="response_form">
+              Desired response form <span class="form-required">Required</span>
+            </label>
+            <input type="text" id="response_form" name="response_form" class="form-control"
+                   value="{{ brief.response_form if brief else '' }}" required>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset class="form-section">
+        <legend class="form-section__legend">3. How the work will be reviewed with the learner</legend>
+        <p class="form-section__intro">
+          What the evaluation looks for, and how that becomes feedback and reflection. Describe
+          qualitative intent: what to notice in the learner's thinking, never a rating of it.
+        </p>
+
+        <div class="form-field">
+          <label class="form-label" for="evaluation_intent">
+            Evaluation intent <span class="form-required">Required</span>
+          </label>
+          <textarea id="evaluation_intent" name="evaluation_intent" class="form-control" rows="2" required>{{ brief.evaluation_intent if brief else '' }}</textarea>
+        </div>
+
+        <div class="form-field">
+          <label class="form-label" for="feedback_intent">
+            Feedback intent <span class="form-required">Required</span>
+          </label>
+          <textarea id="feedback_intent" name="feedback_intent" class="form-control" rows="2" required>{{ brief.feedback_intent if brief else '' }}</textarea>
+        </div>
+
+        <div class="form-field">
+          <label class="form-label" for="reflection_intent">
+            Reflection intent <span class="form-required">Required</span>
+          </label>
+          <textarea id="reflection_intent" name="reflection_intent" class="form-control" rows="2" required>{{ brief.reflection_intent if brief else '' }}</textarea>
+        </div>
+      </fieldset>
+
+      <details class="form-optional-group" {% if brief and (brief.examination_context or brief.primary_creative_thinking_lens or brief.constraints or brief.stimulus_requirements or brief.continuation_intent) %}open{% endif %}>
+        <summary>
+          Optional context and constraints
+          <span class="form-hint">— five fields, skip any you do not need</span>
+        </summary>
+
+        <div class="form-grid">
+          <div class="form-field">
+            <label class="form-label" for="examination_context">Examination context (optional)</label>
+            <input type="text" id="examination_context" name="examination_context" class="form-control"
+                   value="{{ brief.examination_context if brief and brief.examination_context else '' }}">
+          </div>
+
+          <div class="form-field">
+            <label class="form-label" for="primary_creative_thinking_lens">Primary thinking lens (optional)</label>
+            <select id="primary_creative_thinking_lens" name="primary_creative_thinking_lens" class="form-control">
+              <option value="">Not applicable</option>
+              {% for lens in ["Observe", "Interpret", "Ideate", "Articulate", "Reflect"] %}
+              <option value="{{ lens }}" {% if brief and brief.primary_creative_thinking_lens == lens %}selected{% endif %}>{{ lens }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <div class="form-field">
+          <label class="form-label" for="constraints">Constraints (optional)</label>
+          <textarea id="constraints" name="constraints" class="form-control" rows="2">{{ brief.constraints if brief and brief.constraints else '' }}</textarea>
+        </div>
+
+        <div class="form-field">
+          <label class="form-label" for="stimulus_requirements">Stimulus or context requirements (optional)</label>
+          <textarea id="stimulus_requirements" name="stimulus_requirements" class="form-control" rows="2">{{ brief.stimulus_requirements if brief and brief.stimulus_requirements else '' }}</textarea>
+        </div>
+
+        <div class="form-field">
+          <label class="form-label" for="continuation_intent">Continuation intent (optional)</label>
+          <textarea id="continuation_intent" name="continuation_intent" class="form-control" rows="2">{{ brief.continuation_intent if brief and brief.continuation_intent else '' }}</textarea>
+        </div>
+      </details>
 
       <p class="form-actions">
-        <button type="submit" class="button">Generate Candidate Practice <span aria-hidden="true">→</span></button>
+        <button type="submit" class="button">Generate candidate practice <span aria-hidden="true">→</span></button>
       </p>
     </form>
   </section>
 
-  {% if candidate %}
-  <section class="card" style="padding: 1.5rem; border: 1px solid var(--color-border, #e2e8f0); border-radius: 0.5rem; background: var(--color-surface-raised, #f8fafc);">
-    <h2 class="subheading" style="margin-top: 0;">Generated Candidate Practice</h2>
-    <div style="margin-bottom: 1rem;">
-      <p><strong>Status:</strong> <span class="tag">{{ candidate.status }}</span></p>
-      <p><strong>Revision:</strong> {{ candidate.revision }}</p>
-      {% set publication = (publications|default({})).get(candidate.id) %}
-      <p><strong>Publication:</strong>
-        {% if publication and not publication.is_withdrawn %}
-        <span class="tag tag--success">Published (revision {{ publication.source_revision }})</span>
-        {% elif publication %}
-        <span class="tag">Withdrawn (revision {{ publication.source_revision }})</span>
-        {% else %}
-        <span class="tag">Not published</span>
-        {% endif %}
-      </p>
-      {% if candidate.reviewer %}
-      <p><strong>Reviewer:</strong> {{ candidate.reviewer }}</p>
+  <section class="authoring-section" aria-labelledby="queue-heading">
+    <h2 id="queue-heading" class="subheading authoring-section__heading">Candidate queue</h2>
+    <p class="authoring-section__intro">
+      {% if queue.total %}
+      {{ queue.total }} candidate{{ "" if queue.total == 1 else "s" }} in this workspace, newest first.
+      {% else %}
+      Nothing generated yet — the first candidate you generate will appear here.
       {% endif %}
-      {% if candidate.decided_at %}
-      <p><strong>Decided at:</strong> <time datetime="{{ candidate.decided_at.isoformat() }}">{{ candidate.decided_at.isoformat() }}</time></p>
-      {% endif %}
-      <p><strong>Provider:</strong> {{ candidate.provider }}</p>
-      <p><strong>Model:</strong> {{ candidate.model }}</p>
-      <p><strong>Generated:</strong> <time datetime="{{ candidate.generated_at.isoformat() }}">{{ candidate.generated_at.isoformat() }}</time></p>
+    </p>
 
-      {% if candidate.validation %}
-        {% if not candidate.validation.is_approvable %}
-        <div class="validation-errors" role="alert" style="margin: 1rem 0; padding: 1rem; border: 1px solid #e53e3e; background: #fff5f5; border-radius: 0.375rem;">
-          <h4 style="margin-top: 0; color: #c53030;">Validation Issues (SPEC-029 / SPEC-030)</h4>
-          <p style="margin-bottom: 0.5rem; color: #c53030;">This candidate cannot be approved until these issues are resolved:</p>
-          <ul style="margin: 0; padding-left: 1.25rem;">
-            {% for err in candidate.validation.structural_errors %}
-            <li style="color: #c53030;">{{ err }}</li>
-            {% endfor %}
-            {% for err in candidate.validation.feedback_errors %}
-            <li style="color: #c53030;">{{ err }}</li>
-            {% endfor %}
-          </ul>
-        </div>
-        {% else %}
-        <div class="validation-success" role="status" style="margin: 1rem 0; padding: 0.75rem 1rem; border: 1px solid #38a169; background: #f0fff4; border-radius: 0.375rem; color: #276749;">
-          Candidate passed structural (SPEC-029) and feedback quality (SPEC-030) validation.
-        </div>
-        {% endif %}
-        {% if candidate.validation.content_warnings %}
-        <div class="validation-warnings" role="status" style="margin: 1rem 0; padding: 1rem; border: 1px solid #d69e2e; background: #fffaf0; border-radius: 0.375rem;">
-          <h4 style="margin-top: 0; color: #b7791f;">Review Considerations</h4>
-          <ul style="margin: 0; padding-left: 1.25rem;">
-            {% for warn in candidate.validation.content_warnings %}
-            <li style="color: #b7791f;">{{ warn }}</li>
-            {% endfor %}
-          </ul>
-        </div>
-        {% endif %}
-      {% endif %}
-
-      <h3>Authoring brief</h3>
-      <dl>
-        <dt>Practice area</dt>
-        <dd>{{ candidate.brief.practice_area }}</dd>
-        <dt>Intended learner context</dt>
-        <dd>{{ candidate.brief.learner_context }}</dd>
-        {% if candidate.brief.examination_context %}
-        <dt>Examination context</dt>
-        <dd>{{ candidate.brief.examination_context }}</dd>
-        {% endif %}
-        {% if candidate.brief.primary_creative_thinking_lens %}
-        <dt>Primary thinking lens</dt>
-        <dd>{{ candidate.brief.primary_creative_thinking_lens }}</dd>
-        {% endif %}
-        <dt>Purpose</dt>
-        <dd>{{ candidate.brief.purpose }}</dd>
-        <dt>Intended mode</dt>
-        <dd>{{ candidate.brief.intended_mode }}</dd>
-        <dt>Response form</dt>
-        <dd>{{ candidate.brief.response_form }}</dd>
-        {% if candidate.brief.constraints %}
-        <dt>Constraints</dt>
-        <dd>{{ candidate.brief.constraints }}</dd>
-        {% endif %}
-        {% if candidate.brief.stimulus_requirements %}
-        <dt>Stimulus requirements</dt>
-        <dd>{{ candidate.brief.stimulus_requirements }}</dd>
-        {% endif %}
-        <dt>Evaluation intent</dt>
-        <dd>{{ candidate.brief.evaluation_intent }}</dd>
-        <dt>Feedback intent</dt>
-        <dd>{{ candidate.brief.feedback_intent }}</dd>
-        <dt>Reflection intent</dt>
-        <dd>{{ candidate.brief.reflection_intent }}</dd>
-        {% if candidate.brief.continuation_intent %}
-        <dt>Continuation intent</dt>
-        <dd>{{ candidate.brief.continuation_intent }}</dd>
-        {% endif %}
-      </dl>
-      <h3>Candidate details</h3>
-      {% if candidate.candidate_data.title is defined %}
-      <p><strong>Title:</strong> {{ candidate.candidate_data.title }}</p>
-      {% endif %}
-      {% if candidate.candidate_data.description is defined %}
-      <p><strong>Description:</strong> {{ candidate.candidate_data.description }}</p>
-      {% endif %}
-      <dl>
-        {% for key, value in candidate.candidate_data.items() %}
-        {% if key not in ["title", "description", "contract"] %}
-        <dt>{{ key.replace("_", " ")|title }}</dt>
-        <dd>{{ value }}</dd>
-        {% endif %}
-        {% endfor %}
-      </dl>
-      {% if candidate.candidate_data.contract is mapping %}
-      <dl>
-        {% for key, value in candidate.candidate_data.contract.items() %}
-        <dt>{{ key.replace("_", " ")|title }}</dt>
-        <dd>{{ value }}</dd>
-        {% endfor %}
-      </dl>
-      {% elif candidate.candidate_data.contract is defined %}
-      <p>{{ candidate.candidate_data.contract }}</p>
-      {% endif %}
-    </div>
-
-    <details style="margin: 1.5rem 0; padding: 1rem; border: 1px solid var(--color-border, #cbd5e0); border-radius: 0.375rem;">
-      <summary style="font-weight: bold; cursor: pointer;">Edit Candidate Draft (Revalidate on Save)</summary>
-      <form method="post" action="/authoring/candidates/{{ candidate.id }}/edit" style="margin-top: 1rem; display: flex; flex-direction: column; gap: 1rem;">
-        <div>
-          <label for="edit_title" style="display: block; font-weight: bold; margin-bottom: 0.25rem;">Title</label>
-          <input type="text" id="edit_title" name="title" value="{{ candidate.candidate_data.get('title', '') }}" style="width: 100%; padding: 0.5rem;" required>
-        </div>
-        <div>
-          <label for="edit_description" style="display: block; font-weight: bold; margin-bottom: 0.25rem;">Description</label>
-          <textarea id="edit_description" name="description" rows="2" style="width: 100%; padding: 0.5rem;" required>{{ candidate.candidate_data.get('description', '') }}</textarea>
-        </div>
-        {% set contract_map = candidate.candidate_data.get('contract') if candidate.candidate_data.get('contract') is mapping else {} %}
-        <fieldset style="border: 1px solid var(--color-border, #e2e8f0); padding: 1rem; border-radius: 0.375rem;">
-          <legend style="font-weight: bold;">SPEC-029 Practice Content Contract</legend>
-          <div style="margin-bottom: 0.75rem;">
-            <label for="edit_purpose" style="display: block; font-weight: bold; margin-bottom: 0.25rem;">Purpose</label>
-            <textarea id="edit_purpose" name="purpose" rows="2" style="width: 100%; padding: 0.5rem;">{{ contract_map.get('purpose', '') }}</textarea>
-          </div>
-          <div style="margin-bottom: 0.75rem;">
-            <label for="edit_task" style="display: block; font-weight: bold; margin-bottom: 0.25rem;">Task</label>
-            <textarea id="edit_task" name="task" rows="2" style="width: 100%; padding: 0.5rem;">{{ contract_map.get('task', '') }}</textarea>
-          </div>
-          <div style="margin-bottom: 0.75rem;">
-            <label for="edit_expected_thinking" style="display: block; font-weight: bold; margin-bottom: 0.25rem;">Expected Thinking</label>
-            <textarea id="edit_expected_thinking" name="expected_thinking" rows="2" style="width: 100%; padding: 0.5rem;">{{ contract_map.get('expected_thinking', '') }}</textarea>
-          </div>
-          <div style="margin-bottom: 0.75rem;">
-            <label for="edit_response_contract" style="display: block; font-weight: bold; margin-bottom: 0.25rem;">Response Contract</label>
-            <textarea id="edit_response_contract" name="response_contract" rows="2" style="width: 100%; padding: 0.5rem;">{{ contract_map.get('response_contract', '') }}</textarea>
-          </div>
-          <div style="margin-bottom: 0.75rem;">
-            <label for="edit_evaluation_intent" style="display: block; font-weight: bold; margin-bottom: 0.25rem;">Evaluation Intent</label>
-            <textarea id="edit_evaluation_intent" name="evaluation_intent" rows="2" style="width: 100%; padding: 0.5rem;">{{ contract_map.get('evaluation_intent', '') }}</textarea>
-          </div>
-          <div style="margin-bottom: 0.75rem;">
-            <label for="edit_feedback_intent" style="display: block; font-weight: bold; margin-bottom: 0.25rem;">Feedback Intent</label>
-            <textarea id="edit_feedback_intent" name="feedback_intent" rows="2" style="width: 100%; padding: 0.5rem;">{{ contract_map.get('feedback_intent', '') }}</textarea>
-          </div>
-          <div style="margin-bottom: 0.75rem;">
-            <label for="edit_reflection_intent" style="display: block; font-weight: bold; margin-bottom: 0.25rem;">Reflection Intent</label>
-            <textarea id="edit_reflection_intent" name="reflection_intent" rows="2" style="width: 100%; padding: 0.5rem;">{{ contract_map.get('reflection_intent', '') }}</textarea>
-          </div>
-          <div>
-            <label for="edit_continuation_intent" style="display: block; font-weight: bold; margin-bottom: 0.25rem;">Continuation Intent</label>
-            <textarea id="edit_continuation_intent" name="continuation_intent" rows="2" style="width: 100%; padding: 0.5rem;">{{ contract_map.get('continuation_intent', '') }}</textarea>
-          </div>
-        </fieldset>
-        <div>
-          <button type="submit" class="button button--secondary">Save and Revalidate</button>
-        </div>
-      </form>
-    </details>
-
-    {% if candidate.history %}
-    <details style="margin: 1rem 0; padding: 1rem; border: 1px solid var(--color-border, #cbd5e0); border-radius: 0.375rem;">
-      <summary style="font-weight: bold; cursor: pointer;">Revision History ({{ candidate.history|length }})</summary>
-      <ul style="margin-top: 0.5rem; padding-left: 1.25rem;">
-        {% for rev in candidate.history %}
-        <li style="margin-bottom: 0.5rem;">
-          <strong>Revision {{ rev.version }}</strong> (edited by {{ rev.editor }} at {{ rev.edited_at.isoformat() }}):
-          <em>{{ rev.title }}</em> — {{ rev.description }}
-        </li>
-        {% endfor %}
-      </ul>
-    </details>
+    {% if queue.total %}
+    <ul class="filter-tabs" aria-label="Filter candidates by stage">
+      {% for filter in queue.filters %}
+      <li>
+        <a class="filter-tabs__link" href="{{ filter.url }}"
+           {% if filter.is_active %}aria-current="true"{% endif %}>
+          {{ filter.label }} <span class="filter-tabs__count">{{ filter.count }}</span>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
     {% endif %}
 
-    <div class="form-actions" style="display: flex; gap: 1rem; align-items: center; margin-top: 1rem; flex-wrap: wrap;">
-      {% set candidate_id = candidate.id %}
-      {% set publication = (publications|default({})).get(candidate.id) %}
-      {% if candidate.status != "approved" and candidate.status != "rejected" %}
-        <form method="post" action="/authoring/candidates/{{ candidate_id }}/approve">
-          <button type="submit" class="button" {% if candidate.validation and not candidate.validation.is_approvable %}disabled title="Candidate has validation errors that must be resolved before approval"{% endif %}>Approve for Library</button>
-        </form>
-        <form method="post" action="/authoring/candidates/{{ candidate_id }}/reject">
-          <button type="submit" class="button button--secondary">Reject Candidate</button>
-        </form>
-        {% if publication and not publication.is_withdrawn %}
-        <form method="post" action="/authoring/candidates/{{ candidate_id }}/withdraw">
-          <button type="submit" class="button button--secondary">Withdraw from Library</button>
-        </form>
-        {% endif %}
-      {% elif candidate.status == "approved" %}
-        <span class="tag tag--success">Approved for Library</span>
-        {% if not publication or publication.is_withdrawn %}
-        <form method="post" action="/authoring/candidates/{{ candidate_id }}/publish">
-          <button type="submit" class="button">Publish to Learner Library</button>
-        </form>
-        {% else %}
-        <span class="tag tag--success">Published to Learner Library</span>
-        <form method="post" action="/authoring/candidates/{{ candidate_id }}/withdraw">
-          <button type="submit" class="button button--secondary">Withdraw from Library</button>
-        </form>
-        {% endif %}
-      {% elif candidate.status == "rejected" %}
-        <span class="tag tag--danger">Rejected</span>
-        {% if publication and not publication.is_withdrawn %}
-        <form method="post" action="/authoring/candidates/{{ candidate_id }}/withdraw">
-          <button type="submit" class="button button--secondary">Withdraw from Library</button>
-        </form>
-        {% endif %}
-      {% endif %}
-    </div>
-  </section>
-  {% endif %}
-
-  {% if candidates %}
-  <section style="margin-top: 2rem;" aria-labelledby="candidate-list-heading">
-    <h2 id="candidate-list-heading" class="subheading">Candidate history</h2>
-    <ul>
-      {% for item in candidates %}
-      <li style="margin-bottom: 0.5rem;">
-        <a href="/authoring/candidates/{{ item.id }}" style="text-decoration: underline; font-weight: bold;">
-          {{ item.candidate_data.get("title", "Untitled candidate") }}
-        </a>
-        <span class="tag">{{ item.status }}</span>
-        {% set item_publication = (publications|default({})).get(item.id) %}
-        {% if item_publication %}
-        <span class="tag">{{ "Withdrawn" if item_publication.is_withdrawn else "Published" }}</span>
-        {% endif %}
-        <span>(rev {{ item.revision }})</span>
-        <time datetime="{{ item.generated_at.isoformat() }}">{{ item.generated_at.isoformat() }}</time>
+    <ul class="queue">
+      {% for item in queue.rows %}
+      <li class="queue__item">
+        <a class="queue__link" href="{{ item.url }}">{{ item.title }}</a>
+        <div class="queue__meta">
+          <span class="tag tag--{{ item.status_variant }}">{{ item.status_label }}</span>
+          <span>{{ item.publication_label }}</span>
+          <span>Revision {{ item.revision }}</span>
+          <time datetime="{{ item.generated_at_iso }}">Generated {{ item.generated_at_display }}</time>
+        </div>
+      </li>
+      {% else %}
+      <li class="queue__empty">
+        No candidates match this stage.
+        <a href="{{ queue.all_url }}">Show all candidates</a>.
       </li>
       {% endfor %}
     </ul>
   </section>
-  {% endif %}
 </article>
 {% endblock %}

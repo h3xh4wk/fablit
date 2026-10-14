@@ -51,6 +51,13 @@
   --color-error-soft: #fbe9e4;
   --color-rule: #e5dccf;
 
+  /* Status semantics — internal authoring surfaces only (SPEC-032/SPEC-035).
+     Muted on purpose: these mark workflow position, never learner performance. */
+  --color-caution: #8a6a1f;
+  --color-caution-soft: #fbf3e0;
+  --color-established: #41674b;
+  --color-established-soft: #edf3ee;
+
   /* Border radius */
   --radius-sm: 6px;
   --radius-md: 12px;
@@ -993,4 +1000,375 @@ ol {
 }
 .practice__recovery .button {
   font-size: var(--text-small);
+}
+
+/* --------------------------------------------------------------------------
+   Internal authoring workspace (SPEC-032 §8–9, SPEC-035 §5, SEC-001)
+
+   An author-facing tool, not a learner surface. Its job is to make one thing
+   obvious at a time: what a brief asks for, where a candidate sits in the
+   workflow, and which single action moves it forward.
+   -------------------------------------------------------------------------- */
+.authoring__header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+
+.authoring__header .subnav {
+  margin-bottom: 0;
+}
+
+.authoring__intro {
+  color: var(--color-ink-muted);
+  margin-bottom: var(--space-6);
+}
+
+.authoring-section {
+  margin-bottom: var(--space-8);
+}
+
+.authoring-section__heading {
+  margin-bottom: var(--space-1);
+}
+
+.authoring-section__intro {
+  color: var(--color-ink-muted);
+  font-size: var(--text-small);
+  margin: 0 0 var(--space-4);
+}
+
+/* --- Brief and edit forms ------------------------------------------------ */
+.form-section {
+  margin: 0 0 var(--space-5);
+  padding: var(--space-4) var(--space-5) var(--space-5);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.form-section__legend {
+  padding: 0 var(--space-2);
+  font-weight: 600;
+}
+
+.form-section__intro {
+  color: var(--color-ink-muted);
+  font-size: var(--text-small);
+  margin: 0 0 var(--space-4);
+}
+
+.form-field {
+  margin-bottom: var(--space-4);
+}
+
+.form-field:last-child {
+  margin-bottom: 0;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--space-4);
+}
+
+.form-field .form-hint {
+  margin: var(--space-1) 0 0;
+}
+
+.form-required {
+  color: var(--color-ink-muted);
+  font-size: var(--text-small);
+  font-weight: 400;
+}
+
+.form-optional-group {
+  margin: 0 0 var(--space-5);
+  padding: var(--space-4) var(--space-5);
+  border: 1px dashed var(--color-rule);
+  border-radius: var(--radius-md);
+}
+
+.form-optional-group > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.form-optional-group > summary .form-hint {
+  margin: 0;
+  font-weight: 400;
+}
+
+.form-optional-group[open] > summary {
+  margin-bottom: var(--space-4);
+}
+
+/* --- Status tags -------------------------------------------------------- */
+.tag {
+  display: inline-block;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-small);
+  font-weight: 600;
+  color: var(--color-ink-muted);
+  background: var(--color-bg);
+  border: 1px solid var(--color-rule);
+  border-radius: 999px;
+}
+
+.tag--success {
+  color: var(--color-established);
+  background: var(--color-established-soft);
+  border-color: var(--color-established-soft);
+}
+
+.tag--caution {
+  color: var(--color-caution);
+  background: var(--color-caution-soft);
+  border-color: var(--color-caution-soft);
+}
+
+.tag--danger {
+  color: var(--color-error);
+  background: var(--color-error-soft);
+  border-color: var(--color-error-soft);
+}
+
+/* --- Validation and outcome panels -------------------------------------- */
+.validation-panel {
+  margin: var(--space-4) 0;
+  padding: var(--space-4);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-md);
+}
+
+.validation-panel > :first-child {
+  margin-top: 0;
+}
+
+.validation-panel > :last-child {
+  margin-bottom: 0;
+}
+
+.validation-panel--error {
+  color: var(--color-error);
+  background: var(--color-error-soft);
+  border-color: var(--color-error-soft);
+}
+
+.validation-panel--caution {
+  color: var(--color-caution);
+  background: var(--color-caution-soft);
+  border-color: var(--color-caution-soft);
+}
+
+.validation-panel--ok {
+  color: var(--color-established);
+  background: var(--color-established-soft);
+  border-color: var(--color-established-soft);
+}
+
+.authoring-outcome {
+  margin-bottom: var(--space-5);
+  padding: var(--space-4);
+  border: 1px solid var(--color-rule);
+  border-left: 3px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.authoring-outcome p {
+  margin: 0;
+}
+
+/* --- Candidate queue ---------------------------------------------------- */
+.filter-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  list-style: none;
+}
+
+.filter-tabs__link {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-small);
+  color: var(--color-ink-muted);
+  background: var(--color-surface);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.filter-tabs__link:hover {
+  color: var(--color-accent-hover);
+  border-color: var(--color-accent);
+}
+
+.filter-tabs__link[aria-current="true"] {
+  font-weight: 600;
+  color: var(--color-accent-hover);
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent-soft);
+}
+
+.filter-tabs__count {
+  font-variant-numeric: tabular-nums;
+  color: inherit;
+}
+
+.queue {
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  list-style: none;
+}
+
+.queue__item {
+  padding: var(--space-4);
+  border-top: 1px solid var(--color-rule);
+}
+
+.queue__item:first-child {
+  border-top: 0;
+}
+
+.queue__link {
+  color: var(--color-ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.queue__link:hover {
+  color: var(--color-accent-hover);
+  text-decoration: underline;
+}
+
+.queue__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
+  margin-top: var(--space-2);
+  font-size: var(--text-small);
+  color: var(--color-ink-muted);
+}
+
+.queue__empty {
+  padding: var(--space-5);
+  color: var(--color-ink-muted);
+}
+
+/* --- Workflow stage summary -------------------------------------------- */
+.stage-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  list-style: none;
+}
+
+.stage-summary__step {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-small);
+  color: var(--color-ink-muted);
+  background: var(--color-surface);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-sm);
+}
+
+.stage-summary__step--done {
+  color: var(--color-established);
+  background: var(--color-established-soft);
+  border-color: var(--color-established-soft);
+}
+
+.stage-summary__step--current {
+  font-weight: 600;
+  color: var(--color-ink);
+  border-color: var(--color-accent);
+}
+
+/* --- Detail content and actions ---------------------------------------- */
+.definition-list {
+  margin: 0;
+}
+
+.definition-list dt {
+  margin-top: var(--space-3);
+  font-weight: 600;
+}
+
+.definition-list dt:first-child {
+  margin-top: 0;
+}
+
+.definition-list dd {
+  margin: var(--space-1) 0 0;
+  color: var(--color-ink);
+  overflow-wrap: anywhere;
+}
+
+.candidate-content {
+  margin: var(--space-4) 0;
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+}
+
+.candidate-content h4 {
+  margin: var(--space-4) 0 var(--space-1);
+}
+
+.candidate-content h4:first-child {
+  margin-top: 0;
+}
+
+.action-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-rule);
+}
+
+.action-group form {
+  margin: 0;
+}
+
+.action-group__note {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: var(--text-small);
+  color: var(--color-ink-muted);
+}
+
+.authoring-secret {
+  max-width: 28rem;
+  margin-bottom: var(--space-4);
+}
+
+.authoring-back {
+  display: inline-block;
+  margin-bottom: var(--space-4);
+  font-size: var(--text-small);
+  color: var(--color-ink-muted);
+  text-decoration: none;
+}
+
+.authoring-back:hover {
+  color: var(--color-accent-hover);
+  text-decoration: underline;
 }

@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Authoring workspace split into a brief/queue page and a candidate page**: the internal authoring surface (SPEC-032 / SPEC-035) rendered the brief form, one candidate's content, its edit form, its revision history, and the whole candidate list on a single page, so the one action that mattered was buried among ten inputs and several hundred lines of someone else's candidate. The workspace now takes a brief and lists the queue, and each candidate has its own page.
+  - Brief form: the eight required fields are grouped into three labelled steps (what the practice is for, how the learner will work, how the work will be reviewed with the learner) with a one-line explanation each, and the five optional fields are collapsed into a single disclosure group that opens automatically when it already holds answers. Field names, `required` markers, and the `POST /authoring/generate` contract are unchanged.
+  - Candidate page (`authoring_candidate.html`): a stage summary (Generated → Content checks → Human decision → In the learner library), the validation panels, the generated content and the authoring brief, the edit form, the revision history, and only the actions available at that stage — with a note explaining what the next action does.
+  - Queue: filter tabs for every stage (`All`, `Awaiting decision`, `Ready to publish`, `In the learner library`, `Withdrawn`, `Rejected`) with counts that cover each candidate exactly once and sum to the total, newest-first ordering, and a `?stage=` filter that works without JavaScript.
+  - Styling moved out of ~60 inline `style=` attributes into `app/static/css/fablit.css` under a new authoring section, built on the existing design tokens; status and validation colours are defined as tokens rather than literal hex values.
+  - HTML mutation responses now return the page the author was on: generate, approve, reject, edit, publish, and withdraw render the candidate page, and a refused publication writes its reason there rather than dropping the author back at the queue. JSON (`Accept: application/json`) behaviour is unchanged.
+  - New tests in `tests/web/test_authoring_ui.py` cover brief grouping and required/optional marking, the collapsed optional group, preserved answers on a rejected brief, no inline styles, filter counts and filtering, newest-first ordering, queue links, the empty state, the per-stage call to action, the split itself (a candidate page carries no brief form), and that publication failures stay on the candidate page.
+
 ### Added
 
 - **SPEC-035 — Publish Approved Practice Candidates to the Learner Library**: an explicit, human-only publication handoff from the SPEC-032 authoring workflow to the existing curated learner library. Approval and publication are now distinct decisions: approval accepts content quality, publication deliberately makes approved content discoverable to learners.
