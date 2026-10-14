@@ -33,11 +33,11 @@ The platform architecture satisfies all operational requirements:
 
 The repository root includes the deployment manifests required by Google Cloud SDK:
 
-- **`app.yaml`**: App Engine deployment manifest:
+- **`app.yaml`**: App Engine deployment manifest (the artifact bucket is pinned here):
   - Runtime: `python312`
   - Entrypoint: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
   - Static file routing: `/static/` routes to `app/static/`
-  - Production environment variables (`FABLIT_ENV=production`, `FABLIT_PRACTICE_HISTORY_REPOSITORY=datastore`, `FABLIT_ARTIFACT_STORAGE_BACKEND=gcs`)
+  - Production environment variables (`FABLIT_ENV=production`, `FABLIT_PRACTICE_HISTORY_REPOSITORY=datastore`, `FABLIT_ARTIFACT_STORAGE_BACKEND=gcs`, `FABLIT_ARTIFACT_STORAGE_BUCKET`). The committed manifest pins the App Engine default bucket (`fablit-app.appspot.com`); see §4.
 - **`requirements.txt`**: Minimal production dependencies for App Engine buildpacks (FastAPI, Jinja2, Uvicorn, Pydantic, HTTPX, google-cloud-datastore, google-cloud-storage).
 - **`.gcloudignore`**: Excludes tests, documentation, caches, virtual environments, and Git metadata from the deployed package.
 
@@ -74,7 +74,8 @@ The repository root includes the deployment manifests required by Google Cloud S
 - Stored completions contain only `ArtifactRef` metadata (never binary image payloads).
 
 ### Google Cloud Storage (Private Sketchbook Artifacts)
-- Enabled by `FABLIT_ARTIFACT_STORAGE_BACKEND=gcs` and `FABLIT_ARTIFACT_STORAGE_BUCKET=<bucket-name>`.
+- Enabled by `FABLIT_ARTIFACT_STORAGE_BACKEND=gcs` and `FABLIT_ARTIFACT_STORAGE_BUCKET=<bucket-name>`. Both are required: configuration validation rejects the `gcs` backend without a bucket name, so a deployment that omits the bucket fails at startup rather than silently degrading.
+- The committed `app.yaml` pins the App Engine default bucket, `<project-id>.appspot.com` (shipped value `fablit-app.appspot.com`). App Engine creates that bucket automatically when the app is created and it includes the first 5 GB of storage for free. A dedicated bucket name works equally well — point `FABLIT_ARTIFACT_STORAGE_BUCKET` at it and grant the same IAM role and security settings described in §4.
 - Private learner sketchbook images uploaded during reflection practice are stored as binary blobs named by their opaque `artifact_id` (`UUID`).
 - GCS blobs are stored with appropriate metadata (`artifact_id`, `filename`) and `content_type` (`image/png`, `image/jpeg`, `image/webp`).
 - **No direct or public GCS URLs are ever generated or returned to learners.** Artifacts are served exclusively through the learner-scoped application route `/history/{completion_id}/artifact` with `Cache-Control: private, no-store`.
@@ -98,14 +99,29 @@ gcloud projects add-iam-policy-binding <PROJECT_ID> \
   --role="roles/datastore.user"
 
 # 2. Cloud Storage object read/write/delete access on the bucket
-gcloud storage buckets add-iam-policy-binding gs://<PROJECT_ID>-artifacts \
+gcloud storage buckets add-iam-policy-binding gs://<PROJECT_ID>.appspot.com \
   --member="serviceAccount:<PROJECT_ID>@appspot.gserviceaccount.com" \
   --role="roles/storage.objectUser"
 ```
 
+The default service account may already hold the project `Editor` role, which is broader than this boundary requires. Prefer granting `roles/storage.objectUser` explicitly and revoking `Editor` where your organization policy allows it.
+
 ### Bucket Security Settings
 
-Create the GCS bucket with uniform bucket-level access and public access prevention:
+When you use the App Engine default bucket (the value shipped in `app.yaml`), there is nothing
+to create — App Engine provisions it with the app. Apply the private-access settings to it:
+
+```bash
+gcloud storage buckets update gs://<PROJECT_ID>.appspot.com \
+  --uniform-bucket-level-access
+
+# Enforce public access prevention
+gcloud storage buckets update gs://<PROJECT_ID>.appspot.com \
+  --public-access-prevention
+```
+
+If you would rather isolate sketchbook artifacts in a dedicated bucket, create it with the same
+settings and set `FABLIT_ARTIFACT_STORAGE_BUCKET` in `app.yaml` to its name:
 
 ```bash
 # Create bucket in the same region as App Engine
@@ -133,7 +149,7 @@ All settings are managed via environment variables (`FABLIT_*`), configured in `
 | `FABLIT_STIMULUS_PROVIDER` | `builtin` | Bundled deterministic stimulus images (zero network dependencies) |
 | `FABLIT_PRACTICE_HISTORY_REPOSITORY` | `datastore` | Persists completed practice history in Google Cloud Datastore |
 | `FABLIT_ARTIFACT_STORAGE_BACKEND` | `gcs` | Persists sketchbook artifact binaries in Google Cloud Storage |
-| `FABLIT_ARTIFACT_STORAGE_BUCKET` | `<project-id>-artifacts` | Name of the private Google Cloud Storage bucket |
+| `FABLIT_ARTIFACT_STORAGE_BUCKET` | `fablit-app.appspot.com` | Name of the private Google Cloud Storage bucket. Shipped as the project's App Engine default bucket; required whenever the backend is `gcs`, and startup fails fast when it is missing. Override to use a dedicated bucket. |
 | `FABLIT_AUTHORING_SECRET` | `<shared-secret>` | Shared secret for internal AI authoring access (SEC-001). Unset disables authoring. |
 | `FABLIT_AI_PROVIDER_API_KEY` | `<provider-key>` | Optional server-side API key for the AI practice authoring provider (SPEC-032 / SEC-001). Never exposed to learners or clients. |
 | `FABLIT_AI_PROVIDER_MODEL` | `gemini-2.5-flash` | Gemini model used by the authoring provider adapter (ARCH-001), retained as authoring provenance. Only used when `FABLIT_AI_PROVIDER_API_KEY` is set. |
@@ -158,8 +174,8 @@ All settings are managed via environment variables (`FABLIT_*`), configured in `
    ```bash
    gcloud app create --region=us-central1
    ```
-4. Create the private GCS bucket and grant IAM permissions as shown in §4.
-5. In `app.yaml`, verify that `FABLIT_ARTIFACT_STORAGE_BUCKET` matches your GCS bucket name.
+4. Grant the Datastore and Cloud Storage IAM roles shown in §4 and confirm the target bucket's security settings. Using the App Engine default bucket (`<project-id>.appspot.com`) needs no bucket creation.
+5. In `app.yaml`, verify that `FABLIT_ARTIFACT_STORAGE_BUCKET` names the bucket you granted access to (committed value: `fablit-app.appspot.com`). It is required with `FABLIT_ARTIFACT_STORAGE_BACKEND=gcs`.
 
 ### Deploying the Application
 Run the standard App Engine deployment command:

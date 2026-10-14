@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Production deploy configuration and request correlation**: two production-only defects that never surfaced in tests.
+  - `app.yaml` selected `FABLIT_ARTIFACT_STORAGE_BACKEND=gcs` while leaving the bucket name commented out, a combination `AppConfig` rejects. Any deployment built from that manifest would have failed configuration validation at startup; the manifest now pins the App Engine default bucket (`FABLIT_ARTIFACT_STORAGE_BUCKET: "fablit-app.appspot.com"`), and `docs/engineering/deployment.md` reflects it (§2, §3, §4, §5, §6).
+  - Completed-request logs carried `request_id: null` and `trace_id: null` in production, violating SPEC-003 FR-009/FR-010. Cause: `RequestContextFilter` was attached to the root logger, and logger-level filters only run for records created directly on that logger, so records propagated from child loggers (`fablit.app`, `uvicorn`) reached the formatter without the correlation context; the filter now lives on `StructuredLogHandler`. Separately, the middleware only read `X-Trace-ID`, which App Engine never sends — trace correlation now also parses the platform's `X-Cloud-Trace-Context: <trace-id>/<span-id>;o=<option>` header, with an explicit `X-Trace-ID` still taking precedence.
+
 ### Added
 
 - **SPEC-035 — Publish Approved Practice Candidates to the Learner Library**: an explicit, human-only publication handoff from the SPEC-032 authoring workflow to the existing curated learner library. Approval and publication are now distinct decisions: approval accepts content quality, publication deliberately makes approved content discoverable to learners.
