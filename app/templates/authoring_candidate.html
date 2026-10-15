@@ -1,0 +1,320 @@
+{% extends "base.html" %}
+{% block title %}{{ view.title }} — Internal Authoring Workspace — Fablit{% endblock %}
+{% block content %}
+<article class="intention">
+  {% include "_authoring_nav.html" %}
+
+  <a class="authoring-back" href="{{ view.queue_url }}">
+    <span aria-hidden="true">←</span> Back to the candidate queue
+  </a>
+
+  <h1 class="display">{{ view.title }}</h1>
+  <p class="authoring__intro">
+    <span class="tag tag--{{ view.status_variant }}">{{ view.status_label }}</span>
+    {% if view.description %}{{ view.description }}{% endif %}
+  </p>
+
+  {% if error %}
+  <div class="validation-panel validation-panel--error" role="alert">
+    <p>{{ error }}</p>
+  </div>
+  {% endif %}
+
+  {% if message %}
+  <div class="authoring-outcome" role="status">
+    <p>{{ message }}</p>
+  </div>
+  {% endif %}
+
+  <section class="authoring-section" aria-labelledby="stage-heading">
+    <h2 id="stage-heading" class="subheading authoring-section__heading">Where this candidate stands</h2>
+    <p class="authoring-section__intro">
+      Approval and publication are separate decisions: approving accepts the content, publishing
+      makes it visible to learners.
+    </p>
+
+    <ol class="stage-summary">
+      {% for step in view.stages %}
+      <li class="stage-summary__step{% if step.state != 'pending' %} stage-summary__step--{{ step.state }}{% endif %}">
+        {{ step.label }}{% if step.state == 'current' %} <span class="form-hint">current step</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+
+    <div class="queue__meta">
+      <span class="tag tag--{{ view.status_variant }}">{{ view.status_label }}</span>
+      <span class="tag{% if view.is_published %} tag--success{% endif %}">{{ view.publication_label }}</span>
+      <span>Revision {{ candidate.revision }}</span>
+      {% if view.publication %}
+      <span>Published revision {{ view.publication.source_revision }}</span>
+      {% endif %}
+      <span>Provider {{ candidate.provider }}</span>
+      <span>Model {{ candidate.model }}</span>
+      <time datetime="{{ candidate.generated_at.isoformat() }}">Generated {{ candidate.generated_at.isoformat() }}</time>
+      {% if candidate.reviewer %}
+      <span>Last edited by {{ candidate.reviewer }}</span>
+      {% endif %}
+      {% if candidate.decided_at %}
+      <time datetime="{{ candidate.decided_at.isoformat() }}">Decided {{ candidate.decided_at.isoformat() }}</time>
+      {% endif %}
+    </div>
+  </section>
+
+  {% if candidate.validation %}
+  <section class="authoring-section" aria-labelledby="validation-heading">
+    <h2 id="validation-heading" class="subheading authoring-section__heading">Content checks</h2>
+    <p class="authoring-section__intro">
+      Automatic structural (SPEC-029) and feedback-language (SPEC-030) checks run on every
+      revision. They gate approval; they never replace your judgement.
+    </p>
+
+    {% if not candidate.validation.is_approvable %}
+    <div class="validation-panel validation-panel--error" role="alert">
+      <h3>Validation Issues (SPEC-029 / SPEC-030)</h3>
+      <p>This candidate cannot be approved until these issues are resolved:</p>
+      <ul>
+        {% for err in candidate.validation.structural_errors %}
+        <li>{{ err }}</li>
+        {% endfor %}
+        {% for err in candidate.validation.feedback_errors %}
+        <li>{{ err }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% else %}
+    <div class="validation-panel validation-panel--ok" role="status">
+      <p>Candidate passed structural (SPEC-029) and feedback quality (SPEC-030) validation.</p>
+    </div>
+    {% endif %}
+
+    {% if candidate.validation.content_warnings %}
+    <div class="validation-panel validation-panel--caution">
+      <h3>Review Considerations</h3>
+      <ul>
+        {% for warn in candidate.validation.content_warnings %}
+        <li>{{ warn }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  <section class="authoring-section" aria-labelledby="candidate-content-heading">
+    <h2 id="candidate-content-heading" class="subheading authoring-section__heading">Generated Candidate Practice</h2>
+    <p class="authoring-section__intro">
+      Untrusted generated content. Read it against your brief before approving: the checks above
+      can miss a practice that is accurate but wrong for your intent.
+    </p>
+
+    <div class="candidate-content">
+      {% if candidate.candidate_data.title is defined %}
+      <h3>Title</h3>
+      <p>{{ candidate.candidate_data.title }}</p>
+      {% endif %}
+      {% if candidate.candidate_data.description is defined %}
+      <h3>Description</h3>
+      <p>{{ candidate.candidate_data.description }}</p>
+      {% endif %}
+
+      {% if candidate.candidate_data.contract is mapping %}
+      <h3>SPEC-029 practice content contract</h3>
+      <dl class="definition-list">
+        {% for key, value in candidate.candidate_data.contract.items() %}
+        <dt>{{ key.replace("_", " ")|title }}</dt>
+        <dd>{{ value }}</dd>
+        {% endfor %}
+      </dl>
+      {% elif candidate.candidate_data.contract is defined %}
+      <h3>SPEC-029 practice content contract</h3>
+      <p>{{ candidate.candidate_data.contract }}</p>
+      {% endif %}
+
+      <h3>Other generated fields</h3>
+      <dl class="definition-list">
+        {% for key, value in candidate.candidate_data.items() %}
+        {% if key not in ["title", "description", "contract"] %}
+        <dt>{{ key.replace("_", " ")|title }}</dt>
+        <dd>{{ value }}</dd>
+        {% endif %}
+        {% endfor %}
+      </dl>
+    </div>
+
+    <h3>Authoring brief</h3>
+    <dl class="definition-list">
+      <dt>Practice area</dt>
+      <dd>{{ candidate.brief.practice_area }}</dd>
+      <dt>Intended learner context</dt>
+      <dd>{{ candidate.brief.learner_context }}</dd>
+      {% if candidate.brief.examination_context %}
+      <dt>Examination context</dt>
+      <dd>{{ candidate.brief.examination_context }}</dd>
+      {% endif %}
+      {% if candidate.brief.primary_creative_thinking_lens %}
+      <dt>Primary thinking lens</dt>
+      <dd>{{ candidate.brief.primary_creative_thinking_lens }}</dd>
+      {% endif %}
+      <dt>Purpose</dt>
+      <dd>{{ candidate.brief.purpose }}</dd>
+      <dt>Intended mode</dt>
+      <dd>{{ candidate.brief.intended_mode }}</dd>
+      <dt>Response form</dt>
+      <dd>{{ candidate.brief.response_form }}</dd>
+      {% if candidate.brief.constraints %}
+      <dt>Constraints</dt>
+      <dd>{{ candidate.brief.constraints }}</dd>
+      {% endif %}
+      {% if candidate.brief.stimulus_requirements %}
+      <dt>Stimulus requirements</dt>
+      <dd>{{ candidate.brief.stimulus_requirements }}</dd>
+      {% endif %}
+      <dt>Evaluation intent</dt>
+      <dd>{{ candidate.brief.evaluation_intent }}</dd>
+      <dt>Feedback intent</dt>
+      <dd>{{ candidate.brief.feedback_intent }}</dd>
+      <dt>Reflection intent</dt>
+      <dd>{{ candidate.brief.reflection_intent }}</dd>
+      {% if candidate.brief.continuation_intent %}
+      <dt>Continuation intent</dt>
+      <dd>{{ candidate.brief.continuation_intent }}</dd>
+      {% endif %}
+    </dl>
+  </section>
+
+  <section class="authoring-section" aria-labelledby="edit-heading">
+    <h2 id="edit-heading" class="subheading authoring-section__heading">Revise this candidate</h2>
+
+    <details class="form-optional-group">
+      <summary>
+        Edit the draft
+        <span class="form-hint">— saving revalidates the content and records a new revision</span>
+      </summary>
+
+      <form method="post" action="/authoring/candidates/{{ candidate.id }}/edit">
+        <fieldset class="form-section">
+          <legend class="form-section__legend">How it is presented to the learner</legend>
+
+          <div class="form-field">
+            <label class="form-label" for="edit_title">Title</label>
+            <input type="text" id="edit_title" name="title" class="form-control"
+                   value="{{ candidate.candidate_data.get('title', '') }}" required>
+          </div>
+
+          <div class="form-field">
+            <label class="form-label" for="edit_description">Description</label>
+            <textarea id="edit_description" name="description" class="form-control" rows="2" required>{{ candidate.candidate_data.get('description', '') }}</textarea>
+          </div>
+        </fieldset>
+
+        {% set contract_map = candidate.candidate_data.get('contract') if candidate.candidate_data.get('contract') is mapping else {} %}
+        <fieldset class="form-section">
+          <legend class="form-section__legend">SPEC-029 practice content contract</legend>
+          <p class="form-section__intro">
+            The eight dimensions the learner experience is built from. Each one is checked again
+            when you save.
+          </p>
+
+          <div class="form-field">
+            <label class="form-label" for="edit_purpose">Purpose</label>
+            <textarea id="edit_purpose" name="purpose" class="form-control" rows="2">{{ contract_map.get('purpose', '') }}</textarea>
+          </div>
+
+          <div class="form-field">
+            <label class="form-label" for="edit_task">Task</label>
+            <textarea id="edit_task" name="task" class="form-control" rows="2">{{ contract_map.get('task', '') }}</textarea>
+          </div>
+
+          <div class="form-field">
+            <label class="form-label" for="edit_expected_thinking">Expected thinking</label>
+            <textarea id="edit_expected_thinking" name="expected_thinking" class="form-control" rows="2">{{ contract_map.get('expected_thinking', '') }}</textarea>
+          </div>
+
+          <div class="form-field">
+            <label class="form-label" for="edit_response_contract">Response contract</label>
+            <textarea id="edit_response_contract" name="response_contract" class="form-control" rows="2">{{ contract_map.get('response_contract', '') }}</textarea>
+          </div>
+
+          <div class="form-field">
+            <label class="form-label" for="edit_evaluation_intent">Evaluation intent</label>
+            <textarea id="edit_evaluation_intent" name="evaluation_intent" class="form-control" rows="2">{{ contract_map.get('evaluation_intent', '') }}</textarea>
+          </div>
+
+          <div class="form-field">
+            <label class="form-label" for="edit_feedback_intent">Feedback intent</label>
+            <textarea id="edit_feedback_intent" name="feedback_intent" class="form-control" rows="2">{{ contract_map.get('feedback_intent', '') }}</textarea>
+          </div>
+
+          <div class="form-field">
+            <label class="form-label" for="edit_reflection_intent">Reflection intent</label>
+            <textarea id="edit_reflection_intent" name="reflection_intent" class="form-control" rows="2">{{ contract_map.get('reflection_intent', '') }}</textarea>
+          </div>
+
+          <div class="form-field">
+            <label class="form-label" for="edit_continuation_intent">Continuation intent</label>
+            <textarea id="edit_continuation_intent" name="continuation_intent" class="form-control" rows="2">{{ contract_map.get('continuation_intent', '') }}</textarea>
+          </div>
+        </fieldset>
+
+        <p class="form-actions">
+          <button type="submit" class="button button--secondary">Save and revalidate</button>
+        </p>
+      </form>
+    </details>
+
+    {% if candidate.history %}
+    <details class="form-optional-group">
+      <summary>
+        Revision history
+        <span class="form-hint">— {{ candidate.history|length }} earlier revision{{ "" if candidate.history|length == 1 else "s" }}</span>
+      </summary>
+      <ul>
+        {% for rev in candidate.history %}
+        <li>
+          <strong>Revision {{ rev.version }}</strong>
+          <span class="form-hint">edited by {{ rev.editor }} at {{ rev.edited_at.isoformat() }}</span>
+          <br>
+          <em>{{ rev.title }}</em> — {{ rev.description }}
+        </li>
+        {% endfor %}
+      </ul>
+    </details>
+    {% endif %}
+  </section>
+
+  <section class="authoring-section" aria-labelledby="actions-heading">
+    <h2 id="actions-heading" class="subheading authoring-section__heading">Next step</h2>
+
+    <div class="action-group">
+      <p class="action-group__note">{{ view.action_note }}</p>
+
+      {% if view.can_approve %}
+      <form method="post" action="/authoring/candidates/{{ candidate.id }}/approve">
+        <button type="submit" class="button"
+                {% if not view.is_approvable %}disabled title="This candidate has validation errors that must be resolved before approval"{% endif %}>
+          Approve for Library
+        </button>
+      </form>
+      {% endif %}
+
+      {% if view.can_reject %}
+      <form method="post" action="/authoring/candidates/{{ candidate.id }}/reject">
+        <button type="submit" class="button button--secondary">Reject Candidate</button>
+      </form>
+      {% endif %}
+
+      {% if view.can_publish %}
+      <form method="post" action="/authoring/candidates/{{ candidate.id }}/publish">
+        <button type="submit" class="button">Publish to Learner Library</button>
+      </form>
+      {% endif %}
+
+      {% if view.can_withdraw %}
+      <form method="post" action="/authoring/candidates/{{ candidate.id }}/withdraw">
+        <button type="submit" class="button button--secondary">Withdraw from Library</button>
+      </form>
+      {% endif %}
+    </div>
+  </section>
+</article>
+{% endblock %}

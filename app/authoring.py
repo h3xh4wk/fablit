@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import logging
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -696,6 +696,241 @@ def _publication_map(request: Request) -> dict[UUID, PublishedPractice]:
     return {record.source_candidate_id: record for record in records}
 
 
+#: Candidate stage filters offered on the workspace queue. Every candidate
+#: belongs to exactly one of these buckets (plus "all"), so the counts add up.
+_AUTHORING_QUEUE_FILTERS: tuple[tuple[str, str], ...] = (
+    ("all", "All"),
+    ("awaiting", "Awaiting decision"),
+    ("ready", "Ready to publish"),
+    ("library", "In the learner library"),
+    ("withdrawn", "Withdrawn"),
+    ("rejected", "Rejected"),
+)
+
+_AUTHORING_QUEUE_KEYS = frozenset(key for key, _ in _AUTHORING_QUEUE_FILTERS)
+
+_STATUS_PRESENTATION: dict[str, tuple[str, str]] = {
+    "candidate": ("Awaiting your decision", "caution"),
+    "approved": ("Approved for the library", "success"),
+    "rejected": ("Rejected", "danger"),
+}
+
+
+def _queue_stage(
+    candidate: PracticeCandidate, publication: PublishedPractice | None
+) -> str:
+    """Return the single queue bucket this candidate belongs to (SPEC-035 §5)."""
+    if publication is not None:
+        return "library" if not publication.is_withdrawn else "withdrawn"
+    if candidate.is_approved:
+        return "ready"
+    if candidate.review_outcome is CandidateReviewOutcome.REJECTED:
+        return "rejected"
+    return "awaiting"
+
+
+def _publication_label(publication: PublishedPractice | None) -> str:
+    """Describe the publication state in the author's terms."""
+    if publication is None:
+        return "Not published"
+    if publication.is_withdrawn:
+        return "Withdrawn from the learner library"
+    return "Published to Learner Library"
+
+
+def _queue_item(
+    candidate: PracticeCandidate, publication: PublishedPractice | None
+) -> dict[str, Any]:
+    """Shape one queue row for rendering without template-side logic."""
+    status_label, status_variant = _STATUS_PRESENTATION[candidate.status]
+    label = _publication_label(publication)
+    return {
+        "id": str(candidate.id),
+        "url": f"/authoring/candidates/{candidate.id}",
+        "title": candidate.title or "Untitled candidate",
+        "status_label": status_label,
+        "status_variant": status_variant,
+        "publication_label": "" if publication is None else label,
+        "revision": candidate.revision,
+        "generated_at_iso": candidate.generated_at.isoformat(),
+        "generated_at_display": candidate.generated_at.isoformat(),
+    }
+
+
+def _queue_view(
+    candidates: Iterable[PracticeCandidate],
+    publications: Mapping[UUID, PublishedPractice],
+    *,
+    selected: str,
+) -> dict[str, Any]:
+    """Build the filter tabs, counts, and newest-first queue rows for the UI."""
+    active = selected if selected in _AUTHORING_QUEUE_KEYS else "all"
+    entries = sorted(
+        ((candidate, publications.get(candidate.id)) for candidate in candidates),
+        key=lambda entry: entry[0].generated_at,
+        reverse=True,
+    )
+    stages = {
+        candidate.id: _queue_stage(candidate, publication)
+        for candidate, publication in entries
+    }
+    counts = {"all": len(entries)}
+    for stage in stages.values():
+        counts[stage] = counts.get(stage, 0) + 1
+
+    filters = [
+        {
+            "key": key,
+            "label": label,
+            "count": counts.get(key, 0),
+            "is_active": key == active,
+            "url": "/authoring" if key == "all" else f"/authoring?stage={key}",
+        }
+        for key, label in _AUTHORING_QUEUE_FILTERS
+    ]
+    return {
+        # Named "rows" because Jinja resolves ``queue.items`` to the dict's own
+        # ``items`` method rather than to a key of that name.
+        "rows": [
+            _queue_item(candidate, publication)
+            for candidate, publication in entries
+            if active == "all" or stages[candidate.id] == active
+        ],
+        "filters": filters,
+        "total": len(entries),
+        "selected": active,
+        "all_url": "/authoring",
+    }
+
+
+def _candidate_view(
+    candidate: PracticeCandidate, publication: PublishedPractice | None
+) -> dict[str, Any]:
+    """Describe a candidate's stage and the actions available at that stage."""
+    status_label, status_variant = _STATUS_PRESENTATION[candidate.status]
+    approvable = candidate.validation.is_approvable
+    decided = candidate.review_outcome is not None
+    published = publication is not None and not publication.is_withdrawn
+    withdrawn = publication is not None and publication.is_withdrawn
+
+    if published:
+        note = (
+            "This practice is in the learner library. Withdrawing removes it from "
+            "discovery; completed learner history stays readable."
+        )
+    elif withdrawn:
+        note = (
+            "This practice is no longer in the learner library. It keeps the same "
+            "activity identity if you return it."
+        )
+    elif candidate.review_outcome is CandidateReviewOutcome.REJECTED:
+        note = (
+            "This candidate was rejected, so it is closed. Editing the draft reopens "
+            "it for review."
+        )
+    elif candidate.is_approved:
+        note = (
+            "A human approved this content and the checks passed. Learners cannot see "
+            "it until it is published."
+        )
+    elif approvable:
+        note = (
+            "The checks passed. Approve the content if it matches your intent, or "
+            "reject it if it does not."
+        )
+    else:
+        note = (
+            "Content checks found issues that block approval. Edit the draft to "
+            "resolve them, then save to revalidate."
+        )
+
+    if decided:
+        decision_state = "done"
+    elif approvable:
+        decision_state = "current"
+    else:
+        decision_state = "pending"
+
+    return {
+        "title": candidate.title or "Untitled candidate",
+        "description": candidate.description,
+        "status": candidate.status,
+        "status_label": status_label,
+        "status_variant": status_variant,
+        "publication": publication,
+        "publication_label": _publication_label(publication),
+        "is_published": published,
+        "is_withdrawn": withdrawn,
+        "is_approvable": approvable,
+        "can_approve": not decided,
+        "can_reject": not decided,
+        "can_publish": candidate.is_approved and not published,
+        "can_withdraw": published,
+        "action_note": note,
+        "queue_url": "/authoring",
+        "stages": [
+            {"label": "Generated", "state": "done"},
+            {"label": "Content checks", "state": "done" if approvable else "current"},
+            {"label": "Human decision", "state": decision_state},
+            {
+                "label": "In the learner library",
+                "state": "done" if published else "pending",
+            },
+        ],
+    }
+
+
+def _render_workspace(
+    request: Request,
+    candidates: Iterable[PracticeCandidate],
+    *,
+    message: str | None = None,
+    error: str | None = None,
+    brief: object | None = None,
+    status_code: int = status.HTTP_200_OK,
+) -> Response:
+    """Render the workspace: the authoring brief and the candidate queue."""
+    return templates.TemplateResponse(
+        request,
+        "authoring.html",
+        {
+            "message": message,
+            "error": error,
+            "brief": brief,
+            "queue": _queue_view(
+                candidates,
+                _publication_map(request),
+                selected=request.query_params.get("stage", "all"),
+            ),
+        },
+        status_code=status_code,
+    )
+
+
+def _candidate_page(
+    request: Request,
+    candidate: PracticeCandidate,
+    *,
+    message: str | None = None,
+    error: str | None = None,
+    status_code: int = status.HTTP_200_OK,
+) -> Response:
+    """Render one candidate: its stage, its content, and its next action."""
+    publication = _publication_map(request).get(candidate.id)
+    return templates.TemplateResponse(
+        request,
+        "authoring_candidate.html",
+        {
+            "candidate": candidate,
+            "publication": publication,
+            "view": _candidate_view(candidate, publication),
+            "message": message,
+            "error": error,
+        },
+        status_code=status_code,
+    )
+
+
 def _learner_registry(request: Request) -> LearnerApplicationRegistry:
     """Resolve the learner application registry publication writes into."""
     registry: object = request.app.state.learner_applications
@@ -710,31 +945,42 @@ def _publication_error_response(
     status_code: int,
     detail: str,
     error: Exception,
+    candidate_id: str | None = None,
 ) -> Response:
     """Surface a refused or failed publication transition to the author.
 
     JSON clients keep the machine-readable error; an author working in the
-    browser gets the workspace back with the reason visible, so an invalid
+    browser gets the candidate back with the reason visible, so an invalid
     state transition or a storage failure is never a bare status code
-    (SPEC-035 §9: failures are explicit and visibly explained).
+    (SPEC-035 §9: failures are explicit and visibly explained). The failure
+    stays on the candidate's own page and falls back to the workspace queue
+    only when that candidate cannot be read.
     """
     accept = request.headers.get("accept", "")
-    if "text/html" in accept and "application/json" not in accept:
+    if "text/html" not in accept or "application/json" in accept:
+        raise HTTPException(status_code=status_code, detail=detail) from error
+
+    store = _candidate_store(request)
+    if candidate_id is not None:
         try:
-            candidates = _candidate_store(request).list()
-        except PersistenceError:
-            candidates = ()
-        return templates.TemplateResponse(
-            request,
-            "authoring.html",
-            {
-                "error": detail,
-                "candidates": candidates,
-                "publications": _publication_map(request),
-            },
-            status_code=status_code,
-        )
-    raise HTTPException(status_code=status_code, detail=detail) from error
+            return _candidate_page(
+                request,
+                store.get(candidate_id),
+                error=detail,
+                status_code=status_code,
+            )
+        except (PersistenceError, CandidateNotFoundError):
+            logger.exception("Failed to reload candidate for a publication error")
+    try:
+        candidates = store.list()
+    except PersistenceError:
+        candidates = ()
+    return _render_workspace(
+        request,
+        candidates,
+        error=detail,
+        status_code=status_code,
+    )
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -789,20 +1035,13 @@ async def authoring_workspace(request: Request) -> Response:
         candidates = _candidate_store(request).list()
     except PersistenceError:
         logger.exception("Failed to load authoring candidates")
-        return templates.TemplateResponse(
+        return _render_workspace(
             request,
-            "authoring.html",
-            {
-                "message": "The authoring candidate store is temporarily unavailable.",
-                "candidates": (),
-            },
+            (),
+            message="The authoring candidate store is temporarily unavailable.",
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
-    return templates.TemplateResponse(
-        request,
-        "authoring.html",
-        {"candidates": candidates, "publications": _publication_map(request)},
-    )
+    return _render_workspace(request, candidates)
 
 
 @router.post("/generate")
@@ -842,14 +1081,13 @@ async def authoring_generate(request: Request) -> Response:
             candidates = _candidate_store(request).list()
         except PersistenceError:
             candidates = ()
-        return templates.TemplateResponse(
+        # A rejected brief is a failure to explain, not a neutral update, so it
+        # reaches the author through the alert region with their answers kept.
+        return _render_workspace(
             request,
-            "authoring.html",
-            {
-                "message": message,
-                "brief": brief_values,
-                "candidates": candidates,
-            },
+            candidates,
+            error=message,
+            brief=brief_values,
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         )
 
@@ -871,14 +1109,11 @@ async def authoring_generate(request: Request) -> Response:
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="The authoring candidate store is temporarily unavailable.",
             ) from error
-        return templates.TemplateResponse(
+        return _render_workspace(
             request,
-            "authoring.html",
-            {
-                "message": "The authoring candidate store is temporarily unavailable.",
-                "brief": brief_values,
-                "candidates": (),
-            },
+            (),
+            message="The authoring candidate store is temporarily unavailable.",
+            brief=brief_values,
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
     candidate_payload = _candidate_payload(candidate)
@@ -887,16 +1122,7 @@ async def authoring_generate(request: Request) -> Response:
     if "application/json" in accept or "application/json" in content_type:
         return JSONResponse(candidate_payload)
 
-    return templates.TemplateResponse(
-        request,
-        "authoring.html",
-        {
-            "candidate": candidate,
-            "brief": brief,
-            "candidates": _candidate_store(request).list(),
-            "publications": _publication_map(request),
-        },
-    )
+    return _candidate_page(request, candidate)
 
 
 @router.get("/candidates")
@@ -943,20 +1169,7 @@ async def authoring_candidate_detail(request: Request, candidate_id: str) -> Res
 
     accept = request.headers.get("accept", "")
     if "text/html" in accept and "application/json" not in accept:
-        try:
-            candidates = store.list()
-        except PersistenceError:
-            candidates = ()
-        return templates.TemplateResponse(
-            request,
-            "authoring.html",
-            {
-                "candidate": candidate,
-                "brief": candidate.brief,
-                "candidates": candidates,
-                "publications": _publication_map(request),
-            },
-        )
+        return _candidate_page(request, candidate)
     publication = _publication_map(request).get(candidate.id)
     return JSONResponse(_candidate_payload(candidate, publication))
 
@@ -1016,19 +1229,10 @@ async def authoring_approve_candidate(request: Request, candidate_id: str) -> Re
             {"status": "approved", "candidate_id": str(candidate_id)},
             status_code=status.HTTP_200_OK,
         )
-    try:
-        candidates = store.list()
-    except PersistenceError:
-        candidates = ()
-    return templates.TemplateResponse(
+    return _candidate_page(
         request,
-        "authoring.html",
-        {
-            "message": f"Candidate {candidate_id} approved for curated library.",
-            "candidate": approved,
-            "candidates": candidates,
-            "publications": _publication_map(request),
-        },
+        approved,
+        message=f"Candidate {candidate_id} approved for curated library.",
     )
 
 
@@ -1076,19 +1280,10 @@ async def authoring_reject_candidate(request: Request, candidate_id: str) -> Res
             {"status": "rejected", "candidate_id": str(candidate_id)},
             status_code=status.HTTP_200_OK,
         )
-    try:
-        candidates = store.list()
-    except PersistenceError:
-        candidates = ()
-    return templates.TemplateResponse(
+    return _candidate_page(
         request,
-        "authoring.html",
-        {
-            "message": f"Candidate {candidate_id} rejected.",
-            "candidate": rejected,
-            "candidates": candidates,
-            "publications": _publication_map(request),
-        },
+        rejected,
+        message=f"Candidate {candidate_id} rejected.",
     )
 
 
@@ -1140,21 +1335,10 @@ async def authoring_edit_candidate(request: Request, candidate_id: str) -> Respo
 
     accept = request.headers.get("accept", "")
     if "text/html" in accept and "application/json" not in accept:
-        try:
-            candidates = store.list()
-        except PersistenceError:
-            candidates = ()
-        return templates.TemplateResponse(
+        return _candidate_page(
             request,
-            "authoring.html",
-            {
-                "message": (
-                    f"Candidate {candidate_id} updated (revision {edited.revision})."
-                ),
-                "candidate": edited,
-                "candidates": candidates,
-                "publications": _publication_map(request),
-            },
+            edited,
+            message=f"Candidate {candidate_id} updated (revision {edited.revision}).",
         )
     return JSONResponse(
         _candidate_payload(edited, _publication_map(request).get(edited.id)),
@@ -1198,17 +1382,9 @@ def _publication_response(
         candidate: PracticeCandidate | None = store.get(candidate_id)
     except (PersistenceError, CandidateNotFoundError):
         candidates, candidate = (), None
-    return templates.TemplateResponse(
-        request,
-        "authoring.html",
-        {
-            "message": message,
-            "candidate": candidate,
-            "brief": candidate.brief if candidate is not None else None,
-            "candidates": candidates,
-            "publications": _publication_map(request),
-        },
-    )
+    if candidate is None:
+        return _render_workspace(request, candidates, message=message)
+    return _candidate_page(request, candidate, message=message)
 
 
 @router.post("/candidates/{candidate_id}/publish")
@@ -1252,6 +1428,7 @@ async def authoring_publish_candidate(request: Request, candidate_id: str) -> Re
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(error),
             error=error,
+            candidate_id=candidate_id,
         )
     except CandidateNotPublishableError as error:
         return _publication_error_response(
@@ -1259,6 +1436,7 @@ async def authoring_publish_candidate(request: Request, candidate_id: str) -> Re
             status_code=status.HTTP_409_CONFLICT,
             detail=str(error),
             error=error,
+            candidate_id=candidate_id,
         )
     except PersistenceError as error:
         logger.exception(
@@ -1270,6 +1448,7 @@ async def authoring_publish_candidate(request: Request, candidate_id: str) -> Re
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="The published practice store is temporarily unavailable.",
             error=error,
+            candidate_id=candidate_id,
         )
 
     # Only after the write succeeded does the learner-facing catalogue learn
@@ -1322,6 +1501,7 @@ async def authoring_withdraw_candidate(request: Request, candidate_id: str) -> R
             status_code=status.HTTP_409_CONFLICT,
             detail=str(error),
             error=error,
+            candidate_id=candidate_id,
         )
     except PersistenceError as error:
         logger.exception(
@@ -1333,6 +1513,7 @@ async def authoring_withdraw_candidate(request: Request, candidate_id: str) -> R
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="The published practice store is temporarily unavailable.",
             error=error,
+            candidate_id=candidate_id,
         )
 
     registry.record_publication(record)
