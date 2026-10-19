@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
@@ -24,22 +26,12 @@ from fablit.application.errors import (
 from fablit.application.persistence import PersistenceError
 from fablit.application.practice_modes import PracticeMode
 from fablit.platform.datastore_authoring_store import DatastoreAuthoringCandidateStore
-
-
-class FakeKey:
-    def __init__(self, kind: str, name: str, namespace: str | None = None) -> None:
-        self.kind = kind
-        self.name = name
-        self.namespace = namespace
-
-    def _id(self) -> tuple[str, str, str | None]:
-        return (self.kind, self.name, self.namespace)
-
-
-class FakeEntity(dict[str, Any]):
-    def __init__(self, key: FakeKey) -> None:
-        super().__init__()
-        self.key = key
+from tests.persistence.datastore_fakes import (
+    INDEXED_STRING_LIMIT_BYTES,
+    FakeEntity,
+    FakeKey,
+    assert_within_index_limits,
+)
 
 
 class FakeQuery:
@@ -63,9 +55,10 @@ class FakeQuery:
             raise RuntimeError("simulated datastore query outage")
         results: list[FakeEntity] = []
         for entity in self._client._store.values():
-            if entity.key.kind != self._kind:
+            key = entity.key
+            if key is None or key.kind != self._kind:
                 continue
-            if entity.key.namespace != self._namespace:
+            if key.namespace != self._namespace:
                 continue
             results.append(entity)
         return results
@@ -84,8 +77,10 @@ class FakeDatastoreClient:
     def key(self, kind: str, name: str, namespace: str | None = None) -> FakeKey:
         return FakeKey(kind, name, namespace)
 
-    def entity(self, key: FakeKey) -> FakeEntity:
-        return FakeEntity(key)
+    def entity(
+        self, key: FakeKey | None = None, exclude_from_indexes: Sequence[str] = ()
+    ) -> FakeEntity:
+        return FakeEntity(key, exclude_from_indexes)
 
     def get(self, key: FakeKey) -> FakeEntity | None:
         if self.fail_next_get:
@@ -97,6 +92,9 @@ class FakeDatastoreClient:
         if self.fail_next_put:
             self.fail_next_put = False
             raise RuntimeError("simulated datastore put outage")
+        assert_within_index_limits(entity)
+        if entity.key is None:
+            raise ValueError("Entity must have a key")
         self._store[entity.key._id()] = entity
 
     def delete(self, key: FakeKey) -> None:
@@ -410,3 +408,60 @@ def test_duplicate_title_attaches_warning() -> None:
     stored_c2 = store.add(c2)
 
     assert any("possible duplicate" in w for w in stored_c2.validation.content_warnings)
+
+
+# --- Indexed-value limits ------------------------------------------------------
+#
+# Datastore rejects an *indexed* string property longer than 1500 bytes, which
+# would fail the whole candidate write. Candidate payload content is only ever
+# read back by key, so it is stored unindexed.
+
+
+def test_long_candidate_content_is_persisted_instead_of_failing_the_write() -> None:
+    client = FakeDatastoreClient()
+    store = DatastoreAuthoringCandidateStore(client)
+    long_text = ("Guided practice in close observation. " * 80).strip()
+    assert len(long_text.encode("utf-8")) > INDEXED_STRING_LIMIT_BYTES
+
+    candidate = _make_candidate(description=long_text, content_warnings=(long_text,))
+    candidate_data = dict(candidate.candidate_data)
+    contract = dict(candidate_data["contract"])
+    contract["expected_thinking"] = long_text
+    candidate_data["contract"] = contract
+    candidate = dataclasses.replace(candidate, candidate_data=candidate_data)
+
+    store.add(candidate)
+
+    # A fresh store instance reads the candidate back out of Datastore.
+    retrieved = DatastoreAuthoringCandidateStore(client).get(candidate.id)
+    assert retrieved.description == long_text
+    assert long_text in retrieved.validation.content_warnings
+    assert retrieved.contract is not None
+    assert retrieved.contract.expected_thinking == long_text
+
+
+def test_candidate_payload_properties_are_stored_unindexed() -> None:
+    """Only the queried scalar properties stay indexed (SPEC-032)."""
+    client = FakeDatastoreClient()
+    store = DatastoreAuthoringCandidateStore(client)
+    candidate = _make_candidate()
+
+    store.add(candidate)
+    store.edit(candidate.id, updates={"title": "Revised"}, editor="curator-1")
+
+    entity = client._store[("AuthoringCandidate", str(candidate.id), "authoring")]
+    assert entity.exclude_from_indexes == set()
+    for prop in ("brief", "candidate_data", "validation"):
+        payload = entity[prop]
+        assert isinstance(payload, FakeEntity)
+        # Every payload property is a real embedded entity marked non-indexed.
+        assert payload.exclude_from_indexes == set(payload)
+
+    # Collection payloads hold one embedded entity per entry.
+    (revision,) = entity["history"]
+    assert isinstance(revision, FakeEntity)
+    assert revision.exclude_from_indexes == set(revision)
+
+    contract = entity["candidate_data"]["contract"]
+    assert isinstance(contract, FakeEntity)
+    assert contract.exclude_from_indexes == set(contract)

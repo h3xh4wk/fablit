@@ -29,6 +29,7 @@ from fablit.application.authoring import (
 )
 from fablit.application.persistence import PersistenceError
 from fablit.application.store import PracticeContentContract
+from fablit.platform.datastore_entities import unindexed_value
 
 logger = logging.getLogger(__name__)
 
@@ -129,9 +130,15 @@ class DatastoreAuthoringCandidateStore(AuthoringCandidateStore):
             logger.exception("Failed to query authoring candidates from Datastore")
             raise PersistenceError(f"Failed to query candidates: {exc}") from exc
 
-    @staticmethod
-    def _serialize_candidate(candidate: PracticeCandidate) -> dict[str, Any]:
-        """Convert a PracticeCandidate to Datastore entity dictionary."""
+    def _serialize_candidate(self, candidate: PracticeCandidate) -> dict[str, Any]:
+        """Convert a PracticeCandidate to Datastore entity dictionary.
+
+        The scalar properties stay indexed because the candidate query orders
+        on them; the candidate payload (brief, generated data, validation
+        results, revisions) is only read back by key and is therefore stored
+        unindexed, so long generated text never trips Datastore's 1500-byte
+        limit on indexed string values.
+        """
         brief_dict = dataclasses.asdict(candidate.brief)
         if "intended_mode" in brief_dict and hasattr(
             candidate.brief.intended_mode, "value"
@@ -151,32 +158,40 @@ class DatastoreAuthoringCandidateStore(AuthoringCandidateStore):
                 if candidate.review_outcome is not None
                 else None
             ),
-            "brief": brief_dict,
-            "candidate_data": dict(candidate.candidate_data),
-            "validation": {
-                "structural_errors": list(candidate.validation.structural_errors),
-                "feedback_errors": list(candidate.validation.feedback_errors),
-                "content_warnings": list(candidate.validation.content_warnings),
-            },
-            "history": [
+            "brief": unindexed_value(self._client, brief_dict),
+            "candidate_data": unindexed_value(
+                self._client, dict(candidate.candidate_data)
+            ),
+            "validation": unindexed_value(
+                self._client,
                 {
-                    "version": rev.version,
-                    "title": rev.title,
-                    "description": rev.description,
-                    "contract": (
-                        {
-                            field: getattr(rev.contract, field)
-                            for field in _CONTRACT_FIELDS
-                            if hasattr(rev.contract, field)
-                        }
-                        if rev.contract is not None
-                        else None
-                    ),
-                    "edited_at": rev.edited_at,
-                    "editor": rev.editor,
-                }
-                for rev in candidate.history
-            ],
+                    "structural_errors": list(candidate.validation.structural_errors),
+                    "feedback_errors": list(candidate.validation.feedback_errors),
+                    "content_warnings": list(candidate.validation.content_warnings),
+                },
+            ),
+            "history": unindexed_value(
+                self._client,
+                [
+                    {
+                        "version": rev.version,
+                        "title": rev.title,
+                        "description": rev.description,
+                        "contract": (
+                            {
+                                field: getattr(rev.contract, field)
+                                for field in _CONTRACT_FIELDS
+                                if hasattr(rev.contract, field)
+                            }
+                            if rev.contract is not None
+                            else None
+                        ),
+                        "edited_at": rev.edited_at,
+                        "editor": rev.editor,
+                    }
+                    for rev in candidate.history
+                ],
+            ),
         }
 
     @staticmethod

@@ -19,6 +19,7 @@ The domain layer remains independent of Datastore APIs.
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import Any
 from uuid import UUID
 
@@ -30,6 +31,7 @@ from fablit.application.persistence import (
     StoredPracticeCompletion,
 )
 from fablit.domain import Evaluation, Feedback, Reflection, StimulusInstance, Submission
+from fablit.platform.datastore_entities import embedded_entity
 
 logger = logging.getLogger("fablit.application.datastore_repository")
 
@@ -60,6 +62,21 @@ class DatastorePracticeHistoryRepository(PracticeHistoryRepository):
                 adapter, so GCP authentication is handled at the application level.
         """
         self._client = client
+
+    def _embedded_entity(self, properties: Mapping[str, Any]) -> dict[str, Any]:
+        """Build a Datastore embedded entity whose properties are not indexed.
+
+        The practice-completion payload (response, feedback, reflection,
+        stimulus and artifact metadata) is only ever read back by key, never
+        queried, so none of it needs an index. Excluding it matters beyond
+        write cost: Datastore rejects an *indexed* string property longer than
+        1500 bytes, which previously failed the whole completion write for a
+        long enough reflection (or learner response, or generated feedback).
+
+        See :mod:`fablit.platform.datastore_entities` for why the exclusions
+        have to live on nested embedded entities rather than on the parent.
+        """
+        return embedded_entity(self._client, properties)
 
     def save_completion(
         self,
@@ -318,20 +335,21 @@ class DatastorePracticeHistoryRepository(PracticeHistoryRepository):
             # so the dashboard doesn't show incorrect completion indicators
             return False
 
-    @staticmethod
-    def _serialize_submission(submission: Submission) -> dict[str, Any]:
+    def _serialize_submission(self, submission: Submission) -> dict[str, Any]:
         """Convert a Submission domain object to Datastore representation."""
-        return {
-            "id": str(submission.id),
-            "learner_id": str(submission.learner_id),
-            "activity_id": str(submission.activity_id),
-            "response": submission.response,
-            "submitted_at": submission.submitted_at,
-            "status": submission.status.value,
-            # SPEC-026 §2.3: the session's optional pre-practice intention is
-            # persisted with the response so review can render it.
-            "pre_practice_intention": submission.pre_practice_intention,
-        }
+        return self._embedded_entity(
+            {
+                "id": str(submission.id),
+                "learner_id": str(submission.learner_id),
+                "activity_id": str(submission.activity_id),
+                "response": submission.response,
+                "submitted_at": submission.submitted_at,
+                "status": submission.status.value,
+                # SPEC-026 §2.3: the session's optional pre-practice intention
+                # is persisted with the response so review can render it.
+                "pre_practice_intention": submission.pre_practice_intention,
+            }
+        )
 
     @staticmethod
     def _deserialize_submission(data: dict[str, Any]) -> Submission:
@@ -349,22 +367,25 @@ class DatastorePracticeHistoryRepository(PracticeHistoryRepository):
             pre_practice_intention=data.get("pre_practice_intention"),
         )
 
-    @staticmethod
-    def _serialize_evaluation(evaluation: Evaluation) -> dict[str, Any]:
+    def _serialize_evaluation(self, evaluation: Evaluation) -> dict[str, Any]:
         """Convert an Evaluation domain object to Datastore representation."""
-        return {
-            "id": str(evaluation.id),
-            "submission_id": str(evaluation.submission_id),
-            "findings": [
-                {
-                    "id": str(f.id),
-                    "observation": f.observation,
-                    "evidence": f.evidence,
-                }
-                for f in evaluation.findings
-            ],
-            "evaluated_at": evaluation.evaluated_at,
-        }
+        return self._embedded_entity(
+            {
+                "id": str(evaluation.id),
+                "submission_id": str(evaluation.submission_id),
+                # Nested findings, like every other payload mapping, are
+                # stored as non-indexed embedded entities by the helper.
+                "findings": [
+                    {
+                        "id": str(f.id),
+                        "observation": f.observation,
+                        "evidence": f.evidence,
+                    }
+                    for f in evaluation.findings
+                ],
+                "evaluated_at": evaluation.evaluated_at,
+            }
+        )
 
     @staticmethod
     def _deserialize_evaluation(data: dict[str, Any]) -> Evaluation:
@@ -386,15 +407,16 @@ class DatastorePracticeHistoryRepository(PracticeHistoryRepository):
             evaluated_at=data["evaluated_at"],
         )
 
-    @staticmethod
-    def _serialize_feedback(feedback: Feedback) -> dict[str, Any]:
+    def _serialize_feedback(self, feedback: Feedback) -> dict[str, Any]:
         """Convert a Feedback domain object to Datastore representation."""
-        return {
-            "id": str(feedback.id),
-            "evaluation_id": str(feedback.evaluation_id),
-            "content": feedback.content,
-            "created_at": feedback.created_at,
-        }
+        return self._embedded_entity(
+            {
+                "id": str(feedback.id),
+                "evaluation_id": str(feedback.evaluation_id),
+                "content": feedback.content,
+                "created_at": feedback.created_at,
+            }
+        )
 
     @staticmethod
     def _deserialize_feedback(data: dict[str, Any]) -> Feedback:
@@ -406,15 +428,16 @@ class DatastorePracticeHistoryRepository(PracticeHistoryRepository):
             created_at=data["created_at"],
         )
 
-    @staticmethod
-    def _serialize_reflection(reflection: Reflection) -> dict[str, Any]:
+    def _serialize_reflection(self, reflection: Reflection) -> dict[str, Any]:
         """Convert a Reflection domain object to Datastore representation."""
-        return {
-            "id": str(reflection.id),
-            "feedback_id": str(reflection.feedback_id),
-            "content": reflection.content,
-            "created_at": reflection.created_at,
-        }
+        return self._embedded_entity(
+            {
+                "id": str(reflection.id),
+                "feedback_id": str(reflection.feedback_id),
+                "content": reflection.content,
+                "created_at": reflection.created_at,
+            }
+        )
 
     @staticmethod
     def _deserialize_reflection(data: dict[str, Any]) -> Reflection:
@@ -426,22 +449,23 @@ class DatastorePracticeHistoryRepository(PracticeHistoryRepository):
             created_at=data["created_at"],
         )
 
-    @staticmethod
-    def _serialize_stimulus(stimulus: StimulusInstance) -> dict[str, Any]:
+    def _serialize_stimulus(self, stimulus: StimulusInstance) -> dict[str, Any]:
         """Convert a StimulusInstance to Datastore representation."""
-        return {
-            "id": str(stimulus.id),
-            "activity_id": str(stimulus.activity_id),
-            "provider": stimulus.provider,
-            "image_url": stimulus.image_url,
-            "source_url": stimulus.source_url,
-            "retrieved_at": stimulus.retrieved_at,
-            "asset_id": stimulus.asset_id,
-            "creator": stimulus.creator,
-            "license": stimulus.license,
-            "attribution": stimulus.attribution,
-            "alt_text": stimulus.alt_text,
-        }
+        return self._embedded_entity(
+            {
+                "id": str(stimulus.id),
+                "activity_id": str(stimulus.activity_id),
+                "provider": stimulus.provider,
+                "image_url": stimulus.image_url,
+                "source_url": stimulus.source_url,
+                "retrieved_at": stimulus.retrieved_at,
+                "asset_id": stimulus.asset_id,
+                "creator": stimulus.creator,
+                "license": stimulus.license,
+                "attribution": stimulus.attribution,
+                "alt_text": stimulus.alt_text,
+            }
+        )
 
     @staticmethod
     def _deserialize_stimulus(data: dict[str, Any]) -> StimulusInstance:
@@ -460,22 +484,23 @@ class DatastorePracticeHistoryRepository(PracticeHistoryRepository):
             alt_text=data.get("alt_text"),
         )
 
-    @staticmethod
-    def _serialize_artifact(artifact: ArtifactRef) -> dict[str, Any]:
+    def _serialize_artifact(self, artifact: ArtifactRef) -> dict[str, Any]:
         """Convert a private sketchbook reference to a Datastore-safe payload.
 
         SPEC-033: only artifact metadata is persisted; the private bytes live
         behind the artifact-storage boundary, never inside the history entity.
         """
-        return {
-            "artifact_id": str(artifact.artifact_id),
-            "learner_id": str(artifact.learner_id),
-            "activity_id": str(artifact.activity_id),
-            "filename": artifact.filename,
-            "content_type": artifact.content_type,
-            "size_bytes": artifact.size_bytes,
-            "created_at": artifact.created_at,
-        }
+        return self._embedded_entity(
+            {
+                "artifact_id": str(artifact.artifact_id),
+                "learner_id": str(artifact.learner_id),
+                "activity_id": str(artifact.activity_id),
+                "filename": artifact.filename,
+                "content_type": artifact.content_type,
+                "size_bytes": artifact.size_bytes,
+                "created_at": artifact.created_at,
+            }
+        )
 
     @staticmethod
     def _deserialize_artifact(data: dict[str, Any]) -> ArtifactRef:

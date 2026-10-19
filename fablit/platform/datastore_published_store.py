@@ -34,6 +34,7 @@ from fablit.domain import (
     ActivityType,
     AssessmentActivity,
 )
+from fablit.platform.datastore_entities import unindexed_value
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +45,16 @@ PUBLISHED_PRACTICE_KIND = "PublishedPractice"
 DEFAULT_NAMESPACE = "library"
 
 
-def serialize_published_practice(record: PublishedPractice) -> dict[str, Any]:
-    """Convert a publication record into a Datastore entity dictionary."""
+def serialize_published_practice(
+    record: PublishedPractice, client: Any
+) -> dict[str, Any]:
+    """Convert a publication record into a Datastore entity dictionary.
+
+    The learner-facing activity payload is read back by key and never queried,
+    so it is stored unindexed: a long description or contract field must not
+    fail the write on Datastore's 1500-byte limit for indexed string values.
+    The provenance properties the publication query orders on stay indexed.
+    """
     activity = record.activity
     contract = activity.content_contract
     stimulus = activity.activity.stimulus_context
@@ -57,33 +66,38 @@ def serialize_published_practice(record: PublishedPractice) -> dict[str, Any]:
             f"published practice store (activity {activity.activity.id})"
         )
     return {
-        "activity": {
-            "id": str(activity.activity.id),
-            "activity_type": activity.activity.activity_type.value,
-            "instructions": activity.activity.instructions,
-            "position": activity.activity.position,
-            "status": activity.activity.status.value,
-            "skill_ids": [str(skill_id) for skill_id in activity.activity.skill_ids],
-            "stimulus_context": None,
-            "title": activity.title,
-            "description": activity.description,
-            "strength": activity.strength,
-            "improvement": activity.improvement,
-            "next_step": activity.next_step,
-            "content_contract": (
-                {name: getattr(contract, name) for name in _CONTRACT_FIELDS}
-                if contract is not None
-                else None
-            ),
-            "primary_capability": activity.primary_capability,
-            "secondary_capabilities": list(activity.secondary_capabilities),
-            "concepts": [
-                {"keyword": concept.keyword, "finding": concept.finding}
-                for concept in activity.concepts
-            ],
-            "fallback_image": activity.fallback_image,
-            "fallback_alt": activity.fallback_alt,
-        },
+        "activity": unindexed_value(
+            client,
+            {
+                "id": str(activity.activity.id),
+                "activity_type": activity.activity.activity_type.value,
+                "instructions": activity.activity.instructions,
+                "position": activity.activity.position,
+                "status": activity.activity.status.value,
+                "skill_ids": [
+                    str(skill_id) for skill_id in activity.activity.skill_ids
+                ],
+                "stimulus_context": None,
+                "title": activity.title,
+                "description": activity.description,
+                "strength": activity.strength,
+                "improvement": activity.improvement,
+                "next_step": activity.next_step,
+                "content_contract": (
+                    {name: getattr(contract, name) for name in _CONTRACT_FIELDS}
+                    if contract is not None
+                    else None
+                ),
+                "primary_capability": activity.primary_capability,
+                "secondary_capabilities": list(activity.secondary_capabilities),
+                "concepts": [
+                    {"keyword": concept.keyword, "finding": concept.finding}
+                    for concept in activity.concepts
+                ],
+                "fallback_image": activity.fallback_image,
+                "fallback_alt": activity.fallback_alt,
+            },
+        ),
         "source_candidate_id": str(record.source_candidate_id),
         "source_revision": record.source_revision,
         "published_at": record.published_at,
@@ -191,7 +205,7 @@ class DatastorePublishedPracticeStore(PublishedPracticeStore):
 
     def save(self, record: PublishedPractice) -> PublishedPractice:
         try:
-            data = serialize_published_practice(record)
+            data = serialize_published_practice(record, self._client)
             key = self._client.key(
                 PUBLISHED_PRACTICE_KIND,
                 str(record.activity_id),
