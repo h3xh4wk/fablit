@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import urllib.error
+from collections.abc import Mapping
 
 import pytest
 
@@ -40,7 +41,7 @@ RESULT = {
 def _provider(payload: str) -> PexafyImageSearch:
     calls: list[tuple[str, dict[str, str]]] = []
 
-    def fetch(url: str, headers: dict[str, str]) -> str:
+    def fetch(url: str, headers: Mapping[str, str]) -> str:
         calls.append((url, dict(headers)))
         return payload
 
@@ -97,8 +98,8 @@ def test_malformed_result_is_skipped() -> None:
 
 
 def test_http_error_is_reported_without_provider_payload() -> None:
-    def fetch(url: str, headers: dict[str, str]) -> str:
-        raise urllib.error.HTTPError(url, 429, "Too Many Requests", {}, None)
+    def fetch(url: str, headers: Mapping[str, str]) -> str:
+        raise urllib.error.HTTPError(url, 429, "Too Many Requests", {}, None)  # type: ignore[arg-type]
 
     provider = PexafyImageSearch(api_key="secret-key", fetch=fetch)
 
