@@ -44,6 +44,8 @@ from app.learner_session import (
     learner_identity_middleware,
     practice_for_request,
 )
+from app.request_format import wants_html
+from app.task_text import split_task_text
 from fablit.application import (
     ActivityNotFoundError,
     ArtifactStorage,
@@ -73,6 +75,7 @@ from fablit.platform.metrics import MetricsRegistry
 
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
+templates.env.globals["split_task_text"] = split_task_text
 
 config = load_config()
 init_logging(config)
@@ -412,11 +415,15 @@ async def _http_exception_handler(request: Request, exc: Exception) -> Response:
 
     headers = exc.headers or {}
     accept = request.headers.get("accept", "")
+    path = request.url.path
+    author_page = wants_html(request)
 
-    if (
-        "application/json" in accept
-        or request.url.path.startswith("/authoring/generate")
-        or request.url.path.startswith("/authoring/candidates")
+    if "application/json" in accept or (
+        not author_page
+        and (
+            path.startswith("/authoring/generate")
+            or path.startswith("/authoring/candidates")
+        )
     ):
         error_name = "Unauthorized" if exc.status_code == 401 else "Error"
         return JSONResponse(
@@ -425,7 +432,15 @@ async def _http_exception_handler(request: Request, exc: Exception) -> Response:
             headers=headers,
         )
 
-    if request.url.path.startswith("/authoring"):
+    if path.startswith("/authoring"):
+        if exc.status_code != 401 and author_page:
+            return templates.TemplateResponse(
+                request,
+                "authoring_error.html",
+                {"message": str(exc.detail), "description": ""},
+                status_code=exc.status_code,
+                headers=headers,
+            )
         return templates.TemplateResponse(
             request,
             "authoring_login.html",

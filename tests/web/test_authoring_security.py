@@ -430,7 +430,9 @@ def test_candidate_approval_and_rejection_browser_html_flow() -> None:
         headers=headers,
     )
     assert app_resp.status_code == 200
-    assert f"Candidate {cand1_id} approved for curated library." in app_resp.text
+    assert "“Generated Test Practice” is approved for the curated library." in (
+        app_resp.text
+    )
 
     # Generate second candidate and reject
     client.post("/authoring/generate", headers=headers, data=AUTHORING_BRIEF)
@@ -444,7 +446,7 @@ def test_candidate_approval_and_rejection_browser_html_flow() -> None:
         headers=headers,
     )
     assert rej_resp.status_code == 200
-    assert f"Candidate {cand2_id} rejected." in rej_resp.text
+    assert "“Generated Test Practice” was rejected." in rej_resp.text
 
 
 def test_login_post_in_production_sets_secure_cookie() -> None:

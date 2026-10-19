@@ -29,7 +29,14 @@
   {% endif %}
   <section class="practice__task" aria-labelledby="task-heading">
     <h2 class="practice__step" id="task-heading">Your task</h2>
-    <p class="practice__prompt">{{ view.prompt }}</p>
+    {% set task_lead, task_detail = split_task_text(view.prompt) %}
+    <p class="practice__prompt">{{ task_lead }}</p>
+    {% if task_detail %}
+    <div class="task-detail">
+      <h3 class="task-detail__heading">Task details</h3>
+      <p class="task-detail__text">{{ task_detail }}</p>
+    </div>
+    {% endif %}
   </section>
   <section class="practice__response" aria-labelledby="response-heading">
     <h2 class="practice__step" id="response-heading">Your response</h2>

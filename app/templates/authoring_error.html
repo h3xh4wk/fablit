@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}{{ message }} — Authoring Workspace — Fablit{% endblock %}
+{% block content %}
+<article class="intention">
+  {% include "_authoring_nav.html" %}
+
+  <h1 class="display">{{ message }}</h1>
+  {% if description %}
+  <p class="authoring__intro">{{ description }}</p>
+  {% endif %}
+
+  <p class="form-actions">
+    <a class="button" href="/authoring">Back to the authoring workspace</a>
+  </p>
+</article>
+{% endblock %}

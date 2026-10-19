@@ -262,6 +262,10 @@ class GeminiAuthoringProvider:
             '- "title": a short learner-facing title;',
             '- "description": a learner-facing description of the practice;',
             contract_desc,
+            '- "task": make the first sentence the actionable instruction, and '
+            "put any supporting detail in the sentences that follow. Write it "
+            "as plain text, without markdown emphasis, headings, or bullet "
+            "characters;",
             "",
             "The evaluation and feedback guidance must stay evidence-based and "
             "must not grade, score, rank, or label the learner, infer ability, "

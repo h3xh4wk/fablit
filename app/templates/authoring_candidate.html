@@ -122,7 +122,20 @@
       <dl class="definition-list">
         {% for key, value in candidate.candidate_data.contract.items() %}
         <dt>{{ key.replace("_", " ")|title }}</dt>
+        {% if key == "task" %}
+        {% set task_lead, task_detail = split_task_text(value|string) %}
+        <dd>
+          <strong>{{ task_lead }}</strong>
+          {% if task_detail %}
+          <div class="task-detail">
+            <p class="task-detail__heading">Task details</p>
+            <p class="task-detail__text">{{ task_detail }}</p>
+          </div>
+          {% endif %}
+        </dd>
+        {% else %}
         <dd>{{ value }}</dd>
+        {% endif %}
         {% endfor %}
       </dl>
       {% elif candidate.candidate_data.contract is defined %}

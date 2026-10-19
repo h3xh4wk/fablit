@@ -24,6 +24,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.learner_session import LearnerApplicationRegistry
+from app.request_format import wants_html
+from app.task_text import split_task_text
 from fablit.application.authoring import (
     _CONTRACT_FIELDS,
     AuthoringRevision,
@@ -59,6 +61,7 @@ from fablit.platform.authoring_auth import (
 logger = logging.getLogger("fablit.authoring")
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
+templates.env.globals["split_task_text"] = split_task_text
 
 router = APIRouter(prefix="/authoring")
 
@@ -939,7 +942,7 @@ def _learner_registry(request: Request) -> LearnerApplicationRegistry:
     return registry
 
 
-def _publication_error_response(
+def _authoring_error_response(
     request: Request,
     *,
     status_code: int,
@@ -947,17 +950,17 @@ def _publication_error_response(
     error: Exception,
     candidate_id: str | None = None,
 ) -> Response:
-    """Surface a refused or failed publication transition to the author.
+    """Surface a refused or failed authoring transition to the author.
 
     JSON clients keep the machine-readable error; an author working in the
-    browser gets the candidate back with the reason visible, so an invalid
-    state transition or a storage failure is never a bare status code
+    browser (including an htmx-boosted form) gets the candidate back with the
+    reason visible, so an invalid state transition or a storage failure is
+    never a bare status code or a JSON payload swapped into the page
     (SPEC-035 §9: failures are explicit and visibly explained). The failure
     stays on the candidate's own page and falls back to the workspace queue
     only when that candidate cannot be read.
     """
-    accept = request.headers.get("accept", "")
-    if "text/html" not in accept or "application/json" in accept:
+    if not wants_html(request):
         raise HTTPException(status_code=status_code, detail=detail) from error
 
     store = _candidate_store(request)
@@ -1099,12 +1102,11 @@ async def authoring_generate(request: Request) -> Response:
         )
     result = await _invoke_ai_provider(ai_provider, brief)
     candidate = _candidate_from_generation_result(result, brief)
-    accept = request.headers.get("accept", "")
     try:
         _candidate_store(request).add(candidate)
     except PersistenceError as error:
         logger.exception("Failed to persist generated authoring candidate")
-        if "application/json" in accept or "application/json" in content_type:
+        if not wants_html(request):
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="The authoring candidate store is temporarily unavailable.",
@@ -1116,13 +1118,10 @@ async def authoring_generate(request: Request) -> Response:
             brief=brief_values,
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
-    candidate_payload = _candidate_payload(candidate)
 
-    accept = request.headers.get("accept", "")
-    if "application/json" in accept or "application/json" in content_type:
-        return JSONResponse(candidate_payload)
-
-    return _candidate_page(request, candidate)
+    if wants_html(request):
+        return _candidate_page(request, candidate)
+    return JSONResponse(_candidate_payload(candidate))
 
 
 @router.get("/candidates")
@@ -1167,8 +1166,7 @@ async def authoring_candidate_detail(request: Request, candidate_id: str) -> Res
             detail="The authoring candidate store is temporarily unavailable.",
         ) from error
 
-    accept = request.headers.get("accept", "")
-    if "text/html" in accept and "application/json" not in accept:
+    if wants_html(request):
         return _candidate_page(request, candidate)
     publication = _publication_map(request).get(candidate.id)
     return JSONResponse(_candidate_payload(candidate, publication))
@@ -1197,20 +1195,23 @@ async def authoring_approve_candidate(request: Request, candidate_id: str) -> Re
         approved = store.approve(candidate.id, reviewer="author")
     except CandidateNotApprovableError as error:
         err_msg = str(error)
-        if (
+        conflict = (
             "already approved" in err_msg
             or "already rejected" in err_msg
             or "Rejected candidate" in err_msg
             or "Approved candidate" in err_msg
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=err_msg,
-            ) from error
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        )
+        return _authoring_error_response(
+            request,
+            status_code=(
+                status.HTTP_409_CONFLICT
+                if conflict
+                else status.HTTP_422_UNPROCESSABLE_CONTENT
+            ),
             detail=err_msg,
-        ) from error
+            error=error,
+            candidate_id=candidate_id,
+        )
     except PersistenceError as error:
         logger.exception("Failed to save approval to store")
         raise HTTPException(
@@ -1218,21 +1219,15 @@ async def authoring_approve_candidate(request: Request, candidate_id: str) -> Re
             detail="The authoring candidate store is temporarily unavailable.",
         ) from error
 
-    accept = request.headers.get("accept", "")
-    content_type = request.headers.get("content-type", "")
-    if (
-        "application/json" in accept
-        or "application/json" in content_type
-        or ("text/html" not in accept and "*/*" in accept)
-    ):
-        return JSONResponse(
-            {"status": "approved", "candidate_id": str(candidate_id)},
-            status_code=status.HTTP_200_OK,
+    if wants_html(request):
+        return _candidate_page(
+            request,
+            approved,
+            message=f"“{approved.title}” is approved for the curated library.",
         )
-    return _candidate_page(
-        request,
-        approved,
-        message=f"Candidate {candidate_id} approved for curated library.",
+    return JSONResponse(
+        {"status": "approved", "candidate_id": str(candidate_id)},
+        status_code=status.HTTP_200_OK,
     )
 
 
@@ -1258,10 +1253,13 @@ async def authoring_reject_candidate(request: Request, candidate_id: str) -> Res
     try:
         rejected = store.reject(candidate.id, reviewer="author")
     except CandidateNotApprovableError as error:
-        raise HTTPException(
+        return _authoring_error_response(
+            request,
             status_code=status.HTTP_409_CONFLICT,
             detail=str(error),
-        ) from error
+            error=error,
+            candidate_id=candidate_id,
+        )
     except PersistenceError as error:
         logger.exception("Failed to save rejection to store")
         raise HTTPException(
@@ -1269,21 +1267,15 @@ async def authoring_reject_candidate(request: Request, candidate_id: str) -> Res
             detail="The authoring candidate store is temporarily unavailable.",
         ) from error
 
-    accept = request.headers.get("accept", "")
-    content_type = request.headers.get("content-type", "")
-    if (
-        "application/json" in accept
-        or "application/json" in content_type
-        or ("text/html" not in accept and "*/*" in accept)
-    ):
-        return JSONResponse(
-            {"status": "rejected", "candidate_id": str(candidate_id)},
-            status_code=status.HTTP_200_OK,
+    if wants_html(request):
+        return _candidate_page(
+            request,
+            rejected,
+            message=f"“{rejected.title}” was rejected.",
         )
-    return _candidate_page(
-        request,
-        rejected,
-        message=f"Candidate {candidate_id} rejected.",
+    return JSONResponse(
+        {"status": "rejected", "candidate_id": str(candidate_id)},
+        status_code=status.HTTP_200_OK,
     )
 
 
@@ -1333,12 +1325,11 @@ async def authoring_edit_candidate(request: Request, candidate_id: str) -> Respo
             detail="The authoring candidate store is temporarily unavailable.",
         ) from error
 
-    accept = request.headers.get("accept", "")
-    if "text/html" in accept and "application/json" not in accept:
+    if wants_html(request):
         return _candidate_page(
             request,
             edited,
-            message=f"Candidate {candidate_id} updated (revision {edited.revision}).",
+            message=f"“{edited.title}” was saved as revision {edited.revision}.",
         )
     return JSONResponse(
         _candidate_payload(edited, _publication_map(request).get(edited.id)),
@@ -1355,13 +1346,7 @@ def _publication_response(
     status_text: str,
 ) -> Response:
     """Render the authoring outcome for JSON clients and the workspace UI."""
-    accept = request.headers.get("accept", "")
-    content_type = request.headers.get("content-type", "")
-    if (
-        "application/json" in accept
-        or "application/json" in content_type
-        or ("text/html" not in accept and "*/*" in accept)
-    ):
+    if not wants_html(request):
         return JSONResponse(
             {
                 "status": status_text,
@@ -1423,7 +1408,7 @@ async def authoring_publish_candidate(request: Request, candidate_id: str) -> Re
             position=registry.next_activity_position(),
         )
     except CandidateContentNotPublishableError as error:
-        return _publication_error_response(
+        return _authoring_error_response(
             request,
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(error),
@@ -1431,7 +1416,7 @@ async def authoring_publish_candidate(request: Request, candidate_id: str) -> Re
             candidate_id=candidate_id,
         )
     except CandidateNotPublishableError as error:
-        return _publication_error_response(
+        return _authoring_error_response(
             request,
             status_code=status.HTTP_409_CONFLICT,
             detail=str(error),
@@ -1443,7 +1428,7 @@ async def authoring_publish_candidate(request: Request, candidate_id: str) -> Re
             "Failed to persist candidate publication",
             extra={"candidate_id": str(candidate.id)},
         )
-        return _publication_error_response(
+        return _authoring_error_response(
             request,
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="The published practice store is temporarily unavailable.",
@@ -1465,7 +1450,7 @@ async def authoring_publish_candidate(request: Request, candidate_id: str) -> Re
     return _publication_response(
         request,
         message=(
-            f"Candidate {candidate_id} published to the learner library "
+            f"“{candidate.title}” is now in the learner library "
             f"(revision {record.source_revision})."
         ),
         record=record,
@@ -1496,7 +1481,7 @@ async def authoring_withdraw_candidate(request: Request, candidate_id: str) -> R
     try:
         record = withdraw_publication(source_candidate_id, store=published_store)
     except PublishedPracticeNotFoundError as error:
-        return _publication_error_response(
+        return _authoring_error_response(
             request,
             status_code=status.HTTP_409_CONFLICT,
             detail=str(error),
@@ -1508,7 +1493,7 @@ async def authoring_withdraw_candidate(request: Request, candidate_id: str) -> R
             "Failed to persist publication withdrawal",
             extra={"candidate_id": candidate_id},
         )
-        return _publication_error_response(
+        return _authoring_error_response(
             request,
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="The published practice store is temporarily unavailable.",
@@ -1523,7 +1508,7 @@ async def authoring_withdraw_candidate(request: Request, candidate_id: str) -> R
     )
     return _publication_response(
         request,
-        message=f"Candidate {candidate_id} withdrawn from the learner library.",
+        message=(f"“{record.activity.title}” was withdrawn from the learner library."),
         record=record,
         candidate_id=candidate_id,
         status_text="withdrawn",
