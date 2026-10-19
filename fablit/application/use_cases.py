@@ -255,14 +255,21 @@ class PracticeApplication:
 
     def _activity_summary(self, item: DemoActivity) -> PracticeActivitySummary:
         """Prepare the dashboard summary for one available activity."""
+        preview_image = item.fallback_image
+        preview_alt = item.fallback_alt
+        if item.authored_stimulus is not None:
+            # SPEC-036: a published practice's chosen stimulus is its
+            # catalogue thumbnail, not a generic fallback.
+            preview_image = item.authored_stimulus.image_url
+            preview_alt = item.authored_stimulus.alt_text or item.fallback_alt
         return PracticeActivitySummary(
             id=item.activity.id,
             title=item.title,
             description=item.description,
             skills=self._skill_names(item.activity.skill_ids),
             has_completed_practice=self._has_completed_activity(item.activity.id),
-            preview_image_url=item.fallback_image,
-            preview_alt_text=item.fallback_alt,
+            preview_image_url=preview_image,
+            preview_alt_text=preview_alt,
         )
 
     def _practice_mode_definition(self, mode: PracticeMode) -> PracticeModeDefinition:
@@ -295,9 +302,7 @@ class PracticeApplication:
         """
         item = self._store.get_activity(activity_id)
         stimulus = self._resolve_stimulus(item)
-        supports_artifact_upload = (
-            item.activity.activity_type is ActivityType.REFLECTION
-        )
+        supports_artifact_upload = self._supports_sketch_upload(item)
         return PracticeActivityView(
             id=item.activity.id,
             title=item.title,
@@ -366,10 +371,7 @@ class PracticeApplication:
             raise InvalidPracticeResponseError(
                 "Please enter a response before submitting."
             )
-        if (
-            artifact is not None
-            and item.activity.activity_type is ActivityType.REFLECTION
-        ):
+        if artifact is not None and self._supports_sketch_upload(item):
             self._store.save_pending_artifact(activity_id, artifact)
         # SPEC-026 §2.1: the learner's pre-practice intention, if one was
         # stated for this activity, is attached to the journey when the
@@ -760,14 +762,27 @@ class PracticeApplication:
         if ref is not None:
             self._artifact_storage.delete(ref.artifact_id)
 
+    def _supports_sketch_upload(self, item: DemoActivity) -> bool:
+        """Whether the learner may optionally attach a sketch (SPEC-037).
+
+        Reflection practices keep their existing support; any other practice
+        opts in through its authored capability.
+        """
+        return item.supports_sketch_upload or (
+            item.activity.activity_type is ActivityType.REFLECTION
+        )
+
     def _resolve_stimulus(self, item: DemoActivity) -> StimulusInstance | None:
         """Resolve (or reuse) the stimulus for an activity instance, if required.
 
-        Activities without a stimulus context have no stimulus (§6). For
-        stimulus-dependent activities the current instance's stimulus is
-        reused (§19); otherwise the provider resolves one, which is then
-        retained with the activity instance (§14–16).
+        An authored stimulus (SPEC-036) is shown exactly as the author chose
+        it. Otherwise activities without a stimulus context have no stimulus
+        (§6). For stimulus-dependent activities the current instance's
+        stimulus is reused (§19); otherwise the provider resolves one, which
+        is then retained with the activity instance (§14–16).
         """
+        if item.authored_stimulus is not None:
+            return item.authored_stimulus
         if item.stimulus_context is None:
             return None
         existing = self._store.current_stimulus(item.activity.id)

@@ -46,6 +46,7 @@ from .errors import (
     InvalidPublishedPracticeError,
     PublishedPracticeNotFoundError,
 )
+from .image_search import ImageCandidate
 from .persistence import PersistenceError
 from .store import DemoActivity, PracticeContentContract
 
@@ -85,6 +86,16 @@ class PublishableCandidate(Protocol):
 
     @property
     def validation(self) -> CandidateValidation: ...
+
+    @property
+    def stimulus(self) -> ImageCandidate | None:
+        """The author-selected stimulus image, if there is one (SPEC-036)."""
+        ...
+
+    @property
+    def supports_sketch_upload(self) -> bool:
+        """Whether the published practice should accept a sketch (SPEC-037)."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -283,6 +294,7 @@ def build_published_activity(
     *,
     activity_id: UUID,
     position: int,
+    published_at: datetime,
 ) -> DemoActivity:
     """Represent approved candidate content as the existing learner activity.
 
@@ -295,6 +307,12 @@ def build_published_activity(
     a republished revision keeps the identity learners already know.
     """
     strength, improvement, next_step = _learner_guidance(contract)
+    stimulus = candidate.stimulus
+    authored_stimulus = (
+        stimulus.to_stimulus(activity_id=activity_id, retrieved_at=published_at)
+        if stimulus is not None
+        else None
+    )
     return DemoActivity(
         activity=AssessmentActivity(
             activity_type=ActivityType.WRITTEN_RESPONSE,
@@ -310,6 +328,10 @@ def build_published_activity(
         next_step=next_step,
         content_contract=contract,
         primary_capability=_candidate_capability(candidate),
+        fallback_image=(stimulus.image_url if stimulus is not None else None),
+        fallback_alt=(stimulus.alt_text if stimulus is not None else None),
+        authored_stimulus=authored_stimulus,
+        supports_sketch_upload=candidate.supports_sketch_upload,
     )
 
 
@@ -413,6 +435,7 @@ def publish_candidate(
             contract,
             activity_id=activity_id,
             position=activity_position,
+            published_at=published_at,
         ),
         source_candidate_id=candidate.id,
         source_revision=candidate.revision,

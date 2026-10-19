@@ -92,6 +92,7 @@ from .errors import (
     SubmissionInProgressError,
     UnknownPracticeModeError,
 )
+from .image_search import ImageCandidate, ImageSearchError, ImageSearchProvider
 from .practice_continuity import (
     CONTINUATION_ACTION_LABEL,
     CONTINUATION_HEADING,
@@ -199,6 +200,9 @@ __all__ = [
     "INTENTION_PROMPT",
     "INTENTION_SKIP_LABEL",
     "IntentionView",
+    "ImageCandidate",
+    "ImageSearchError",
+    "ImageSearchProvider",
     "InvalidPracticeResponseError",
     "InvalidPublishedPracticeError",
     "InvalidReflectionResponseError",

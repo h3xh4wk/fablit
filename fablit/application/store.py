@@ -184,6 +184,13 @@ class DemoActivity:
     fallback_image: str | None = None
     fallback_alt: str | None = None
     secondary_capabilities: tuple[str, ...] = ()
+    #: The stimulus image an author selected for this practice (SPEC-036).
+    #: Published practices use it directly instead of resolving a provider
+    #: image; curated practices leave it unset.
+    authored_stimulus: StimulusInstance | None = None
+    #: Whether the practice accepts an optional sketch attachment for the
+    #: learner (SPEC-037). Reflection practices keep their existing support.
+    supports_sketch_upload: bool = False
 
     @property
     def contract(self) -> PracticeContentContract:

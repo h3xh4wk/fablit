@@ -44,6 +44,8 @@ from app.learner_session import (
     learner_identity_middleware,
     practice_for_request,
 )
+from app.request_format import wants_html
+from app.task_text import split_task_text
 from fablit.application import (
     ActivityNotFoundError,
     ArtifactStorage,
@@ -52,6 +54,7 @@ from fablit.application import (
     EvaluationFailedError,
     FeedbackNotFoundError,
     FileArtifactStorage,
+    ImageSearchProvider,
     InMemoryPublishedPracticeStore,
     InvalidPracticeResponseError,
     InvalidReflectionResponseError,
@@ -73,6 +76,7 @@ from fablit.platform.metrics import MetricsRegistry
 
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
+templates.env.globals["split_task_text"] = split_task_text
 
 config = load_config()
 init_logging(config)
@@ -172,6 +176,31 @@ def _build_authoring_provider(
         extra={"model": app_config.ai_provider_model},
     )
     return GeminiAuthoringProvider(api_key=api_key, model=app_config.ai_provider_model)
+
+
+def _build_image_search(app_config: AppConfig) -> ImageSearchProvider | None:
+    """Build optional stimulus-image search from configuration (SPEC-036).
+
+    With no API key configured, authoring candidates simply have no image
+    options; candidate generation is unaffected.
+    """
+    api_key = app_config.image_search_api_key
+    if not api_key or not api_key.strip():
+        logger.info("image search not configured; candidates will have no images")
+        return None
+
+    from fablit.platform.pexafy_image_search import PexafyImageSearch
+
+    logger.info(
+        "initialized Pexafy image search",
+        extra={"endpoint": app_config.image_search_endpoint},
+    )
+    return PexafyImageSearch(
+        api_key=api_key,
+        endpoint=app_config.image_search_endpoint,
+        timeout=app_config.image_search_timeout,
+        limit=app_config.image_search_limit,
+    )
 
 
 def _build_history_repository(
@@ -412,11 +441,15 @@ async def _http_exception_handler(request: Request, exc: Exception) -> Response:
 
     headers = exc.headers or {}
     accept = request.headers.get("accept", "")
+    path = request.url.path
+    author_page = wants_html(request)
 
-    if (
-        "application/json" in accept
-        or request.url.path.startswith("/authoring/generate")
-        or request.url.path.startswith("/authoring/candidates")
+    if "application/json" in accept or (
+        not author_page
+        and (
+            path.startswith("/authoring/generate")
+            or path.startswith("/authoring/candidates")
+        )
     ):
         error_name = "Unauthorized" if exc.status_code == 401 else "Error"
         return JSONResponse(
@@ -425,7 +458,15 @@ async def _http_exception_handler(request: Request, exc: Exception) -> Response:
             headers=headers,
         )
 
-    if request.url.path.startswith("/authoring"):
+    if path.startswith("/authoring"):
+        if exc.status_code != 401 and author_page:
+            return templates.TemplateResponse(
+                request,
+                "authoring_error.html",
+                {"message": str(exc.detail), "description": ""},
+                status_code=exc.status_code,
+                headers=headers,
+            )
         return templates.TemplateResponse(
             request,
             "authoring_login.html",
@@ -515,6 +556,7 @@ def create_app(config: AppConfig) -> FastAPI:
         app.state.ready = True
         app.state.config = config
         app.state.authoring_ai_provider = _build_authoring_provider(config)
+        app.state.authoring_image_search = _build_image_search(config)
         app.state.authoring_candidate_store = _build_authoring_candidate_store(config)
         app.state.published_practice_store = _build_published_practice_store(config)
         app.state.demo_content, app.state.learner_applications = (
@@ -523,6 +565,7 @@ def create_app(config: AppConfig) -> FastAPI:
         yield
         app.state.ready = False
         app.state.authoring_ai_provider = None
+        app.state.authoring_image_search = None
         app.state.authoring_candidate_store = None
         app.state.published_practice_store = None
         app.state.demo_content = None
@@ -544,6 +587,7 @@ def create_app(config: AppConfig) -> FastAPI:
     app.state.ready = False
     app.state.config = config
     app.state.authoring_ai_provider = _build_authoring_provider(config)
+    app.state.authoring_image_search = _build_image_search(config)
     app.state.authoring_candidate_store = _build_authoring_candidate_store(config)
     app.state.published_practice_store = _build_published_practice_store(config)
     app.state.demo_content, app.state.learner_applications = (

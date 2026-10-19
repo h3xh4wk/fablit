@@ -33,6 +33,7 @@ from fablit.domain import (
     ActivityStimulusContext,
     ActivityType,
     AssessmentActivity,
+    StimulusInstance,
 )
 from fablit.platform.datastore_entities import unindexed_value
 
@@ -96,6 +97,12 @@ def serialize_published_practice(
                 ],
                 "fallback_image": activity.fallback_image,
                 "fallback_alt": activity.fallback_alt,
+                "authored_stimulus": (
+                    _serialize_stimulus(activity.authored_stimulus)
+                    if activity.authored_stimulus is not None
+                    else None
+                ),
+                "supports_sketch_upload": activity.supports_sketch_upload,
             },
         ),
         "source_candidate_id": str(record.source_candidate_id),
@@ -133,6 +140,12 @@ def deserialize_published_practice(
         if isinstance(stimulus_data, Mapping)
         else None
     )
+    authored_data = data.get("authored_stimulus")
+    authored_stimulus = (
+        _deserialize_stimulus(authored_data)
+        if isinstance(authored_data, Mapping)
+        else None
+    )
 
     activity = DemoActivity(
         activity=AssessmentActivity(
@@ -160,6 +173,8 @@ def deserialize_published_practice(
         secondary_capabilities=tuple(
             str(item) for item in data.get("secondary_capabilities", ())
         ),
+        authored_stimulus=authored_stimulus,
+        supports_sketch_upload=bool(data.get("supports_sketch_upload", False)),
     )
     return PublishedPractice(
         activity=activity,
@@ -171,6 +186,40 @@ def deserialize_published_practice(
             if entity.get("withdrawn_at") is not None
             else None
         ),
+    )
+
+
+def _serialize_stimulus(stimulus: StimulusInstance) -> dict[str, Any]:
+    """Serialize the author-selected stimulus without indexing its text."""
+    return {
+        "id": str(stimulus.id),
+        "activity_id": str(stimulus.activity_id),
+        "provider": stimulus.provider,
+        "asset_id": stimulus.asset_id,
+        "image_url": stimulus.image_url,
+        "source_url": stimulus.source_url,
+        "retrieved_at": stimulus.retrieved_at,
+        "creator": stimulus.creator,
+        "license": stimulus.license,
+        "attribution": stimulus.attribution,
+        "alt_text": stimulus.alt_text,
+    }
+
+
+def _deserialize_stimulus(data: Mapping[str, Any]) -> StimulusInstance:
+    """Read back an authored stimulus, tolerating older publication records."""
+    return StimulusInstance(
+        id=UUID(str(data["id"])),
+        activity_id=UUID(str(data["activity_id"])),
+        provider=str(data["provider"]),
+        asset_id=data.get("asset_id"),
+        image_url=str(data["image_url"]),
+        source_url=str(data["source_url"]),
+        retrieved_at=_as_datetime(data["retrieved_at"]),
+        creator=data.get("creator"),
+        license=data.get("license"),
+        attribution=data.get("attribution"),
+        alt_text=data.get("alt_text"),
     )
 
 

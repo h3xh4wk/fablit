@@ -29,6 +29,8 @@ SECRET = "authoring-publish-secret"
 HEADERS = {"Authorization": f"Bearer {SECRET}"}
 HTML_HEADERS = {**HEADERS, "Accept": "text/html"}
 JSON_HEADERS = {**HEADERS, "Accept": "application/json"}
+#: htmx submits boosted forms over XHR, where the default Accept is */*.
+HTMX_HEADERS = {**HEADERS, "Accept": "*/*", "HX-Request": "true"}
 
 TITLE = "Evidence-based observation practice"
 DESCRIPTION = "Practise separating what is visible from what is inferred."
@@ -192,6 +194,82 @@ def test_generated_candidate_cannot_be_published() -> None:
     assert response.status_code == 409
     assert "not approved" in response.json()["detail"]
     assert TITLE not in client.get("/").text
+
+
+def test_htmx_publish_and_withdraw_render_pages_not_json() -> None:
+    """A boosted form keeps the author on the candidate page with a message."""
+    client, _ = _client()
+    candidate_id = _generate(client)
+
+    approved = client.post(
+        f"/authoring/candidates/{candidate_id}/approve", headers=HTMX_HEADERS
+    )
+    assert approved.status_code == 200
+    assert approved.headers["content-type"].startswith("text/html")
+    assert f"“{TITLE}” is approved for the curated library." in approved.text
+
+    published = client.post(
+        f"/authoring/candidates/{candidate_id}/publish", headers=HTMX_HEADERS
+    )
+    assert published.status_code == 200
+    assert published.headers["content-type"].startswith("text/html")
+    assert f"“{TITLE}” is now in the learner library (revision 1)." in published.text
+    assert "Where this candidate stands" in published.text
+
+    withdrawn = client.post(
+        f"/authoring/candidates/{candidate_id}/withdraw", headers=HTMX_HEADERS
+    )
+    assert withdrawn.status_code == 200
+    assert withdrawn.headers["content-type"].startswith("text/html")
+    assert f"“{TITLE}” was withdrawn from the learner library." in withdrawn.text
+    assert "Where this candidate stands" in withdrawn.text
+
+
+def test_htmx_candidate_navigation_renders_the_candidate_page() -> None:
+    """The queue links are boosted too, so they must not receive JSON either."""
+    client, _ = _client()
+    candidate_id = _generate(client)
+
+    response = client.get(f"/authoring/candidates/{candidate_id}", headers=HTMX_HEADERS)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert TITLE in response.text
+    assert "Where this candidate stands" in response.text
+
+
+def test_published_task_keeps_only_the_first_sentence_in_display_type() -> None:
+    """A long task reads as a bold lead plus ordinary body text for learners."""
+    contract = _complete_contract()
+    contract["task"] = (
+        "**Analyse the image.** Identify three visual details and explain how "
+        "each one guides attention.\nFinish by naming the strongest detail."
+    )
+    client, _ = _client(contract=contract)
+    candidate_id = _generate(client)
+
+    candidate_page = client.get(
+        f"/authoring/candidates/{candidate_id}", headers=HTML_HEADERS
+    )
+    assert candidate_page.status_code == 200
+    assert "<strong>Analyse the image.</strong>" in candidate_page.text
+    assert "Task details" in candidate_page.text
+
+    _approve(client, candidate_id)
+    _publish(client, candidate_id)
+
+    href = _card_href(client.get("/").text, TITLE)
+    page = client.get(href)
+
+    assert page.status_code == 200
+    assert '<p class="practice__prompt">Analyse the image.</p>' in page.text
+    assert "Task details" in page.text
+    assert (
+        "Identify three visual details and explain how each one guides attention."
+        in page.text
+    )
+    assert "Finish by naming the strongest detail." in page.text
+    assert 'class="task-detail__text"' in page.text
 
 
 def test_browser_publish_failure_is_explained_in_the_workspace() -> None:

@@ -489,6 +489,33 @@ ol {
   margin: 0;
 }
 
+/* Long tasks keep only their opening sentence in display type; the rest
+   becomes ordinary body text in its own section (authoring candidates). */
+.task-detail {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-rule);
+}
+
+.task-detail__heading {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-body);
+  font-size: var(--text-small);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+}
+
+.task-detail__text {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  font-weight: 400;
+  line-height: var(--leading-body);
+  white-space: pre-line;
+}
+
 /* The response is a distinct surface, so it reads as a place to work. */
 .practice__response {
   padding: var(--space-6);
@@ -1332,6 +1359,62 @@ ol {
 
 .candidate-content h4:first-child {
   margin-top: 0;
+}
+
+/* --- Optional stimulus image and sketch choice ------------------------- */
+.candidate-stimulus {
+  margin: var(--space-4) 0;
+}
+
+.candidate-stimulus__image {
+  display: block;
+  width: 100%;
+  max-height: 22rem;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-rule);
+}
+
+.candidate-stimulus__credit,
+.stimulus-option__credit {
+  margin-top: var(--space-2);
+  font-size: var(--text-small);
+  color: var(--color-ink-muted);
+}
+
+.stimulus-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: var(--space-3);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stimulus-option {
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-md);
+}
+
+.stimulus-option__image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+}
+
+.form-check {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  font-weight: 600;
+}
+
+.form-check input {
+  margin-top: 0.35em;
 }
 
 .action-group {

@@ -394,21 +394,31 @@ def test_publication_failure_is_explained_on_the_candidate_page() -> None:
     assert 'name="practice_area"' not in response.text
 
 
-def test_conflicting_review_transition_still_returns_json() -> None:
-    """A refused approve/reject is machine-readable, not a rendered page.
-
-    This documents existing behaviour rather than endorsing it: the HTTP
-    exception handler answers every ``/authoring/candidates`` error as JSON,
-    so a browser clicking a spent action sees a payload instead of the page it
-    was on. Publication failures do render the page (see the test above);
-    bringing review transitions in line is a separate change.
-    """
+def test_conflicting_review_transition_explains_itself_on_the_candidate_page() -> None:
+    """A refused review transition stays on the page the author was using."""
     client, _, provider = _client()
     candidate_id = _generate(client, provider, "Twice approved practice")
     client.post(f"/authoring/candidates/{candidate_id}/approve", headers=HEADERS)
 
     response = client.post(
         f"/authoring/candidates/{candidate_id}/approve", headers=HTML_HEADERS
+    )
+
+    assert response.status_code == 409
+    assert "already approved" in response.text
+    assert "Where this candidate stands" in response.text
+    assert response.headers["content-type"].startswith("text/html")
+
+
+def test_conflicting_review_transition_stays_json_for_api_clients() -> None:
+    """The explicit JSON contract is unchanged."""
+    client, _, provider = _client()
+    candidate_id = _generate(client, provider, "API approved practice")
+    client.post(f"/authoring/candidates/{candidate_id}/approve", headers=HEADERS)
+
+    response = client.post(
+        f"/authoring/candidates/{candidate_id}/approve",
+        headers={**HEADERS, "Accept": "application/json"},
     )
 
     assert response.status_code == 409

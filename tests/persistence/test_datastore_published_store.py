@@ -13,7 +13,12 @@ import pytest
 from fablit.application.persistence import PersistenceError
 from fablit.application.publishing import PublishedPractice
 from fablit.application.store import Concept, DemoActivity, PracticeContentContract
-from fablit.domain import ActivityStimulusContext, ActivityType, AssessmentActivity
+from fablit.domain import (
+    ActivityStimulusContext,
+    ActivityType,
+    AssessmentActivity,
+    StimulusInstance,
+)
 from fablit.platform.datastore_published_store import (
     DatastorePublishedPracticeStore,
     deserialize_published_practice,
@@ -120,6 +125,68 @@ def _make_record(
         published_at=datetime(2026, 10, 12, 9, tzinfo=UTC),
         withdrawn_at=withdrawn_at,
     )
+
+
+def _authored_stimulus(activity_id: UUID) -> StimulusInstance:
+    return StimulusInstance(
+        activity_id=activity_id,
+        provider="pexafy",
+        asset_id="photo-1",
+        image_url="https://cdn.example/large.jpg",
+        source_url="https://example/photos/still-life",
+        retrieved_at=datetime(2026, 10, 12, 9, tzinfo=UTC),
+        creator="Saurabh_U",
+        license="free",
+        attribution="Photo by Saurabh_U on Pixabay",
+        alt_text="A still life on a wooden table",
+    )
+
+
+def test_authored_stimulus_and_sketch_capability_roundtrip() -> None:
+    activity_id = uuid4()
+    record = _make_record(activity_id=activity_id)
+    record = dataclasses.replace(
+        record,
+        activity=dataclasses.replace(
+            record.activity,
+            authored_stimulus=_authored_stimulus(activity_id),
+            fallback_image="https://cdn.example/large.jpg",
+            fallback_alt="A still life on a wooden table",
+            supports_sketch_upload=True,
+        ),
+    )
+    client = FakeDatastoreClient()
+    store = DatastorePublishedPracticeStore(client)
+
+    store.save(record)
+    retrieved = store.get(activity_id)
+
+    assert retrieved is not None
+    stimulus = retrieved.activity.authored_stimulus
+    assert stimulus is not None
+    assert stimulus.image_url == "https://cdn.example/large.jpg"
+    assert stimulus.alt_text == "A still life on a wooden table"
+    assert stimulus.attribution == "Photo by Saurabh_U on Pixabay"
+    assert retrieved.activity.supports_sketch_upload is True
+    assert retrieved.activity.fallback_image == "https://cdn.example/large.jpg"
+
+
+def test_older_records_without_stimulus_fields_still_load() -> None:
+    client = FakeDatastoreClient()
+    store = DatastorePublishedPracticeStore(client)
+    record = _make_record()
+    store.save(record)
+    key = client.key("PublishedPractice", str(record.activity_id), namespace="library")
+    entity = client.get(key)
+    assert entity is not None
+    activity = entity["activity"]
+    del activity["authored_stimulus"]
+    del activity["supports_sketch_upload"]
+
+    retrieved = deserialize_published_practice(entity)
+
+    assert retrieved.activity.authored_stimulus is None
+    assert retrieved.activity.supports_sketch_upload is False
 
 
 def test_roundtrip_serialization_and_deserialization() -> None:

@@ -24,6 +24,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.learner_session import LearnerApplicationRegistry
+from app.request_format import wants_html
+from app.task_text import split_task_text
 from fablit.application.authoring import (
     _CONTRACT_FIELDS,
     AuthoringRevision,
@@ -38,6 +40,13 @@ from fablit.application.errors import (
     CandidateNotFoundError,
     CandidateNotPublishableError,
     PublishedPracticeNotFoundError,
+)
+from fablit.application.image_search import (
+    ImageCandidate,
+    ImageSearchError,
+    ImageSearchProvider,
+    image_candidate_from_mapping,
+    image_candidate_to_mapping,
 )
 from fablit.application.persistence import PersistenceError
 from fablit.application.practice_modes import PracticeMode
@@ -59,12 +68,25 @@ from fablit.platform.authoring_auth import (
 logger = logging.getLogger("fablit.authoring")
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
+templates.env.globals["split_task_text"] = split_task_text
 
 router = APIRouter(prefix="/authoring")
 
 
 class InvalidAuthoringBriefError(ValueError):
     """Raised when an authoring brief is incomplete or contains unsupported values."""
+
+
+class InvalidStimulusSelectionError(ValueError):
+    """Raised when a selected image is not one of the stored search options."""
+
+
+def _truthy(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
 
 
 class CandidateReviewOutcome(StrEnum):
@@ -292,6 +314,38 @@ class PracticeCandidate:
                 return None
         return None
 
+    @property
+    def stimulus_query(self) -> str:
+        """The one-line scene description used for image search (SPEC-036)."""
+        value = self.candidate_data.get("stimulus_query")
+        return str(value).strip() if value is not None else ""
+
+    @property
+    def stimulus_options(self) -> tuple[ImageCandidate, ...]:
+        """The bounded image results an author can choose from (SPEC-036)."""
+        raw = self.candidate_data.get("stimulus_options")
+        if not isinstance(raw, list | tuple):
+            return ()
+        options = (image_candidate_from_mapping(item) for item in raw)
+        return tuple(option for option in options if option is not None)
+
+    @property
+    def stimulus(self) -> ImageCandidate | None:
+        """The selected stimulus image, or ``None`` when optional (SPEC-036)."""
+        return image_candidate_from_mapping(self.candidate_data.get("stimulus"))
+
+    @property
+    def supports_sketch_upload(self) -> bool:
+        """Whether the learner should see the optional sketch input.
+
+        SPEC-037: an image-based candidate offers it by default, and an author
+        can turn it off explicitly with ``allow_sketch: false``.
+        """
+        raw = self.candidate_data.get("allow_sketch")
+        if raw is None:
+            return self.stimulus is not None
+        return _truthy(raw)
+
 
 class AuthoringCandidateStore:
     """Base/in-memory authoring candidate store (SPEC-032 / FIX-7)."""
@@ -475,6 +529,66 @@ class AuthoringCandidateStore:
         if existing_contract:
             new_candidate_data["contract"] = existing_contract
 
+        # SPEC-037: the edit form sends a marker so an unchecked box can
+        # explicitly turn sketch evidence off instead of leaving it absent.
+        if "allow_sketch" in updates or "allow_sketch_present" in updates:
+            new_candidate_data["allow_sketch"] = _truthy(updates.get("allow_sketch"))
+
+        updated = dataclasses.replace(
+            candidate,
+            candidate_data=new_candidate_data,
+            review_outcome=None,
+            revision=candidate.revision + 1,
+            reviewer=editor,
+            decided_at=None,
+            history=candidate.history + (revision_record,),
+            validation=CandidateValidation(),
+        )
+        updated = dataclasses.replace(updated, validation=validate_candidate(updated))
+        self._put_entity(updated)
+        return updated
+
+    def select_stimulus(
+        self,
+        candidate_id: UUID | str,
+        photo_id: str | None,
+        *,
+        editor: str = "author",
+    ) -> PracticeCandidate:
+        """Select one stored stimulus option, or clear the selection (SPEC-036).
+
+        The image is learner-facing content, so changing it follows the same
+        edit lifecycle as the written contract: a new revision and a renewed
+        human approval before it can be published again.
+        """
+        candidate = self.get(candidate_id)
+        new_candidate_data = dict(candidate.candidate_data)
+        if photo_id is None or not str(photo_id).strip():
+            new_candidate_data.pop("stimulus", None)
+        else:
+            selection = str(photo_id).strip()
+            match = next(
+                (
+                    option
+                    for option in candidate.stimulus_options
+                    if option.photo_id == selection
+                ),
+                None,
+            )
+            if match is None:
+                raise InvalidStimulusSelectionError(
+                    "the selected image is no longer one of this candidate's options"
+                )
+            new_candidate_data["stimulus"] = image_candidate_to_mapping(match)
+
+        revision_record = AuthoringRevision(
+            version=candidate.revision,
+            title=candidate.title,
+            description=candidate.description,
+            contract=candidate.contract,
+            edited_at=datetime.now(UTC),
+            editor=editor,
+        )
         updated = dataclasses.replace(
             candidate,
             candidate_data=new_candidate_data,
@@ -662,6 +776,54 @@ def _candidate_payload(
         else None
     )
     return payload
+
+
+def _stimulus_query_for(candidate: PracticeCandidate) -> str:
+    """Return the one-line scene description used for image search.
+
+    The authoring model supplies ``stimulus_query``. Older or incomplete
+    generations fall back to the brief's stimulus requirement, then to the
+    practice area and purpose, so image search never blocks generation.
+    """
+    raw = candidate.candidate_data.get("stimulus_query")
+    if isinstance(raw, str) and raw.strip():
+        return " ".join(raw.split())
+    requirement = candidate.brief.stimulus_requirements
+    if isinstance(requirement, str) and requirement.strip():
+        return " ".join(requirement.split())
+    return " ".join(
+        f"{candidate.brief.practice_area}: {candidate.brief.purpose}".split()
+    )
+
+
+def _attach_stimulus_options(
+    request: Request, candidate: PracticeCandidate
+) -> PracticeCandidate:
+    """Search optional images for a generated candidate (SPEC-036).
+
+    A missing provider or a failed search leaves the candidate exactly as it
+    was; images are optional and must never block candidate creation.
+    """
+    provider: ImageSearchProvider | None = getattr(
+        request.app.state, "authoring_image_search", None
+    )
+    if provider is None or not callable(getattr(provider, "search", None)):
+        return candidate
+    query = _stimulus_query_for(candidate)
+    try:
+        options = provider.search(query)
+    except ImageSearchError:
+        logger.warning(
+            "stimulus image search failed; continuing without options",
+            extra={"candidate_id": str(candidate.id)},
+        )
+        options = ()
+    data = dict(candidate.candidate_data)
+    data["stimulus_query"] = query
+    data["stimulus_options"] = [
+        image_candidate_to_mapping(option) for option in options
+    ]
+    return dataclasses.replace(candidate, candidate_data=data)
 
 
 def _candidate_store(request: Request) -> AuthoringCandidateStore:
@@ -939,7 +1101,7 @@ def _learner_registry(request: Request) -> LearnerApplicationRegistry:
     return registry
 
 
-def _publication_error_response(
+def _authoring_error_response(
     request: Request,
     *,
     status_code: int,
@@ -947,17 +1109,17 @@ def _publication_error_response(
     error: Exception,
     candidate_id: str | None = None,
 ) -> Response:
-    """Surface a refused or failed publication transition to the author.
+    """Surface a refused or failed authoring transition to the author.
 
     JSON clients keep the machine-readable error; an author working in the
-    browser gets the candidate back with the reason visible, so an invalid
-    state transition or a storage failure is never a bare status code
+    browser (including an htmx-boosted form) gets the candidate back with the
+    reason visible, so an invalid state transition or a storage failure is
+    never a bare status code or a JSON payload swapped into the page
     (SPEC-035 §9: failures are explicit and visibly explained). The failure
     stays on the candidate's own page and falls back to the workspace queue
     only when that candidate cannot be read.
     """
-    accept = request.headers.get("accept", "")
-    if "text/html" not in accept or "application/json" in accept:
+    if not wants_html(request):
         raise HTTPException(status_code=status_code, detail=detail) from error
 
     store = _candidate_store(request)
@@ -1099,12 +1261,12 @@ async def authoring_generate(request: Request) -> Response:
         )
     result = await _invoke_ai_provider(ai_provider, brief)
     candidate = _candidate_from_generation_result(result, brief)
-    accept = request.headers.get("accept", "")
+    candidate = _attach_stimulus_options(request, candidate)
     try:
         _candidate_store(request).add(candidate)
     except PersistenceError as error:
         logger.exception("Failed to persist generated authoring candidate")
-        if "application/json" in accept or "application/json" in content_type:
+        if not wants_html(request):
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="The authoring candidate store is temporarily unavailable.",
@@ -1116,13 +1278,10 @@ async def authoring_generate(request: Request) -> Response:
             brief=brief_values,
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
-    candidate_payload = _candidate_payload(candidate)
 
-    accept = request.headers.get("accept", "")
-    if "application/json" in accept or "application/json" in content_type:
-        return JSONResponse(candidate_payload)
-
-    return _candidate_page(request, candidate)
+    if wants_html(request):
+        return _candidate_page(request, candidate)
+    return JSONResponse(_candidate_payload(candidate))
 
 
 @router.get("/candidates")
@@ -1167,11 +1326,77 @@ async def authoring_candidate_detail(request: Request, candidate_id: str) -> Res
             detail="The authoring candidate store is temporarily unavailable.",
         ) from error
 
-    accept = request.headers.get("accept", "")
-    if "text/html" in accept and "application/json" not in accept:
+    if wants_html(request):
         return _candidate_page(request, candidate)
     publication = _publication_map(request).get(candidate.id)
     return JSONResponse(_candidate_payload(candidate, publication))
+
+
+@router.post("/candidates/{candidate_id}/stimulus")
+async def authoring_select_stimulus(request: Request, candidate_id: str) -> Response:
+    """Select or clear a candidate's optional stimulus image (SPEC-036)."""
+    require_author_access(request)
+    store = _candidate_store(request)
+    try:
+        candidate = store.get(candidate_id)
+    except CandidateNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Candidate {candidate_id} not found.",
+        ) from None
+    except PersistenceError as error:
+        logger.exception("Failed to retrieve candidate before image selection")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The authoring candidate store is temporarily unavailable.",
+        ) from error
+
+    photo_id: str | None = None
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            parsed = await request.json()
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Invalid JSON payload.",
+            ) from None
+        if isinstance(parsed, Mapping):
+            raw = parsed.get("photo_id")
+            photo_id = str(raw) if raw is not None else None
+    else:
+        form = await request.form()
+        raw = form.get("photo_id")
+        photo_id = str(raw) if raw is not None else None
+
+    try:
+        updated = store.select_stimulus(candidate.id, photo_id)
+    except InvalidStimulusSelectionError as error:
+        return _authoring_error_response(
+            request,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(error),
+            error=error,
+            candidate_id=candidate_id,
+        )
+    except PersistenceError as error:
+        logger.exception("Failed to save selected stimulus image")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The authoring candidate store is temporarily unavailable.",
+        ) from error
+
+    message = (
+        f"“{updated.title}” will use this image."
+        if updated.stimulus is not None
+        else f"“{updated.title}” has no stimulus image."
+    )
+    if wants_html(request):
+        return _candidate_page(request, updated, message=message)
+    return JSONResponse(
+        _candidate_payload(updated, _publication_map(request).get(updated.id)),
+        status_code=status.HTTP_200_OK,
+    )
 
 
 @router.post("/candidates/{candidate_id}/approve")
@@ -1197,20 +1422,23 @@ async def authoring_approve_candidate(request: Request, candidate_id: str) -> Re
         approved = store.approve(candidate.id, reviewer="author")
     except CandidateNotApprovableError as error:
         err_msg = str(error)
-        if (
+        conflict = (
             "already approved" in err_msg
             or "already rejected" in err_msg
             or "Rejected candidate" in err_msg
             or "Approved candidate" in err_msg
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=err_msg,
-            ) from error
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        )
+        return _authoring_error_response(
+            request,
+            status_code=(
+                status.HTTP_409_CONFLICT
+                if conflict
+                else status.HTTP_422_UNPROCESSABLE_CONTENT
+            ),
             detail=err_msg,
-        ) from error
+            error=error,
+            candidate_id=candidate_id,
+        )
     except PersistenceError as error:
         logger.exception("Failed to save approval to store")
         raise HTTPException(
@@ -1218,21 +1446,15 @@ async def authoring_approve_candidate(request: Request, candidate_id: str) -> Re
             detail="The authoring candidate store is temporarily unavailable.",
         ) from error
 
-    accept = request.headers.get("accept", "")
-    content_type = request.headers.get("content-type", "")
-    if (
-        "application/json" in accept
-        or "application/json" in content_type
-        or ("text/html" not in accept and "*/*" in accept)
-    ):
-        return JSONResponse(
-            {"status": "approved", "candidate_id": str(candidate_id)},
-            status_code=status.HTTP_200_OK,
+    if wants_html(request):
+        return _candidate_page(
+            request,
+            approved,
+            message=f"“{approved.title}” is approved for the curated library.",
         )
-    return _candidate_page(
-        request,
-        approved,
-        message=f"Candidate {candidate_id} approved for curated library.",
+    return JSONResponse(
+        {"status": "approved", "candidate_id": str(candidate_id)},
+        status_code=status.HTTP_200_OK,
     )
 
 
@@ -1258,10 +1480,13 @@ async def authoring_reject_candidate(request: Request, candidate_id: str) -> Res
     try:
         rejected = store.reject(candidate.id, reviewer="author")
     except CandidateNotApprovableError as error:
-        raise HTTPException(
+        return _authoring_error_response(
+            request,
             status_code=status.HTTP_409_CONFLICT,
             detail=str(error),
-        ) from error
+            error=error,
+            candidate_id=candidate_id,
+        )
     except PersistenceError as error:
         logger.exception("Failed to save rejection to store")
         raise HTTPException(
@@ -1269,21 +1494,15 @@ async def authoring_reject_candidate(request: Request, candidate_id: str) -> Res
             detail="The authoring candidate store is temporarily unavailable.",
         ) from error
 
-    accept = request.headers.get("accept", "")
-    content_type = request.headers.get("content-type", "")
-    if (
-        "application/json" in accept
-        or "application/json" in content_type
-        or ("text/html" not in accept and "*/*" in accept)
-    ):
-        return JSONResponse(
-            {"status": "rejected", "candidate_id": str(candidate_id)},
-            status_code=status.HTTP_200_OK,
+    if wants_html(request):
+        return _candidate_page(
+            request,
+            rejected,
+            message=f"“{rejected.title}” was rejected.",
         )
-    return _candidate_page(
-        request,
-        rejected,
-        message=f"Candidate {candidate_id} rejected.",
+    return JSONResponse(
+        {"status": "rejected", "candidate_id": str(candidate_id)},
+        status_code=status.HTTP_200_OK,
     )
 
 
@@ -1333,12 +1552,11 @@ async def authoring_edit_candidate(request: Request, candidate_id: str) -> Respo
             detail="The authoring candidate store is temporarily unavailable.",
         ) from error
 
-    accept = request.headers.get("accept", "")
-    if "text/html" in accept and "application/json" not in accept:
+    if wants_html(request):
         return _candidate_page(
             request,
             edited,
-            message=f"Candidate {candidate_id} updated (revision {edited.revision}).",
+            message=f"“{edited.title}” was saved as revision {edited.revision}.",
         )
     return JSONResponse(
         _candidate_payload(edited, _publication_map(request).get(edited.id)),
@@ -1355,13 +1573,7 @@ def _publication_response(
     status_text: str,
 ) -> Response:
     """Render the authoring outcome for JSON clients and the workspace UI."""
-    accept = request.headers.get("accept", "")
-    content_type = request.headers.get("content-type", "")
-    if (
-        "application/json" in accept
-        or "application/json" in content_type
-        or ("text/html" not in accept and "*/*" in accept)
-    ):
+    if not wants_html(request):
         return JSONResponse(
             {
                 "status": status_text,
@@ -1423,7 +1635,7 @@ async def authoring_publish_candidate(request: Request, candidate_id: str) -> Re
             position=registry.next_activity_position(),
         )
     except CandidateContentNotPublishableError as error:
-        return _publication_error_response(
+        return _authoring_error_response(
             request,
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(error),
@@ -1431,7 +1643,7 @@ async def authoring_publish_candidate(request: Request, candidate_id: str) -> Re
             candidate_id=candidate_id,
         )
     except CandidateNotPublishableError as error:
-        return _publication_error_response(
+        return _authoring_error_response(
             request,
             status_code=status.HTTP_409_CONFLICT,
             detail=str(error),
@@ -1443,7 +1655,7 @@ async def authoring_publish_candidate(request: Request, candidate_id: str) -> Re
             "Failed to persist candidate publication",
             extra={"candidate_id": str(candidate.id)},
         )
-        return _publication_error_response(
+        return _authoring_error_response(
             request,
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="The published practice store is temporarily unavailable.",
@@ -1465,7 +1677,7 @@ async def authoring_publish_candidate(request: Request, candidate_id: str) -> Re
     return _publication_response(
         request,
         message=(
-            f"Candidate {candidate_id} published to the learner library "
+            f"“{candidate.title}” is now in the learner library "
             f"(revision {record.source_revision})."
         ),
         record=record,
@@ -1496,7 +1708,7 @@ async def authoring_withdraw_candidate(request: Request, candidate_id: str) -> R
     try:
         record = withdraw_publication(source_candidate_id, store=published_store)
     except PublishedPracticeNotFoundError as error:
-        return _publication_error_response(
+        return _authoring_error_response(
             request,
             status_code=status.HTTP_409_CONFLICT,
             detail=str(error),
@@ -1508,7 +1720,7 @@ async def authoring_withdraw_candidate(request: Request, candidate_id: str) -> R
             "Failed to persist publication withdrawal",
             extra={"candidate_id": candidate_id},
         )
-        return _publication_error_response(
+        return _authoring_error_response(
             request,
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="The published practice store is temporarily unavailable.",
@@ -1523,7 +1735,7 @@ async def authoring_withdraw_candidate(request: Request, candidate_id: str) -> R
     )
     return _publication_response(
         request,
-        message=f"Candidate {candidate_id} withdrawn from the learner library.",
+        message=(f"“{record.activity.title}” was withdrawn from the learner library."),
         record=record,
         candidate_id=candidate_id,
         status_text="withdrawn",

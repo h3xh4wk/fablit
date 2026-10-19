@@ -296,6 +296,16 @@ class PracticeCandidate:
         """Whether this candidate has been approved into the curated library."""
         return self.status is CandidateStatus.APPROVED
 
+    @property
+    def stimulus(self) -> None:
+        """Application-layer candidates do not carry a stimulus image yet."""
+        return None
+
+    @property
+    def supports_sketch_upload(self) -> bool:
+        """Application-layer candidates do not opt into sketch evidence."""
+        return False
+
 
 def _derive_expected_thinking(brief: PracticeAuthoringBrief) -> str:
     if brief.expected_thinking.strip():
