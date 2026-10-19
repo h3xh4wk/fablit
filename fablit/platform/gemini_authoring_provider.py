@@ -261,6 +261,9 @@ class GeminiAuthoringProvider:
             "Return a single JSON object with exactly these keys:",
             '- "title": a short learner-facing title;',
             '- "description": a learner-facing description of the practice;',
+            '- "stimulus_query": one plain-text sentence describing a concrete, '
+            "photographable scene that would support this practice, or an "
+            "empty string when the practice needs no visual stimulus;",
             contract_desc,
             '- "task": make the first sentence the actionable instruction, and '
             "put any supporting detail in the sentences that follow. Write it "

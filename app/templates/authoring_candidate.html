@@ -195,6 +195,53 @@
     </dl>
   </section>
 
+  {% if candidate.stimulus or candidate.stimulus_query %}
+  <section class="authoring-section" aria-labelledby="stimulus-heading">
+    <h2 id="stimulus-heading" class="subheading authoring-section__heading">Stimulus image <span class="form-hint">optional</span></h2>
+    <p class="authoring-section__intro">
+      An image is optional. Choosing one changes learner-facing content, so it records a new revision
+      and requires approval again before publishing.
+    </p>
+
+    {% if candidate.stimulus %}
+    <figure class="candidate-stimulus">
+      <img class="candidate-stimulus__image" src="{{ candidate.stimulus.image_url }}" alt="{{ candidate.stimulus.alt_text }}">
+      <figcaption class="candidate-stimulus__credit">
+        {% if candidate.stimulus.photographer %}Photo by {{ candidate.stimulus.photographer }} · {% endif %}
+        {{ candidate.stimulus.source }}
+        {% if candidate.stimulus.source_url %}<a href="{{ candidate.stimulus.source_url }}">Source</a>{% endif %}
+      </figcaption>
+    </figure>
+    <form method="post" action="/authoring/candidates/{{ candidate.id }}/stimulus">
+      <input type="hidden" name="photo_id" value="">
+      <button type="submit" class="button button--secondary">Remove image</button>
+    </form>
+    {% endif %}
+
+    {% if candidate.stimulus_options %}
+    <p class="form-hint">Search: “{{ candidate.stimulus_query }}”</p>
+    <ul class="stimulus-options">
+      {% for image in candidate.stimulus_options %}
+      <li class="stimulus-option">
+        <img class="stimulus-option__image" src="{{ image.thumbnail_url }}" alt="{{ image.alt_text }}">
+        <p class="stimulus-option__credit">
+          {% if image.photographer %}{{ image.photographer }} · {% endif %}{{ image.source }}
+        </p>
+        <form method="post" action="/authoring/candidates/{{ candidate.id }}/stimulus">
+          <input type="hidden" name="photo_id" value="{{ image.photo_id }}">
+          <button type="submit" class="button button--secondary">
+            {% if candidate.stimulus and candidate.stimulus.photo_id == image.photo_id %}Selected{% else %}Use this image{% endif %}
+          </button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% elif candidate.stimulus_query %}
+    <p class="form-hint">No images were available for “{{ candidate.stimulus_query }}”. You can continue without one.</p>
+    {% endif %}
+  </section>
+  {% endif %}
+
   <section class="authoring-section" aria-labelledby="edit-heading">
     <h2 id="edit-heading" class="subheading authoring-section__heading">Revise this candidate</h2>
 
@@ -217,6 +264,15 @@
           <div class="form-field">
             <label class="form-label" for="edit_description">Description</label>
             <textarea id="edit_description" name="description" class="form-control" rows="2" required>{{ candidate.candidate_data.get('description', '') }}</textarea>
+          </div>
+
+          <div class="form-field">
+            <input type="hidden" name="allow_sketch_present" value="1">
+            <label class="form-check" for="edit_allow_sketch">
+              <input type="checkbox" id="edit_allow_sketch" name="allow_sketch"{% if candidate.supports_sketch_upload %} checked{% endif %}>
+              Offer an optional sketch upload with this practice
+            </label>
+            <p class="form-hint">The learner can attach a private sketch alongside their written response. It is never required or evaluated.</p>
           </div>
         </fieldset>
 

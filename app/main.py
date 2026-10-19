@@ -54,6 +54,7 @@ from fablit.application import (
     EvaluationFailedError,
     FeedbackNotFoundError,
     FileArtifactStorage,
+    ImageSearchProvider,
     InMemoryPublishedPracticeStore,
     InvalidPracticeResponseError,
     InvalidReflectionResponseError,
@@ -175,6 +176,31 @@ def _build_authoring_provider(
         extra={"model": app_config.ai_provider_model},
     )
     return GeminiAuthoringProvider(api_key=api_key, model=app_config.ai_provider_model)
+
+
+def _build_image_search(app_config: AppConfig) -> ImageSearchProvider | None:
+    """Build optional stimulus-image search from configuration (SPEC-036).
+
+    With no API key configured, authoring candidates simply have no image
+    options; candidate generation is unaffected.
+    """
+    api_key = app_config.image_search_api_key
+    if not api_key or not api_key.strip():
+        logger.info("image search not configured; candidates will have no images")
+        return None
+
+    from fablit.platform.pexafy_image_search import PexafyImageSearch
+
+    logger.info(
+        "initialized Pexafy image search",
+        extra={"endpoint": app_config.image_search_endpoint},
+    )
+    return PexafyImageSearch(
+        api_key=api_key,
+        endpoint=app_config.image_search_endpoint,
+        timeout=app_config.image_search_timeout,
+        limit=app_config.image_search_limit,
+    )
 
 
 def _build_history_repository(
@@ -530,6 +556,7 @@ def create_app(config: AppConfig) -> FastAPI:
         app.state.ready = True
         app.state.config = config
         app.state.authoring_ai_provider = _build_authoring_provider(config)
+        app.state.authoring_image_search = _build_image_search(config)
         app.state.authoring_candidate_store = _build_authoring_candidate_store(config)
         app.state.published_practice_store = _build_published_practice_store(config)
         app.state.demo_content, app.state.learner_applications = (
@@ -538,6 +565,7 @@ def create_app(config: AppConfig) -> FastAPI:
         yield
         app.state.ready = False
         app.state.authoring_ai_provider = None
+        app.state.authoring_image_search = None
         app.state.authoring_candidate_store = None
         app.state.published_practice_store = None
         app.state.demo_content = None
@@ -559,6 +587,7 @@ def create_app(config: AppConfig) -> FastAPI:
     app.state.ready = False
     app.state.config = config
     app.state.authoring_ai_provider = _build_authoring_provider(config)
+    app.state.authoring_image_search = _build_image_search(config)
     app.state.authoring_candidate_store = _build_authoring_candidate_store(config)
     app.state.published_practice_store = _build_published_practice_store(config)
     app.state.demo_content, app.state.learner_applications = (

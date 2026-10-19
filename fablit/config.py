@@ -134,6 +134,29 @@ class AppConfig(BaseSettings):
             "used when ai_provider_api_key is configured."
         ),
     )
+    image_search_api_key: str | None = Field(
+        None,
+        description=(
+            "Server-side Pexafy API key for optional stimulus-image search "
+            "during practice authoring (SPEC-036). Unset disables image "
+            "sourcing; candidate generation still works."
+        ),
+    )
+    image_search_endpoint: str = Field(
+        "https://api.pexafy.com/api/v1/search/photos",
+        description="Pexafy semantic image-search endpoint (SPEC-036).",
+    )
+    image_search_timeout: float = Field(
+        10.0,
+        ge=0.1,
+        description="Timeout in seconds for one Pexafy image search.",
+    )
+    image_search_limit: int = Field(
+        6,
+        ge=1,
+        le=20,
+        description="Maximum images returned for one candidate (SPEC-036).",
+    )
     authoring_candidate_store: str = Field(
         "memory",
         description=(
@@ -307,7 +330,12 @@ class AppConfig(BaseSettings):
             return stripped if stripped else None
         return str(value)
 
-    @field_validator("authoring_secret", "ai_provider_api_key", mode="before")
+    @field_validator(
+        "authoring_secret",
+        "ai_provider_api_key",
+        "image_search_api_key",
+        mode="before",
+    )
     def normalize_optional_secrets(cls, value: object) -> str | None:
         """Strip whitespace from optional secrets; empty string becomes None."""
         if value is None:
@@ -389,6 +417,10 @@ def _resolve_environment_overrides() -> dict[str, Any]:
         ),
         "ai_provider_api_key": "FABLIT_AI_PROVIDER_API_KEY",
         "ai_provider_model": "FABLIT_AI_PROVIDER_MODEL",
+        "image_search_api_key": "FABLIT_IMAGE_SEARCH_API_KEY",
+        "image_search_endpoint": "FABLIT_IMAGE_SEARCH_ENDPOINT",
+        "image_search_timeout": "FABLIT_IMAGE_SEARCH_TIMEOUT",
+        "image_search_limit": "FABLIT_IMAGE_SEARCH_LIMIT",
         "version": "FABLIT_VERSION",
     }
     resolved: dict[str, Any] = {}
@@ -397,6 +429,13 @@ def _resolve_environment_overrides() -> dict[str, Any]:
         value = os.getenv(env_name)
         if value is not None:
             resolved[field_name] = value
+
+    # SPEC-036: the Pexafy dashboard documents PEXAFY_API_KEY, so accept it
+    # directly when the namespaced Fablit variable is not set.
+    if "image_search_api_key" not in resolved:
+        pexafy_key = os.getenv("PEXAFY_API_KEY")
+        if pexafy_key is not None:
+            resolved["image_search_api_key"] = pexafy_key
 
     return resolved
 
