@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
@@ -11,29 +12,19 @@ import pytest
 
 from fablit.application.persistence import PersistenceError
 from fablit.application.publishing import PublishedPractice
-from fablit.application.store import DemoActivity, PracticeContentContract
+from fablit.application.store import Concept, DemoActivity, PracticeContentContract
 from fablit.domain import ActivityStimulusContext, ActivityType, AssessmentActivity
 from fablit.platform.datastore_published_store import (
     DatastorePublishedPracticeStore,
     deserialize_published_practice,
     serialize_published_practice,
 )
-
-
-class FakeKey:
-    def __init__(self, kind: str, name: str, namespace: str | None = None) -> None:
-        self.kind = kind
-        self.name = name
-        self.namespace = namespace
-
-    def _id(self) -> tuple[str, str, str | None]:
-        return (self.kind, self.name, self.namespace)
-
-
-class FakeEntity(dict[str, Any]):
-    def __init__(self, key: FakeKey) -> None:
-        super().__init__()
-        self.key = key
+from tests.persistence.datastore_fakes import (
+    INDEXED_STRING_LIMIT_BYTES,
+    FakeEntity,
+    FakeKey,
+    assert_within_index_limits,
+)
 
 
 class FakeQuery:
@@ -48,7 +39,9 @@ class FakeQuery:
         return [
             entity
             for entity in self._client._store.values()
-            if entity.key.kind == self._kind and entity.key.namespace == self._namespace
+            if entity.key is not None
+            and entity.key.kind == self._kind
+            and entity.key.namespace == self._namespace
         ]
 
 
@@ -64,8 +57,10 @@ class FakeDatastoreClient:
     def key(self, kind: str, name: str, namespace: str | None = None) -> FakeKey:
         return FakeKey(kind, name, namespace)
 
-    def entity(self, key: FakeKey) -> FakeEntity:
-        return FakeEntity(key)
+    def entity(
+        self, key: FakeKey | None = None, exclude_from_indexes: Sequence[str] = ()
+    ) -> FakeEntity:
+        return FakeEntity(key, exclude_from_indexes)
 
     def get(self, key: FakeKey) -> FakeEntity | None:
         return self._store.get(key._id())
@@ -74,6 +69,9 @@ class FakeDatastoreClient:
         if self.fail_next_put:
             self.fail_next_put = False
             raise RuntimeError("simulated datastore put outage")
+        assert_within_index_limits(entity)
+        if entity.key is None:
+            raise ValueError("Entity must have a key")
         self._store[entity.key._id()] = entity
 
     def query(self, kind: str, namespace: str | None = None, **_: Any) -> FakeQuery:
@@ -227,6 +225,7 @@ def test_query_failure_is_reported_as_a_persistence_error() -> None:
 
 
 def test_serializing_an_unsupported_stimulus_context_fails_loudly() -> None:
+    client = FakeDatastoreClient()
     record = _make_record()
     activity = dataclasses.replace(
         record.activity,
@@ -241,12 +240,71 @@ def test_serializing_an_unsupported_stimulus_context_fails_loudly() -> None:
     )
 
     with pytest.raises(PersistenceError) as excinfo:
-        serialize_published_practice(dataclasses.replace(record, activity=activity))
+        serialize_published_practice(
+            dataclasses.replace(record, activity=activity), client
+        )
     assert "stimulus contexts are not supported" in str(excinfo.value)
 
 
+# --- Indexed-value limits ------------------------------------------------------
+#
+# Datastore rejects an *indexed* string property longer than 1500 bytes, which
+# would fail the whole publication write. The learner-facing activity payload is
+# only ever read back by key, so it is stored unindexed.
+
+
+def test_long_published_content_is_persisted_instead_of_failing_the_write() -> None:
+    client = FakeDatastoreClient()
+    store = DatastorePublishedPracticeStore(client)
+    long_text = ("Observe closely before interpreting what you see. " * 80).strip()
+    assert len(long_text.encode("utf-8")) > INDEXED_STRING_LIMIT_BYTES
+
+    record = _make_record()
+    original_contract = record.activity.content_contract
+    assert original_contract is not None
+    contract = dataclasses.replace(original_contract, expected_thinking=long_text)
+    activity = dataclasses.replace(
+        record.activity,
+        description=long_text,
+        content_contract=contract,
+        concepts=(Concept(keyword="evidence", finding=long_text),),
+    )
+    record = dataclasses.replace(record, activity=activity)
+
+    store.save(record)
+
+    retrieved = DatastorePublishedPracticeStore(client).get(record.activity_id)
+    assert retrieved is not None
+    assert retrieved.activity.description == long_text
+    content_contract = retrieved.activity.content_contract
+    assert content_contract is not None
+    assert content_contract.expected_thinking == long_text
+    assert retrieved.activity.concepts[0].finding == long_text
+
+
+def test_activity_payload_is_stored_unindexed() -> None:
+    """The queried provenance properties stay indexed (SPEC-035)."""
+    client = FakeDatastoreClient()
+    store = DatastorePublishedPracticeStore(client)
+    record = _make_record()
+
+    store.save(record)
+
+    entity = client._store[("PublishedPractice", str(record.activity_id), "library")]
+    assert entity.exclude_from_indexes == set()
+    assert entity["published_at"] == record.published_at
+    activity = entity["activity"]
+    assert isinstance(activity, FakeEntity)
+    # Every learner-facing payload property is a real embedded entity marked
+    # non-indexed.
+    assert activity.exclude_from_indexes == set(activity)
+    contract = activity["content_contract"]
+    assert isinstance(contract, FakeEntity)
+    assert contract.exclude_from_indexes == set(contract)
+
+
 def test_deserialization_tolerates_isoformatted_timestamps() -> None:
-    entity = serialize_published_practice(_make_record())
+    entity = serialize_published_practice(_make_record(), FakeDatastoreClient())
     entity["published_at"] = "2026-10-12T09:00:00+00:00"
     entity["withdrawn_at"] = "2026-10-13T10:00:00+00:00"
 

@@ -8,10 +8,15 @@ mapping (SPEC-021 §19 "Datastore Tests").
 The tests use a lightweight fake Datastore client so they run without GCP
 credentials (AC-021-11). The adapter only uses the small client surface:
 ``key()``, ``entity()``, ``get()``, ``put()``, ``query()``.
+
+The fake reproduces Datastore's indexed-value limit so a regression is caught
+locally: an *indexed* string property longer than 1500 bytes makes the write
+fail, exactly as it did in production.
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
@@ -29,19 +34,16 @@ from fablit.domain import (
     Submission,
 )
 from fablit.platform.datastore_repository import DatastorePracticeHistoryRepository
+from tests.persistence.datastore_fakes import (
+    INDEXED_STRING_LIMIT_BYTES,
+    FakeEntity,
+    FakeKey,
+    InvalidArgumentError,
+    assert_within_index_limits,
+)
 
 LEARNER = uuid4()
 ACTIVITY = uuid4()
-
-
-class FakeKey:
-    def __init__(self, kind: str, name: str, namespace: str | None = None) -> None:
-        self.kind = kind
-        self.name = name
-        self.namespace = namespace
-
-    def _id(self) -> tuple[str, str, str | None]:
-        return (self.kind, self.name, self.namespace)
 
 
 class FakeQuery:
@@ -76,7 +78,7 @@ class FakeQuery:
         assert self._kind == "PracticeCompletion"
         results: list[FakeEntity] = []
         for entity in self._client._store.values():
-            if entity.key.namespace != self._namespace:
+            if entity.key is None or entity.key.namespace != self._namespace:
                 continue
             if all(entity.get(prop) == value for prop, _, value in self._filters):
                 results.append(entity)
@@ -91,12 +93,6 @@ class FakeQuery:
         return results  # type: ignore[return-value]
 
 
-class FakeEntity(dict[str, Any]):
-    def __init__(self, key: FakeKey) -> None:
-        super().__init__()
-        self.key = key
-
-
 class FakeDatastoreClient:
     """A minimal in-memory stand-in for google.cloud.datastore.Client."""
 
@@ -108,8 +104,10 @@ class FakeDatastoreClient:
     def key(self, kind: str, name: str, namespace: str | None = None) -> FakeKey:
         return FakeKey(kind, name, namespace)
 
-    def entity(self, key: FakeKey) -> FakeEntity:
-        return FakeEntity(key)
+    def entity(
+        self, key: FakeKey | None = None, exclude_from_indexes: Sequence[str] = ()
+    ) -> FakeEntity:
+        return FakeEntity(key, exclude_from_indexes)
 
     def get(self, key: FakeKey) -> FakeEntity | None:
         return self._store.get(key._id())
@@ -118,6 +116,9 @@ class FakeDatastoreClient:
         if self.fail_next_put:
             self.fail_next_put = False
             raise RuntimeError("simulated datastore outage")
+        assert_within_index_limits(entity)
+        if entity.key is None:
+            raise ValueError("Entity must have a key")
         self._store[entity.key._id()] = entity
 
     def query(self, kind: str, namespace: str | None = None, **_: Any) -> FakeQuery:
@@ -128,6 +129,8 @@ def make_stored_fixtures(
     *,
     response: str = "The contrast is striking.",
     reflection_content: str = "I will look for balance next time.",
+    feedback_content: str = "Strengths: You noticed the contrast.",
+    evidence: str | None = None,
     created_at: datetime | None = None,
     with_stimulus: bool = True,
 ) -> dict[str, Any]:
@@ -141,14 +144,16 @@ def make_stored_fixtures(
     evaluation = Evaluation(
         submission_id=submission.id,
         findings=(
-            EvaluationFinding(observation="You noticed the contrast."),
+            EvaluationFinding(
+                observation="You noticed the contrast.", evidence=evidence
+            ),
             EvaluationFinding(observation="Consider the negative space."),
         ),
         evaluated_at=created_at,
     )
     feedback = Feedback(
         evaluation_id=evaluation.id,
-        content="Strengths: You noticed the contrast.",
+        content=feedback_content,
         created_at=created_at,
     )
     reflection = Reflection(
@@ -407,6 +412,88 @@ def test_query_failure_raises_persistence_error() -> None:
     assert repository.has_completed_activity(LEARNER, ACTIVITY) is False
 
 
+# --- Indexed-value limits (production fix) ---------------------------------------
+#
+# Datastore rejects an *indexed* string property longer than 1500 bytes, which
+# previously failed the whole completion write for a long enough reflection.
+# The journey payload is only read back by key, so it is stored unindexed.
+
+
+def test_long_reflection_is_persisted_instead_of_failing_the_write() -> None:
+    repository, _client = make_repository()
+    long_reflection = "I noticed " + "the light across the table " * 60
+    assert len(long_reflection.encode("utf-8")) > INDEXED_STRING_LIMIT_BYTES
+    fixtures = make_stored_fixtures(reflection_content=long_reflection)
+
+    completion_id = save_fixture(repository, fixtures)
+
+    retrieved = repository.get_completion(LEARNER, completion_id)
+    assert retrieved is not None
+    assert retrieved.reflection.content == long_reflection
+
+
+def test_long_response_feedback_and_evidence_are_persisted() -> None:
+    repository, _client = make_repository()
+    long_text = "A detailed account of the work. " * 80
+    assert len(long_text.encode("utf-8")) > INDEXED_STRING_LIMIT_BYTES
+    fixtures = make_stored_fixtures(
+        response=long_text,
+        feedback_content=long_text,
+        evidence=long_text,
+    )
+
+    completion_id = save_fixture(repository, fixtures)
+
+    retrieved = repository.get_completion(LEARNER, completion_id)
+    assert retrieved is not None
+    assert retrieved.submission.response == long_text
+    assert retrieved.feedback.content == long_text
+    assert retrieved.evaluation.findings[0].evidence == long_text
+
+
+def test_journey_payload_is_stored_unindexed() -> None:
+    """Only the queryable properties stay indexed (SPEC-021 §12)."""
+    repository, client = make_repository()
+    fixtures = make_stored_fixtures()
+    completion_id = save_fixture(repository, fixtures)
+
+    entity = client._store[
+        ("PracticeCompletion", str(completion_id), f"learner_{LEARNER}")
+    ]
+
+    assert entity.exclude_from_indexes == set()
+    for prop, payload in entity.items():
+        if prop in {"learner_id", "activity_id", "activity_title", "completed_at"}:
+            continue
+        if payload is None:
+            continue
+        assert isinstance(payload, FakeEntity)
+        # Every payload property is a real embedded entity marked non-indexed.
+        assert payload.exclude_from_indexes == set(payload)
+
+    finding = entity["evaluation"]["findings"][0]
+    assert isinstance(finding, FakeEntity)
+    assert finding.exclude_from_indexes == set(finding)
+
+
+def test_bare_dict_payload_still_trips_the_indexed_value_limit() -> None:
+    """Documents the Datastore rule the fix works around.
+
+    An exclusion on the parent property does not propagate into a value stored
+    as a bare ``dict``, so only real embedded entity instances can be stored
+    unindexed (googleapis/google-cloud-python#5111).
+    """
+    client = FakeDatastoreClient()
+    entity = client.entity(
+        client.key("PracticeCompletion", "1", namespace=f"learner_{LEARNER}"),
+        exclude_from_indexes=("reflection",),
+    )
+    entity["reflection"] = {"content": "a" * (INDEXED_STRING_LIMIT_BYTES + 1)}
+
+    with pytest.raises(InvalidArgumentError):
+        client.put(entity)
+
+
 # --- Adapter identity semantics ---------------------------------------------------
 
 
@@ -417,6 +504,7 @@ def test_entities_are_namespaced_per_learner() -> None:
     completion_id = save_fixture(repository, fixtures)
 
     key = next(iter(client._store.values())).key
+    assert key is not None
     assert key.kind == "PracticeCompletion"
     assert key.name == str(completion_id)
     assert key.namespace == f"learner_{LEARNER}"

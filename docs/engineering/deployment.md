@@ -67,11 +67,15 @@ The repository root includes the deployment manifests required by Google Cloud S
          (PracticeCompletion entity)                 (Private GCS Bucket)
 ```
 
-### Google Cloud Datastore (Practice History)
+### Google Cloud Datastore
 - Enabled by `FABLIT_PRACTICE_HISTORY_REPOSITORY=datastore`.
 - Learner practice completions are stored as `PracticeCompletion` entities under the learner's namespace.
-- No custom composite indexes required.
+- Only `learner_id`, `activity_id`, and `completed_at` are indexed. The journey payload (`submission`, `evaluation` and its findings, `feedback`, `reflection`, `stimulus`, `artifact`) is written as non-indexed embedded entities, so Datastore's 1500-byte limit on an indexed string property can never reject a long reflection, response, feedback, or evaluation evidence.
 - Stored completions contain only `ArtifactRef` metadata (never binary image payloads).
+- The same indexed/non-indexed split applies to the other two Datastore stores, via the shared `fablit.platform.datastore_entities` helper:
+  - `AuthoringCandidate` entities (namespace `authoring`): only the scalar properties are indexed (`generated_at` drives the newest-first listing); `brief`, `candidate_data`, `validation`, and `history` are non-indexed embedded entities, so long generated text cannot fail a candidate write.
+  - `PublishedPractice` entities (namespace `library`): only the provenance properties are indexed (`published_at` drives ordering); the learner-facing activity payload, including its content contract and concepts, is a non-indexed embedded entity.
+- No custom composite indexes are required for any of these kinds.
 
 ### Google Cloud Storage (Private Sketchbook Artifacts)
 - Enabled by `FABLIT_ARTIFACT_STORAGE_BACKEND=gcs` and `FABLIT_ARTIFACT_STORAGE_BUCKET=<bucket-name>`.
