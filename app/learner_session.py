@@ -30,7 +30,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from threading import Lock
+from threading import RLock
 from uuid import UUID, uuid4
 
 from fastapi import Request, Response
@@ -41,6 +41,7 @@ from fablit.application import (
     LearnerJourneyStore,
     PracticeApplication,
     PublishedPractice,
+    PublishedPracticeStore,
     StimulusProvider,
     build_demo_activities,
     build_demo_activity_map,
@@ -114,6 +115,11 @@ class LearnerApplicationRegistry:
     The map is intentionally unbounded for the pilot: each entry is small and
     the deployment is a single-process pilot with a handful of learners
     (SPEC-014). A production hardening would add eviction.
+
+    SPEC-035 §6/§9: the explicitly published learner-library practices are
+    owned by this registry and refreshed from the ``PublishedPracticeStore``
+    on each new learner's first request, so every instance sees the latest
+    publications and withdrawals without needing a restart.
     """
 
     def __init__(
@@ -121,20 +127,23 @@ class LearnerApplicationRegistry:
         content: DemoContent,
         history_repository: PracticeHistoryRepository | None,
         artifact_storage: ArtifactStorage | None = None,
+        store: PublishedPracticeStore | None = None,
         publications: tuple[PublishedPractice, ...] = (),
     ) -> None:
         self._content = content
         self._history_repository = history_repository
         self._artifact_storage = artifact_storage
-        # SPEC-035 §6: the explicitly published learner-library practices.
-        # Publication happens at runtime, so the registry — not the
-        # process-wide immutable demo content — owns this set and reconciles
-        # it into each live learner application on the next request.
+        # SPEC-035 §6/§9: publications are owned by this registry and
+        # refreshed from the store on each new learner's first request.
+        self._store: PublishedPracticeStore | None = store
         self._publications: dict[UUID, PublishedPractice] = {
             record.activity_id: record for record in publications
         }
         self._applications: dict[UUID, PracticeApplication] = {}
-        self._lock = Lock()
+        # A re-entrant lock: the registry helpers are called from each other
+        # (application creation reads the published set), and a plain
+        # non-re-entrant lock would deadlock the request that triggered them.
+        self._lock = RLock()
 
     @property
     def publications(self) -> tuple[PublishedPractice, ...]:
@@ -149,6 +158,54 @@ class LearnerApplicationRegistry:
                 key=lambda record: record.activity.activity.position,
             )
         )
+
+    def refresh_publications(self) -> None:
+        """Refresh this registry's publication state from the store.
+
+        Re-reads the current publication records from the shared
+        ``PublishedPracticeStore``, so every application instance sees the
+        latest publications and withdrawals without needing a process restart.
+        Falls back gracefully to the existing publication set when the store
+        is unavailable, preserving the seeded library during outages.
+
+        The store is read before the registry lock is taken: it may be a
+        network call, and holding the lock across it would stall every other
+        learner (and freeze the request loop while the store is slow). Only
+        the in-memory merge runs under the lock.
+        """
+        if self._store is None:
+            logger.debug("no store; keeping existing")
+            return
+        try:
+            records = self._store.list_records()
+        except Exception:
+            logger.exception(
+                "failed to refresh publications from store; keeping existing set"
+            )
+            return
+        with self._lock:
+            self._merge_publications(records)
+            logger.info(
+                "publications refreshed from store: %d records",
+                len(self._publications),
+            )
+
+    def _merge_publications(self, records: tuple[PublishedPractice, ...]) -> None:
+        """Replace the published set with the store's records.
+
+        Records keep their stable activity identity (SPEC-035 §8), so a
+        republished practice replaces its previous entry in place. Records the
+        store no longer holds are withdrawn from the learner's view.
+        """
+        published_ids = {record.activity_id for record in records}
+        # Update in-place: keep existing entries, add/new ones replace
+        # under their stable activity identity (SPEC-035 §8 replacement policy).
+        for record in records:
+            self._publications[record.activity_id] = record
+        # Remove entries no longer in the store
+        keys_to_remove = [key for key in self._publications if key not in published_ids]
+        for key in keys_to_remove:
+            del self._publications[key]
 
     def record_publication(self, record: PublishedPractice) -> None:
         """Publish a record to every live learner application (SPEC-035 §5).
@@ -177,6 +234,15 @@ class LearnerApplicationRegistry:
 
     def application_for(self, learner_id: UUID) -> PracticeApplication:
         """Return the learner-scoped application, building it on first use."""
+        with self._lock:
+            application = self._applications.get(learner_id)
+        if application is None:
+            # SPEC-035 §9: a new learner sees the latest publications and
+            # withdrawals, so the published set is refreshed before the
+            # application is built. The refresh runs outside the registry
+            # lock: the store read may be a network call and must never
+            # block the other learners.
+            self.refresh_publications()
         with self._lock:
             application = self._applications.get(learner_id)
             if application is None:
