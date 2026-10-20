@@ -176,7 +176,7 @@ def test_older_records_without_stimulus_fields_still_load() -> None:
     store = DatastorePublishedPracticeStore(client)
     record = _make_record()
     store.save(record)
-    key = client.key("PublishedPractice", str(record.activity_id), namespace="library")
+    key = client.key("PublishedPractice", str(record.source_candidate_id), namespace="library")
     entity = client.get(key)
     assert entity is not None
     activity = entity["activity"]
@@ -357,7 +357,7 @@ def test_activity_payload_is_stored_unindexed() -> None:
 
     store.save(record)
 
-    entity = client._store[("PublishedPractice", str(record.activity_id), "library")]
+    entity = client._store[("PublishedPractice", str(record.source_candidate_id), "library")]
     assert entity.exclude_from_indexes == set()
     assert entity["published_at"] == record.published_at
     activity = entity["activity"]

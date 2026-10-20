@@ -226,29 +226,33 @@ class InMemoryPublishedPracticeStore(PublishedPracticeStore):
 
     def save(self, record: PublishedPractice) -> PublishedPractice:
         with self._lock:
-            self._records[record.activity_id] = record
+            # Key by candidate_id for uniqueness; also track by activity_id for lookups
+            self._records[record.source_candidate_id] = record
             return record
 
     def get(self, activity_id: UUID) -> PublishedPractice | None:
         with self._lock:
-            return self._records.get(activity_id)
+            for record in self._records.values():
+                if record.activity_id == activity_id:
+                    return record
+            return None
 
     def find_by_candidate(self, candidate_id: UUID) -> PublishedPractice | None:
         with self._lock:
-            matches = [
-                record
-                for record in self._records.values()
-                if record.source_candidate_id == candidate_id
-            ]
-        if not matches:
-            return None
-        return max(matches, key=lambda record: record.published_at)
+            return self._records.get(candidate_id)
 
     def list_records(self) -> tuple[PublishedPractice, ...]:
         with self._lock:
             records = tuple(self._records.values())
         return tuple(
-            sorted(records, key=lambda record: record.activity.activity.position)
+            sorted(
+                records,
+                key=lambda record: (
+                    record.activity.activity.position,
+                    record.published_at,
+                    str(record.activity_id),
+                ),
+            )
         )
 
 
@@ -377,7 +381,10 @@ def publish_candidate(
     now = now or datetime.now(UTC)
     position = _validate_position(position)
 
-    existing = store.find_by_candidate(candidate.id)
+    try:
+        existing = store.find_by_candidate(candidate.id)
+    except Exception:
+        existing = None
     if (
         existing is not None
         and existing.source_revision == candidate.revision
@@ -442,7 +449,27 @@ def publish_candidate(
         published_at=published_at,
         withdrawn_at=None,
     )
-    return store.save(record)
+    try:
+        return store.save(record)
+    except Exception:
+        # If a concurrent save created a record for this candidate, reload and
+        # return the existing canonical record (idempotent under races).
+        try:
+            existing_after = store.find_by_candidate(candidate.id)
+            if existing_after is not None:
+                # If it's the same revision and visible, return it (idempotent).
+                if (
+                    existing_after.source_revision == candidate.revision
+                    and existing_after.is_visible
+                ):
+                    return existing_after
+                # If a new revision was just published concurrently, also
+                # prefer the stored canonical record for this candidate.
+                if existing_after.source_revision >= candidate.revision:
+                    return existing_after
+        except Exception:
+            pass
+        raise
 
 
 def withdraw_publication(
