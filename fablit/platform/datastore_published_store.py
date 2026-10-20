@@ -255,9 +255,10 @@ class DatastorePublishedPracticeStore(PublishedPracticeStore):
     def save(self, record: PublishedPractice) -> PublishedPractice:
         try:
             data = serialize_published_practice(record, self._client)
+            # Key by candidate_id to enforce uniqueness across instances.
             key = self._client.key(
                 PUBLISHED_PRACTICE_KIND,
-                str(record.activity_id),
+                str(record.source_candidate_id),
                 namespace=self._namespace,
             )
             entity = self._client.entity(key)
@@ -277,15 +278,18 @@ class DatastorePublishedPracticeStore(PublishedPracticeStore):
 
     def get(self, activity_id: UUID) -> PublishedPractice | None:
         try:
-            key = self._client.key(
-                PUBLISHED_PRACTICE_KIND,
-                str(activity_id),
-                namespace=self._namespace,
+            query = self._client.query(
+                kind=PUBLISHED_PRACTICE_KIND, namespace=self._namespace
             )
-            entity = self._client.get(key)
-            if entity is None:
-                return None
-            return deserialize_published_practice(entity)
+            entities = list(query.fetch())
+            for entity in entities:
+                try:
+                    record = deserialize_published_practice(entity)
+                    if record.activity_id == activity_id:
+                        return record
+                except Exception:
+                    continue
+            return None
         except Exception as exc:
             logger.exception(
                 "Failed to retrieve published practice",
@@ -296,14 +300,25 @@ class DatastorePublishedPracticeStore(PublishedPracticeStore):
             ) from exc
 
     def find_by_candidate(self, candidate_id: UUID) -> PublishedPractice | None:
-        matches = [
-            record
-            for record in self.list_records()
-            if record.source_candidate_id == candidate_id
-        ]
-        if not matches:
-            return None
-        return max(matches, key=lambda record: record.published_at)
+        try:
+            key = self._client.key(
+                PUBLISHED_PRACTICE_KIND,
+                str(candidate_id),
+                namespace=self._namespace,
+            )
+            entity = self._client.get(key)
+            if entity is None:
+                return None
+            return deserialize_published_practice(entity)
+        except Exception as exc:
+            logger.exception(
+                "Failed to retrieve published practice by candidate",
+                extra={"candidate_id": str(candidate_id)},
+            )
+            raise PersistenceError(
+                "Failed to retrieve published practice by candidate "
+                f"{candidate_id}: {exc}"
+            ) from exc
 
     def list_records(self) -> tuple[PublishedPractice, ...]:
         try:
@@ -320,5 +335,12 @@ class DatastorePublishedPracticeStore(PublishedPracticeStore):
                 f"Failed to query published practices: {exc}"
             ) from exc
         return tuple(
-            sorted(records, key=lambda record: record.activity.activity.position)
+            sorted(
+                records,
+                key=lambda record: (
+                    record.activity.activity.position,
+                    record.published_at,
+                    str(record.activity_id),
+                ),
+            )
         )
