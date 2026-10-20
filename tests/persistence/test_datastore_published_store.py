@@ -394,9 +394,7 @@ def test_find_by_candidate_falls_back_to_legacy_activity_key() -> None:
 
     # Simulate old key format (keyed by activity_id)
     data = serialize_published_practice(record, client)
-    key = client.key(
-        "PublishedPractice", str(record.activity_id), namespace="library"
-    )
+    key = client.key("PublishedPractice", str(record.activity_id), namespace="library")
     entity = client.entity(key)
     entity.update(data)
     client.put(entity)
