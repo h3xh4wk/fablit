@@ -384,3 +384,24 @@ def test_deserialization_tolerates_isoformatted_timestamps() -> None:
     assert record.published_at == datetime(2026, 10, 12, 9, tzinfo=UTC)
     assert record.withdrawn_at == datetime(2026, 10, 13, 10, tzinfo=UTC)
     assert record.is_withdrawn
+
+
+def test_find_by_candidate_falls_back_to_legacy_activity_key() -> None:
+    """Legacy records stored under the activity_id key remain discoverable."""
+    client = FakeDatastoreClient()
+    store = DatastorePublishedPracticeStore(client)
+    record = _make_record()
+
+    # Simulate old key format (keyed by activity_id)
+    data = serialize_published_practice(record, client)
+    key = client.key(
+        "PublishedPractice", str(record.activity_id), namespace="library"
+    )
+    entity = client.entity(key)
+    entity.update(data)
+    client.put(entity)
+
+    retrieved = store.find_by_candidate(record.source_candidate_id)
+    assert retrieved is not None
+    assert retrieved.activity_id == record.activity_id
+    assert store.get(record.activity_id) == retrieved
