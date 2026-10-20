@@ -41,6 +41,7 @@ from fablit.application import (
     LearnerJourneyStore,
     PracticeApplication,
     PublishedPractice,
+    PublishedPracticeStore,
     StimulusProvider,
     build_demo_activities,
     build_demo_activity_map,
@@ -114,6 +115,11 @@ class LearnerApplicationRegistry:
     The map is intentionally unbounded for the pilot: each entry is small and
     the deployment is a single-process pilot with a handful of learners
     (SPEC-014). A production hardening would add eviction.
+
+    SPEC-035 §6/§9: the explicitly published learner-library practices are
+    owned by this registry and refreshed from the ``PublishedPracticeStore``
+    on each new learner's first request, so every instance sees the latest
+    publications and withdrawals without needing a restart.
     """
 
     def __init__(
@@ -121,15 +127,15 @@ class LearnerApplicationRegistry:
         content: DemoContent,
         history_repository: PracticeHistoryRepository | None,
         artifact_storage: ArtifactStorage | None = None,
+        store: PublishedPracticeStore | None = None,
         publications: tuple[PublishedPractice, ...] = (),
     ) -> None:
         self._content = content
         self._history_repository = history_repository
         self._artifact_storage = artifact_storage
-        # SPEC-035 §6: the explicitly published learner-library practices.
-        # Publication happens at runtime, so the registry — not the
-        # process-wide immutable demo content — owns this set and reconciles
-        # it into each live learner application on the next request.
+        # SPEC-035 §6/§9: publications are owned by this registry and
+        # refreshed from the store on each new learner's first request.
+        self._store: PublishedPracticeStore | None = store
         self._publications: dict[UUID, PublishedPractice] = {
             record.activity_id: record for record in publications
         }
@@ -149,6 +155,41 @@ class LearnerApplicationRegistry:
                 key=lambda record: record.activity.activity.position,
             )
         )
+
+    def refresh_publications(self) -> None:
+        """Refresh this registry's publication state from the store.
+
+        Re-reads the current publication records from the shared
+        ``PublishedPracticeStore``, so every application instance sees the
+        latest publications and withdrawals without needing a process restart.
+        Falls back gracefully to the existing publication set when the store
+        is unavailable, preserving the seeded library during outages.
+        """
+        if self._store is None:
+            logger.debug("no store; keeping existing")
+            return
+        try:
+            records = self._store.list_records()
+            with self._lock:
+                # Update in-place: keep existing entries, add/new ones replace
+                # under their stable activity identity (SPEC-035 §8 replacement policy).
+                for record in records:
+                    self._publications[record.activity_id] = record
+                # Remove entries no longer in the store
+                keys_to_remove = [
+                    key for key in self._publications
+                    if key not in {r.activity_id for r in records}
+                ]
+                for key in keys_to_remove:
+                    del self._publications[key]
+            logger.info(
+                "publications refreshed from store: %d records",
+                len(self._publications),
+            )
+        except Exception:
+            logger.exception(
+                "failed to refresh publications from store; keeping existing set"
+            )
 
     def record_publication(self, record: PublishedPractice) -> None:
         """Publish a record to every live learner application (SPEC-035 §5).
@@ -195,6 +236,10 @@ class LearnerApplicationRegistry:
 
     def _build_application(self, learner_id: UUID) -> PracticeApplication:
         content = self._content
+        # Refresh publications before building a new learner application,
+        # so every fresh learner sees the latest published set even across instances.
+        if self._store is not None:
+            self.refresh_publications()
         return PracticeApplication(
             store=LearnerJourneyStore(
                 learner_id=learner_id,

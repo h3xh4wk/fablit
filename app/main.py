@@ -110,6 +110,7 @@ def _build_learner_applications(
         content,
         history_repository,
         artifact_storage,
+        store=published_store,
         publications=load_publications(published_store),
     )
 
