@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 
@@ -117,6 +117,32 @@ class _UnavailableStore(PublishedPracticeStore):
 
     def list_records(self) -> tuple[PublishedPractice, ...]:
         raise PersistenceError("simulated publication outage")
+
+
+class _RecoveringStore(PublishedPracticeStore):
+    """A store that fails every read until the simulated outage passes (issue #143)."""
+
+    def __init__(self, inner: InMemoryPublishedPracticeStore) -> None:
+        self._inner = inner
+        self.available = False
+
+    def save(self, record: PublishedPractice) -> PublishedPractice:
+        return self._inner.save(record)
+
+    def get(self, activity_id: UUID) -> PublishedPractice | None:
+        if not self.available:
+            raise PersistenceError("simulated transient publication outage")
+        return self._inner.get(activity_id)
+
+    def find_by_candidate(self, candidate_id: UUID) -> PublishedPractice | None:
+        if not self.available:
+            raise PersistenceError("simulated transient publication outage")
+        return self._inner.find_by_candidate(candidate_id)
+
+    def list_records(self) -> tuple[PublishedPractice, ...]:
+        if not self.available:
+            raise PersistenceError("simulated transient publication outage")
+        return self._inner.list_records()
 
 
 # --- Deadlock regression -----------------------------------------------------
@@ -254,3 +280,59 @@ def test_existing_learner_sees_withdrawals_from_another_instance() -> None:
     )
     titles_after = [item.title for item in app_a_after.get_dashboard().activities]
     assert record.activity.title not in titles_after
+
+
+def test_instance_recovers_publications_after_a_transient_store_outage() -> None:
+    """An instance that starts during an outage recovers without a restart.
+
+    Issue #143: a store-read failure must not permanently pin an instance to
+    an empty publication snapshot.
+    """
+    published = InMemoryPublishedPracticeStore()
+    record = _published_record(published)
+    store = _RecoveringStore(published)
+    registry = _registry(store=store)
+    learner_id = uuid4()
+
+    during_outage = _completes_within(
+        TIMEOUT_SECONDS, lambda: registry.application_for(learner_id)
+    )
+    assert record.activity.title not in [
+        item.title for item in during_outage.get_dashboard().activities
+    ]
+
+    store.available = True
+
+    after_recovery = _completes_within(
+        TIMEOUT_SECONDS, lambda: registry.application_for(learner_id)
+    )
+    assert record.activity.title in [
+        item.title for item in after_recovery.get_dashboard().activities
+    ]
+
+
+def test_registry_orders_position_ties_deterministically() -> None:
+    """Equal positions still render one deterministic catalogue order.
+
+    Positions are advisory hints allocated per instance (issue #144), so
+    concurrent publications can share one; the registry breaks the tie the
+    same way as ``PublishedPracticeStore.list_records``.
+    """
+    published = InMemoryPublishedPracticeStore()
+    # Both publications receive the same catalogue position.
+    first = _published_record(published)
+    second = _published_record(published)
+    earlier, later = sorted(
+        (first, second),
+        key=lambda record: (record.published_at, str(record.activity_id)),
+    )
+    registry = _registry(store=published)
+    # Insert in reverse order: only the full tie-break key can render the
+    # deterministic order (dict insertion order alone would not).
+    registry.record_publication(later)
+    registry.record_publication(earlier)
+
+    assert [record.activity_id for record in registry.publications] == [
+        earlier.activity_id,
+        later.activity_id,
+    ]

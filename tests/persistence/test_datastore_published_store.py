@@ -70,6 +70,10 @@ class FakeDatastoreClient:
     def get(self, key: FakeKey) -> FakeEntity | None:
         return self._store.get(key._id())
 
+    def delete(self, key: FakeKey) -> None:
+        # Deleting a missing key is a no-op, as in the real client.
+        self._store.pop(key._id(), None)
+
     def put(self, entity: FakeEntity) -> None:
         if self.fail_next_put:
             self.fail_next_put = False
@@ -140,6 +144,21 @@ def _authored_stimulus(activity_id: UUID) -> StimulusInstance:
         attribution="Photo by Saurabh_U on Pixabay",
         alt_text="A still life on a wooden table",
     )
+
+
+def _put_legacy_entity(
+    client: FakeDatastoreClient, record: PublishedPractice
+) -> FakeKey:
+    """Store a record under the pre-candidate-ID key scheme (issue #144).
+
+    Records published before the candidate-ID key scheme were keyed by the
+    learner-facing activity ID.
+    """
+    key = client.key("PublishedPractice", str(record.activity_id), namespace="library")
+    entity = client.entity(key)
+    entity.update(serialize_published_practice(record, client))
+    client.put(entity)
+    return key
 
 
 def test_authored_stimulus_and_sketch_capability_roundtrip() -> None:
@@ -393,13 +412,107 @@ def test_find_by_candidate_falls_back_to_legacy_activity_key() -> None:
     record = _make_record()
 
     # Simulate old key format (keyed by activity_id)
-    data = serialize_published_practice(record, client)
-    key = client.key("PublishedPractice", str(record.activity_id), namespace="library")
-    entity = client.entity(key)
-    entity.update(data)
-    client.put(entity)
+    _put_legacy_entity(client, record)
 
     retrieved = store.find_by_candidate(record.source_candidate_id)
     assert retrieved is not None
     assert retrieved.activity_id == record.activity_id
     assert store.get(record.activity_id) == retrieved
+
+
+# --- Legacy-key migration and catalogue uniqueness (issue #144) --------------
+
+
+def test_republishing_a_legacy_record_migrates_it_and_keeps_one_catalogue_entry() -> (
+    None
+):
+    """Republishing a legacy record migrates it instead of duplicating it."""
+    client = FakeDatastoreClient()
+    store = DatastorePublishedPracticeStore(client)
+    record = _make_record()
+    legacy_key = _put_legacy_entity(client, record)
+    # The fallback lookup discovers the legacy record before it is migrated.
+    assert store.find_by_candidate(record.source_candidate_id) is not None
+
+    store.save(dataclasses.replace(record, source_revision=2))
+
+    assert client.get(legacy_key) is None
+    assert len(client._store) == 1
+    listed = store.list_records()
+    assert len(listed) == 1
+    assert listed[0].source_revision == 2
+    assert listed[0].source_candidate_id == record.source_candidate_id
+
+
+def test_an_undeleted_legacy_duplicate_never_reaches_the_catalogue_twice() -> None:
+    """Even when legacy cleanup fails, only the candidate-keyed record is listed."""
+    client = FakeDatastoreClient()
+    store = DatastorePublishedPracticeStore(client)
+    record = _make_record()
+    # A stale legacy copy left behind by a failed cleanup, stored *before*
+    # the canonical candidate-keyed entity (the crash-between-put-and-delete
+    # interleaving).
+    _put_legacy_entity(client, dataclasses.replace(record, source_revision=2))
+    canonical = client.entity(
+        client.key(
+            "PublishedPractice", str(record.source_candidate_id), namespace="library"
+        )
+    )
+    canonical.update(serialize_published_practice(record, client))
+    client.put(canonical)
+
+    listed = store.list_records()
+
+    assert len(listed) == 1
+    # The candidate-keyed entity wins even though the legacy copy came first.
+    assert listed[0].source_revision == 1
+    assert store.find_by_candidate(record.source_candidate_id) == listed[0]
+    assert store.get(record.activity_id) == listed[0]
+
+
+def test_publications_sharing_a_position_order_deterministically_across_instances() -> (
+    None
+):
+    """Concurrent instance-local position allocation can collide harmlessly."""
+    client = FakeDatastoreClient()
+    store_a = DatastorePublishedPracticeStore(client)
+    store_b = DatastorePublishedPracticeStore(client)
+    # Both candidates receive the same position, as concurrent publish
+    # requests handled by different instances can allocate.
+    first = _make_record(position=12)
+    second = _make_record(position=12)
+
+    store_a.save(first)
+    store_b.save(second)
+
+    order_a = [item.activity_id for item in store_a.list_records()]
+    order_b = [item.activity_id for item in store_b.list_records()]
+
+    assert len(order_a) == 2
+    # Deterministic tie-break (position, published_at, activity identity):
+    # every instance renders the same catalogue order.
+    assert order_a == order_b
+    assert order_a == sorted(order_a, key=str)
+
+
+def test_same_candidate_race_across_instances_keeps_one_catalogue_entry() -> None:
+    """Two instances that both saw "not yet published" converge on one record."""
+    client = FakeDatastoreClient()
+    store_a = DatastorePublishedPracticeStore(client)
+    store_b = DatastorePublishedPracticeStore(client)
+    record = _make_record()
+
+    # Both instances read before either wrote: the issue #144 race window.
+    assert store_a.find_by_candidate(record.source_candidate_id) is None
+    assert store_b.find_by_candidate(record.source_candidate_id) is None
+    # The candidate-ID key makes the two writes converge on one entity.
+    store_a.save(record)
+    store_b.save(dataclasses.replace(record, source_revision=2))
+
+    assert len(client._store) == 1
+    listed = store_a.list_records()
+    assert len(listed) == 1
+    assert listed[0].activity_id == record.activity_id
+    assert store_a.find_by_candidate(record.source_candidate_id) == (
+        store_b.find_by_candidate(record.source_candidate_id)
+    )

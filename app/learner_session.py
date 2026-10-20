@@ -156,10 +156,19 @@ class LearnerApplicationRegistry:
             return self._publication_tuple()
 
     def _publication_tuple(self) -> tuple[PublishedPractice, ...]:
+        # SPEC-035 §9 / issue #144: positions are advisory hints allocated
+        # per instance, so concurrent publications can share one. Order ties
+        # deterministically by publication time and stable activity identity
+        # — the same tie-break as PublishedPracticeStore.list_records — so
+        # every instance renders the same catalogue order.
         return tuple(
             sorted(
                 self._publications.values(),
-                key=lambda record: record.activity.activity.position,
+                key=lambda record: (
+                    record.activity.activity.position,
+                    record.published_at,
+                    str(record.activity_id),
+                ),
             )
         )
 
