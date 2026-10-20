@@ -9,6 +9,7 @@ completable through the ordinary practice journey.
 from __future__ import annotations
 
 import dataclasses
+import threading
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
@@ -443,6 +444,112 @@ def test_saving_under_an_existing_identity_replaces_the_record() -> None:
     assert published.save(updated) == updated
     assert published.list_records() == (updated,)
     assert published.get(first.activity_id) == updated
+
+
+# --- Concurrency safety (issue #144) ----------------------------------------
+
+#: Short enough that a stuck race fails fast rather than stalling the suite.
+RACE_TIMEOUT_SECONDS = 10.0
+
+
+def test_concurrent_publish_of_the_same_candidate_shares_one_identity() -> None:
+    """Two racing publishers receive the same canonical activity identity.
+
+    The store gate forces both callers past the existence check before
+    either saves — the exact issue #144 race window — so the test exercises
+    the interleaving deterministically instead of relying on the scheduler.
+    """
+
+    class _RaceGateStore(InMemoryPublishedPracticeStore):
+        def __init__(self) -> None:
+            super().__init__()
+            self._gate = threading.Barrier(2, timeout=RACE_TIMEOUT_SECONDS)
+            self._gating = True
+
+        def stop_gating(self) -> None:
+            """Let later reads through once the two-publisher race is over."""
+            self._gating = False
+
+        def find_by_candidate(self, candidate_id: UUID) -> PublishedPractice | None:
+            record = super().find_by_candidate(candidate_id)
+            if not self._gating:
+                return record
+            # Both racers observe "not yet published" before either writes;
+            # the barrier re-opens for the canonical reload after each save.
+            self._gate.wait()
+            return record
+
+    authoring = _authoring_store()
+    candidate_id = _approved(authoring)
+    published = _RaceGateStore()
+    results: list[PublishedPractice] = []
+    failures: list[Exception] = []
+
+    def racer() -> None:
+        try:
+            results.append(
+                publish_candidate(
+                    authoring.get(candidate_id), store=published, position=12
+                )
+            )
+        except Exception as exc:
+            failures.append(exc)
+
+    threads = [threading.Thread(target=racer) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=RACE_TIMEOUT_SECONDS)
+
+    assert not any(thread.is_alive() for thread in threads), "publisher deadlocked"
+    published.stop_gating()
+    assert not failures, failures
+    assert len(results) == 2
+    # Both callers get the same canonical activity identity, and the
+    # catalogue holds exactly one entry for the candidate.
+    assert results[0].activity_id == results[1].activity_id
+    listed = published.list_records()
+    assert len(listed) == 1
+    assert listed[0].activity_id == results[0].activity_id
+    assert published.find_by_candidate(candidate_id) == listed[0]
+
+
+def test_publications_sharing_a_position_order_deterministically() -> None:
+    """Concurrent publications that share a position keep a stable order.
+
+    Positions are advisory hints allocated per instance (issue #144); equal
+    positions resolve through the deterministic tie-break documented on
+    ``PublishedPracticeStore.list_records``.
+    """
+    authoring = _authoring_store()
+    first_id = _approved(authoring, practice_area="Observation")
+    second_id = _approved(authoring, practice_area="Interpretation")
+    published = InMemoryPublishedPracticeStore()
+
+    # Both publications receive the same position, as concurrent publish
+    # requests handled by different instances can allocate.
+    first = _publish(first_id, authoring, published, position=12)
+    second = _publish(second_id, authoring, published, position=12)
+
+    listed = published.list_records()
+
+    assert len(listed) == 2
+    assert {item.activity_id for item in listed} == {
+        first.activity_id,
+        second.activity_id,
+    }
+    expected = tuple(
+        sorted(
+            (first, second),
+            key=lambda record: (
+                record.activity.activity.position,
+                record.published_at,
+                str(record.activity_id),
+            ),
+        )
+    )
+    assert listed == expected
+    assert published.list_records() == listed
 
 
 # --- Learner discovery and journey (SPEC-035 §7) -----------------------------

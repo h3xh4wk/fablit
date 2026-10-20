@@ -205,7 +205,15 @@ class PublishedPracticeStore(ABC):
 
     @abstractmethod
     def list_records(self) -> tuple[PublishedPractice, ...]:
-        """Return every publication record ordered by learner-facing position."""
+        """Return every publication record in deterministic catalogue order.
+
+        Records are ordered by catalogue position, then publication time,
+        then the stable activity identity. Position is an advisory ordering
+        hint allocated by the publishing instance: concurrently published
+        *different* candidates may receive the same position, and the
+        deterministic tie-break makes that collision harmless rather than
+        requiring atomic cross-instance position allocation (issue #144).
+        """
 
     def visible(self) -> tuple[PublishedPractice, ...]:
         """Return the records learners may discover (published, not withdrawn)."""
@@ -244,6 +252,9 @@ class InMemoryPublishedPracticeStore(PublishedPracticeStore):
     def list_records(self) -> tuple[PublishedPractice, ...]:
         with self._lock:
             records = tuple(self._records.values())
+        # Same deterministic tie-break as the Datastore adapter and the
+        # publication port: position, then publication time, then stable
+        # activity identity (issue #144).
         return tuple(
             sorted(
                 records,
@@ -369,6 +380,11 @@ def publish_candidate(
         store: The publication persistence port.
         position: The learner-facing catalogue position for a first
             publication (existing publications keep their position).
+            Positions are advisory ordering hints, not unique invariants:
+            concurrently published different candidates may receive the same
+            position, which the catalogue resolves with the deterministic
+            tie-break documented on
+            :meth:`PublishedPracticeStore.list_records`.
         now: Optional clock override for deterministic tests.
 
     Raises:

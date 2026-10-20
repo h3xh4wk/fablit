@@ -238,9 +238,14 @@ class DatastorePublishedPracticeStore(PublishedPracticeStore):
 
     Publication survives instance restarts and is shared between App Engine
     instances, so approved content an author publishes once is durable. The
-    entity key is the stable learner-facing activity identity: saving the
-    same publication again replaces it in place, which keeps republishing
-    idempotent and duplicate-free.
+    entity key is the source candidate ID: saving the same publication again
+    replaces it in place, which keeps republishing idempotent and
+    duplicate-free across concurrent instances. Records still stored under
+    the legacy activity-ID key scheme are read through
+    ``find_by_candidate`` and migrated away on the next save, and
+    ``list_records`` lists at most one entry per candidate, so a legacy
+    record can never appear alongside its candidate-keyed successor in the
+    learner catalogue (issue #144).
     """
 
     def __init__(
@@ -264,6 +269,11 @@ class DatastorePublishedPracticeStore(PublishedPracticeStore):
             entity = self._client.entity(key)
             entity.update(data)
             self._client.put(entity)
+            # Legacy-key migration runs only after the canonical candidate-ID
+            # entity exists: it is a best-effort cleanup, so a failure here
+            # can never lose the publication — and list_records() already
+            # refuses to list a stale legacy duplicate twice (issue #144).
+            self._remove_legacy_duplicates(record)
             return record
         except PersistenceError:
             raise
@@ -276,20 +286,84 @@ class DatastorePublishedPracticeStore(PublishedPracticeStore):
                 f"Failed to persist published practice {record.activity_id}: {exc}"
             ) from exc
 
+    def _remove_legacy_duplicates(self, record: PublishedPractice) -> None:
+        """Delete the same candidate's record left under a legacy key (issue #144).
+
+        Records published before the candidate-ID key scheme were stored
+        under the learner-facing activity ID. ``find_by_candidate`` still
+        reads those, but they must not survive the first save under the
+        candidate-ID key: together they would put two catalogue entries in
+        front of the learner. Failures are logged rather than raised because
+        the canonical record is already persisted; the defensive
+        deduplication in :meth:`list_records` guarantees the catalogue stays
+        single-entry even if this cleanup never succeeds.
+        """
+        candidate_key_name = str(record.source_candidate_id)
+        try:
+            query = self._client.query(
+                kind=PUBLISHED_PRACTICE_KIND, namespace=self._namespace
+            )
+            entities = list(query.fetch())
+        except Exception:
+            logger.exception(
+                "could not scan for legacy published practice records for "
+                "candidate %s; catalogue deduplication still prevents "
+                "duplicate entries",
+                candidate_key_name,
+            )
+            return
+        for entity in entities:
+            legacy_key = getattr(entity, "key", None)
+            if legacy_key is None or legacy_key.name == candidate_key_name:
+                continue
+            try:
+                legacy = deserialize_published_practice(entity)
+            except Exception:
+                # An unreadable entity is not evidence of a legacy duplicate.
+                continue
+            if legacy.source_candidate_id != record.source_candidate_id:
+                continue
+            try:
+                self._client.delete(legacy_key)
+            except Exception:
+                logger.exception(
+                    "could not remove legacy published practice record %s "
+                    "for candidate %s",
+                    legacy_key.name,
+                    candidate_key_name,
+                )
+            else:
+                logger.info(
+                    "migrated legacy published practice record %s to candidate key %s",
+                    legacy_key.name,
+                    candidate_key_name,
+                )
+
     def get(self, activity_id: UUID) -> PublishedPractice | None:
         try:
             query = self._client.query(
                 kind=PUBLISHED_PRACTICE_KIND, namespace=self._namespace
             )
             entities = list(query.fetch())
+            # A stale legacy duplicate must never shadow the candidate-keyed
+            # record of the same publication (issue #144).
+            best: tuple[bool, PublishedPractice] | None = None
             for entity in entities:
                 try:
                     record = deserialize_published_practice(entity)
-                    if record.activity_id == activity_id:
-                        return record
                 except Exception:
                     continue
-            return None
+                if record.activity_id != activity_id:
+                    continue
+                key = getattr(entity, "key", None)
+                canonical = key is not None and key.name == str(
+                    record.source_candidate_id
+                )
+                if best is None or (canonical and not best[0]):
+                    best = (canonical, record)
+            if best is None:
+                return None
+            return best[1]
         except Exception as exc:
             logger.exception(
                 "Failed to retrieve published practice",
@@ -333,6 +407,17 @@ class DatastorePublishedPracticeStore(PublishedPracticeStore):
             ) from exc
 
     def list_records(self) -> tuple[PublishedPractice, ...]:
+        """Return every publication record in deterministic catalogue order.
+
+        Records are ordered by catalogue position, then publication time,
+        then the stable activity identity. Positions are advisory ordering
+        hints allocated by whichever instance handled the publish request,
+        so concurrently published different candidates may share a position;
+        the tie-break keeps the catalogue order deterministic across
+        instances and restarts (issue #144). At most one record is listed
+        per source candidate: a stale legacy duplicate whose cleanup failed
+        never doubles a catalogue entry (issue #144).
+        """
         try:
             query = self._client.query(
                 kind=PUBLISHED_PRACTICE_KIND, namespace=self._namespace
@@ -340,15 +425,27 @@ class DatastorePublishedPracticeStore(PublishedPracticeStore):
             with suppress(AttributeError, TypeError):
                 query.order = ["-published_at"]
             entities = list(query.fetch())
-            records = [deserialize_published_practice(entity) for entity in entities]
+            records = [
+                (entity, deserialize_published_practice(entity)) for entity in entities
+            ]
         except Exception as exc:
             logger.exception("Failed to query published practices")
             raise PersistenceError(
                 f"Failed to query published practices: {exc}"
             ) from exc
+        # One catalogue entry per source candidate: the candidate-keyed
+        # entity is canonical; a legacy-keyed duplicate of the same
+        # candidate never replaces it, no matter the fetch order.
+        unique: dict[UUID, tuple[bool, PublishedPractice]] = {}
+        for entity, record in records:
+            key = getattr(entity, "key", None)
+            canonical = key is not None and key.name == str(record.source_candidate_id)
+            held = unique.get(record.source_candidate_id)
+            if held is None or (canonical and not held[0]):
+                unique[record.source_candidate_id] = (canonical, record)
         return tuple(
             sorted(
-                records,
+                (record for _, record in unique.values()),
                 key=lambda record: (
                     record.activity.activity.position,
                     record.published_at,
