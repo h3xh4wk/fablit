@@ -1,0 +1,191 @@
+"""Regression tests for the learner application registry (SPEC-024 §6, SPEC-035 §9).
+
+Resolving an anonymous learner identity builds a learner-scoped
+``PracticeApplication``. Building it refreshes the published learner library
+from the shared ``PublishedPracticeStore``, so the registry's own lock was
+acquired twice on the same request. A non-re-entrant lock deadlocked the
+request thread there: the learner dashboard never answered, the request loop
+froze, and every browser journey timed out.
+
+The tests below run the resolution under a timeout, so a deadlock fails the
+test instead of hanging the whole suite.
+"""
+
+from __future__ import annotations
+
+import threading
+from collections.abc import Callable
+from uuid import uuid4
+
+from fastapi.testclient import TestClient
+
+from app.learner_session import DemoContent, LearnerApplicationRegistry
+from app.main import create_app
+from fablit.application import (
+    PRACTICE_CAPABILITY_OBSERVE,
+    AuthoringCandidateStore,
+    InMemoryPublishedPracticeStore,
+    PracticeAuthoringBrief,
+    PracticeMode,
+    PublishedPractice,
+    PublishedPracticeStore,
+    draft_candidate_from_brief,
+    publish_candidate,
+)
+from fablit.application.persistence import PersistenceError
+from fablit.config import load_config
+
+#: Generous enough for a slow CI machine, short enough that a deadlock
+#: fails the test instead of stalling the suite.
+TIMEOUT_SECONDS = 10.0
+
+
+def _completes_within[T](seconds: float, action: Callable[[], T]) -> T:
+    """Run an action in a worker thread and fail when it does not return.
+
+    A registry deadlock blocks the request thread forever, so the action runs
+    with a timeout: the test fails fast rather than hanging.
+    """
+    outcome: list[T] = []
+    failure: list[BaseException] = []
+
+    def runner() -> None:
+        try:
+            outcome.append(action())
+        except Exception as exc:
+            failure.append(exc)
+
+    worker = threading.Thread(target=runner, daemon=True)
+    worker.start()
+    worker.join(timeout=seconds)
+    if worker.is_alive():
+        raise AssertionError(
+            f"the action did not complete within {seconds}s (deadlock)"
+        )
+    if failure:
+        raise failure[0]
+    return outcome[0]
+
+
+def _registry(
+    store: PublishedPracticeStore | None = None,
+) -> LearnerApplicationRegistry:
+    """A registry over the seeded library, with a publication store attached."""
+    return LearnerApplicationRegistry(
+        DemoContent.build(load_config()),
+        None,
+        None,
+        store=store if store is not None else InMemoryPublishedPracticeStore(),
+    )
+
+
+def _published_record(store: PublishedPracticeStore) -> PublishedPractice:
+    """Publish one approved candidate into the given store."""
+    authoring = AuthoringCandidateStore()
+    brief = PracticeAuthoringBrief(
+        practice_area="Visual analysis",
+        practice_purpose="Distinguish visible evidence from interpretation.",
+        task="Identify three visible details in the provided stimulus.",
+        response_form="A short written observation.",
+        primary_capability=PRACTICE_CAPABILITY_OBSERVE,
+        practice_mode=PracticeMode.SHORT_DRILL,
+        learner_context="A learner practising close observation.",
+    )
+    candidate = draft_candidate_from_brief(brief)
+    authoring.add(candidate)
+    authoring.approve(candidate.id, reviewer="reviewer")
+    return publish_candidate(
+        authoring.get(candidate.id),
+        store=store,
+        position=12,
+    )
+
+
+class _UnavailableStore(PublishedPracticeStore):
+    """A publication store that cannot be read."""
+
+    def save(self, record: PublishedPractice) -> PublishedPractice:
+        raise PersistenceError("simulated publication outage")
+
+    def get(self, activity_id: object) -> PublishedPractice | None:
+        raise PersistenceError("simulated publication outage")
+
+    def find_by_candidate(self, candidate_id: object) -> PublishedPractice | None:
+        return None
+
+    def list_records(self) -> tuple[PublishedPractice, ...]:
+        raise PersistenceError("simulated publication outage")
+
+
+# --- Deadlock regression -----------------------------------------------------
+
+
+def test_new_learner_application_is_built_without_deadlock() -> None:
+    """Building a learner's application never blocks the requesting thread."""
+    registry = _registry()
+    learner_id = uuid4()
+
+    application = _completes_within(
+        TIMEOUT_SECONDS, lambda: registry.application_for(learner_id)
+    )
+
+    assert application.get_dashboard().activities
+
+
+def test_dashboard_answers_a_new_learner_without_hanging() -> None:
+    """The dashboard answers a fresh learner (the browser-job symptom)."""
+
+    def fetch() -> str:
+        test_app = create_app(load_config())
+        with TestClient(test_app) as client:
+            response = client.get("/")
+            assert response.status_code == 200
+            return response.text
+
+    body = _completes_within(TIMEOUT_SECONDS, fetch)
+
+    assert "What would you like to explore?" in body
+
+
+def test_several_learners_resolve_concurrently_without_deadlock() -> None:
+    """Concurrent learners never block each other on the registry lock."""
+    registry = _registry()
+    learner_ids = [uuid4() for _ in range(8)]
+
+    def resolve() -> list[int]:
+        return [
+            len(registry.application_for(learner_id).get_dashboard().activities)
+            for learner_id in learner_ids
+        ]
+
+    counts = _completes_within(TIMEOUT_SECONDS, resolve)
+
+    assert all(count > 0 for count in counts)
+
+
+# --- Publication refresh (SPEC-035 §9) ---------------------------------------
+
+
+def test_new_learner_sees_publications_refreshed_from_the_store() -> None:
+    """A fresh learner sees the latest published library."""
+    published = InMemoryPublishedPracticeStore()
+    record = _published_record(published)
+    registry = _registry(store=published)
+
+    application = _completes_within(
+        TIMEOUT_SECONDS, lambda: registry.application_for(uuid4())
+    )
+
+    titles = [item.title for item in application.get_dashboard().activities]
+    assert record.activity.title in titles
+
+
+def test_unavailable_publication_store_does_not_block_learner_requests() -> None:
+    """A store that cannot be read degrades to the seeded library."""
+    registry = _registry(store=_UnavailableStore())
+
+    application = _completes_within(
+        TIMEOUT_SECONDS, lambda: registry.application_for(uuid4())
+    )
+
+    assert application.get_dashboard().activities
