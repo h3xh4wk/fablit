@@ -35,7 +35,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from threading import Lock
 from typing import Protocol
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_DNS, UUID, uuid5
 
 from fablit.domain import ActivityStatus, ActivityType, AssessmentActivity
 
@@ -383,8 +383,12 @@ def publish_candidate(
 
     try:
         existing = store.find_by_candidate(candidate.id)
+    except PersistenceError:
+        # A persistence/read failure is not evidence the candidate has never
+        # been published; do not assume absence and risk overwriting.
+        raise
     except Exception:
-        existing = None
+        raise
     if (
         existing is not None
         and existing.source_revision == candidate.revision
@@ -421,7 +425,9 @@ def publish_candidate(
         )
 
     if existing is None:
-        activity_id = uuid4()
+        # Derive a stable activity identity from the candidate to avoid
+        # races producing different identities across concurrent publishes.
+        activity_id = uuid5(NAMESPACE_DNS, f"fablit.published.{candidate.id}")
         activity_position = position
         published_at = now
     else:
@@ -450,26 +456,33 @@ def publish_candidate(
         withdrawn_at=None,
     )
     try:
-        return store.save(record)
+        store.save(record)
     except Exception:
         # If a concurrent save created a record for this candidate, reload and
         # return the existing canonical record (idempotent under races).
         try:
             existing_after = store.find_by_candidate(candidate.id)
             if existing_after is not None:
-                # If it's the same revision and visible, return it (idempotent).
+                # Prefer the stored canonical record for this candidate.
                 if (
                     existing_after.source_revision == candidate.revision
                     and existing_after.is_visible
                 ):
                     return existing_after
-                # If a new revision was just published concurrently, also
-                # prefer the stored canonical record for this candidate.
                 if existing_after.source_revision >= candidate.revision:
                     return existing_after
         except Exception:
             pass
         raise
+    # After a successful save, reload the canonical stored record so that
+    # concurrent publishes return the same persisted identity and state.
+    try:
+        canonical = store.find_by_candidate(candidate.id)
+        if canonical is not None:
+            return canonical
+    except Exception:
+        pass
+    return record
 
 
 def withdraw_publication(

@@ -307,9 +307,21 @@ class DatastorePublishedPracticeStore(PublishedPracticeStore):
                 namespace=self._namespace,
             )
             entity = self._client.get(key)
-            if entity is None:
-                return None
-            return deserialize_published_practice(entity)
+            if entity is not None:
+                return deserialize_published_practice(entity)
+            # Legacy records may have been stored under the activity_id key.
+            query = self._client.query(
+                kind=PUBLISHED_PRACTICE_KIND, namespace=self._namespace
+            )
+            entities = list(query.fetch())
+            for entity in entities:
+                try:
+                    record = deserialize_published_practice(entity)
+                    if record.source_candidate_id == candidate_id:
+                        return record
+                except Exception:
+                    continue
+            return None
         except Exception as exc:
             logger.exception(
                 "Failed to retrieve published practice by candidate",

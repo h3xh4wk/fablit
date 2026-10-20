@@ -36,6 +36,7 @@ Implement GitHub issues by translating approved requirements into clean, tested,
 - If the issue clearly belongs to a specialized role, delegate to that role rather than implementing it as a generic task.
 - Add or update tests for each behavior change.
 - Document any new public interfaces or configuration.
+- Run linting and formatting checks (e.g., `uv run pre-commit run --all-files`, `uv run ruff check .`, `uv run ruff format --check .`) after completing code changes and fix any issues before finishing.
 
 ## Must Not
 
