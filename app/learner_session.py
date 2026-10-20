@@ -28,6 +28,7 @@ built once and shared; only learner-scoped state is per learner.
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from threading import RLock
@@ -129,6 +130,7 @@ class LearnerApplicationRegistry:
         artifact_storage: ArtifactStorage | None = None,
         store: PublishedPracticeStore | None = None,
         publications: tuple[PublishedPractice, ...] = (),
+        refresh_interval_seconds: float = 5.0,
     ) -> None:
         self._content = content
         self._history_repository = history_repository
@@ -144,6 +146,8 @@ class LearnerApplicationRegistry:
         # (application creation reads the published set), and a plain
         # non-re-entrant lock would deadlock the request that triggered them.
         self._lock = RLock()
+        self._refresh_interval_seconds = refresh_interval_seconds
+        self._last_refresh_at = 0.0
 
     @property
     def publications(self) -> tuple[PublishedPractice, ...]:
@@ -159,7 +163,17 @@ class LearnerApplicationRegistry:
             )
         )
 
-    def refresh_publications(self) -> None:
+    def _should_refresh_publications(self) -> bool:
+        if self._store is None:
+            return False
+        if self._refresh_interval_seconds <= 0:
+            return True
+        now = time.monotonic()
+        if now - self._last_refresh_at < self._refresh_interval_seconds:
+            return False
+        return True
+
+    def refresh_publications(self, *, force: bool = False) -> None:
         """Refresh this registry's publication state from the store.
 
         Re-reads the current publication records from the shared
@@ -176,6 +190,8 @@ class LearnerApplicationRegistry:
         if self._store is None:
             logger.debug("no store; keeping existing")
             return
+        if not force and not self._should_refresh_publications():
+            return
         try:
             records = self._store.list_records()
         except Exception:
@@ -185,6 +201,7 @@ class LearnerApplicationRegistry:
             return
         with self._lock:
             self._merge_publications(records)
+            self._last_refresh_at = time.monotonic()
             logger.info(
                 "publications refreshed from store: %d records",
                 len(self._publications),
@@ -242,6 +259,10 @@ class LearnerApplicationRegistry:
             # application is built. The refresh runs outside the registry
             # lock: the store read may be a network call and must never
             # block the other learners.
+            self.refresh_publications(force=True)
+        else:
+            # Existing learners must also pick up publications and withdrawals
+            # from other instances within a bounded refresh window.
             self.refresh_publications()
         with self._lock:
             application = self._applications.get(learner_id)
