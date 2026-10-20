@@ -200,14 +200,25 @@ def test_existing_learner_sees_publications_from_another_instance() -> None:
     registry_b = _registry(store=published)
     learner_id = uuid4()
 
-    app_a = _completes_within(TIMEOUT_SECONDS, lambda: registry_a.application_for(learner_id))
+    app_a = _completes_within(
+        TIMEOUT_SECONDS,
+        lambda: registry_a.application_for(learner_id),
+    )
     titles_before = [item.title for item in app_a.get_dashboard().activities]
 
     record = _published_record(published)
-    app_b = _completes_within(TIMEOUT_SECONDS, lambda: registry_b.application_for(uuid4()))
-    assert record.activity.title in [item.title for item in app_b.get_dashboard().activities]
+    app_b = _completes_within(
+        TIMEOUT_SECONDS,
+        lambda: registry_b.application_for(uuid4()),
+    )
+    assert record.activity.title in [
+        item.title for item in app_b.get_dashboard().activities
+    ]
 
-    app_a_after = _completes_within(TIMEOUT_SECONDS, lambda: registry_a.application_for(learner_id))
+    app_a_after = _completes_within(
+        TIMEOUT_SECONDS,
+        lambda: registry_a.application_for(learner_id),
+    )
     titles_after = [item.title for item in app_a_after.get_dashboard().activities]
     assert record.activity.title in titles_after
     assert len(titles_after) == len(titles_before) + 1
@@ -215,20 +226,31 @@ def test_existing_learner_sees_publications_from_another_instance() -> None:
 
 def test_existing_learner_sees_withdrawals_from_another_instance() -> None:
     """An existing learner sees withdrawals made by another instance."""
+    from fablit.application.publishing import withdraw_publication
+
     published = InMemoryPublishedPracticeStore()
     record = _published_record(published)
     registry_a = _registry(store=published)
     registry_b = _registry(store=published)
     learner_id = uuid4()
 
-    app_a = _completes_within(TIMEOUT_SECONDS, lambda: registry_a.application_for(learner_id))
-    assert record.activity.title in [item.title for item in app_a.get_dashboard().activities]
-
-    from fablit.application.publishing import withdraw_publication
+    app_a = _completes_within(
+        TIMEOUT_SECONDS,
+        lambda: registry_a.application_for(learner_id),
+    )
+    assert record.activity.title in [
+        item.title for item in app_a.get_dashboard().activities
+    ]
 
     withdraw_publication(record.source_candidate_id, store=published)
 
-    app_b = _completes_within(TIMEOUT_SECONDS, lambda: registry_b.application_for(uuid4()))
-    app_a_after = _completes_within(TIMEOUT_SECONDS, lambda: registry_a.application_for(learner_id))
+    _completes_within(
+        TIMEOUT_SECONDS,
+        lambda: registry_b.application_for(uuid4()),
+    )
+    app_a_after = _completes_within(
+        TIMEOUT_SECONDS,
+        lambda: registry_a.application_for(learner_id),
+    )
     titles_after = [item.title for item in app_a_after.get_dashboard().activities]
     assert record.activity.title not in titles_after
