@@ -177,7 +177,8 @@ class LearnerApplicationRegistry:
                     self._publications[record.activity_id] = record
                 # Remove entries no longer in the store
                 keys_to_remove = [
-                    key for key in self._publications
+                    key
+                    for key in self._publications
                     if key not in {r.activity_id for r in records}
                 ]
                 for key in keys_to_remove:
