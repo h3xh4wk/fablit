@@ -316,7 +316,8 @@ class DatastorePublishedPracticeStore(PublishedPracticeStore):
                 extra={"candidate_id": str(candidate_id)},
             )
             raise PersistenceError(
-                f"Failed to retrieve published practice by candidate {candidate_id}: {exc}"
+                "Failed to retrieve published practice by candidate "
+                f"{candidate_id}: {exc}"
             ) from exc
 
     def list_records(self) -> tuple[PublishedPractice, ...]:
