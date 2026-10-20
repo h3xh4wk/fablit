@@ -169,9 +169,7 @@ class LearnerApplicationRegistry:
         if self._refresh_interval_seconds <= 0:
             return True
         now = time.monotonic()
-        if now - self._last_refresh_at < self._refresh_interval_seconds:
-            return False
-        return True
+        return not (now - self._last_refresh_at < self._refresh_interval_seconds)
 
     def refresh_publications(self, *, force: bool = False) -> None:
         """Refresh this registry's publication state from the store.

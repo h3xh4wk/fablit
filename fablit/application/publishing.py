@@ -35,7 +35,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from threading import Lock
 from typing import Protocol
-from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
+from uuid import NAMESPACE_DNS, UUID, uuid5
 
 from fablit.domain import ActivityStatus, ActivityType, AssessmentActivity
 
