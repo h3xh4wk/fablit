@@ -221,6 +221,74 @@ def test_invalid_brief_returns_the_form_with_the_answers_preserved() -> None:
     assert "Distinguish visible evidence from interpretation." not in response.text
 
 
+def test_brief_submission_announces_progress_and_blocks_duplicate_requests() -> None:
+    """SPEC-038: submitting the brief shows a truthful in-progress state."""
+    client, _, _ = _client()
+    html = _workspace(client)
+
+    form = re.search(
+        r'<form[^>]*action="/authoring/generate"[^>]*>.*?</form>',
+        html,
+        re.DOTALL,
+    )
+    assert form, "the authoring brief form is missing"
+    form_html = form.group(0)
+    opening_tag = form_html[: form_html.index(">") + 1]
+    # The submit control is disabled while the request runs, and a second
+    # request from the same form is dropped rather than queued.
+    assert 'hx-disabled-elt="find button"' in opening_tag
+    assert 'hx-sync="this:drop"' in opening_tag
+
+    button = re.search(
+        r'<button[^>]*type="submit"[^>]*>(?P<label>.*?)</button>',
+        form_html,
+        re.DOTALL,
+    )
+    assert button, "the generate button is missing"
+    assert "Generate candidate practice" in button.group("label")
+    assert "Generating candidate…" in button.group("label")
+
+    # The status region is polite, present for assistive technology, and makes
+    # no claim about progress the backend does not report.
+    status = re.search(
+        r'<span class="htmx-indicator loading-indicator"[^>]*role="status"'
+        r'[^>]*aria-live="polite"[^>]*>(?P<text>[^<]+)</span>',
+        form_html,
+    )
+    assert status, "the generation status region is missing"
+    assert "Generating a candidate practice" in status.group("text")
+    assert "%" not in status.group("text")
+
+
+def test_generation_progress_styles_switch_the_button_only_during_request() -> None:
+    client, _, _ = _client()
+    css = client.get("/static/css/fablit.css")
+
+    assert css.status_code == 200
+    assert ".htmx-request .authoring-generate__idle" in css.text
+    assert ".htmx-request .authoring-generate__progress" in css.text
+
+
+def test_a_failed_generation_returns_an_enabled_form_with_the_idle_label() -> None:
+    """SPEC-038: the form comes back usable after generation fails."""
+    client, _, provider = _client()
+    provider.generate.side_effect = RuntimeError("provider down")
+
+    response = client.post(
+        "/authoring/generate",
+        headers=HTML_HEADERS,
+        data=BRIEF,
+    )
+
+    assert response.status_code == 502
+    button = re.search(r'<button[^>]*type="submit"[^>]*>', response.text)
+    assert button, "the generate button is missing from the failed response"
+    assert "disabled" not in button.group(0)
+    assert "Generate candidate practice" in response.text
+    assert 'hx-disabled-elt="find button"' in response.text
+    assert 'class="htmx-request"' not in response.text
+
+
 def test_provider_failure_returns_the_brief_with_every_answer_preserved() -> None:
     """FIX-9: a failed generation must not cost the author their brief."""
     client, _, provider = _client()
