@@ -1,14 +1,15 @@
 /* Restore the authoring candidate's reading position after an action.
  *
- * The authoring workspace uses boosted server-rendered forms and can also fall
- * back to normal full-page form submissions. Store only the current route and
- * scroll offset, and consume the saved position once the response is rendered.
+ * Candidate actions can be handled by HTMX or by a full-page form submission.
+ * Remember the candidate identity and scroll offset, then restore only when the
+ * response still belongs to that candidate.
  */
 (() => {
   "use strict";
 
   const storageKey = "fablit-authoring-candidate-scroll";
-  const candidatePath = (path) => /^\/authoring\/candidates\/[^/]+\/?$/.test(path);
+  const candidateId = (path) =>
+    path.match(/^\/authoring\/candidates\/([^/]+)(?:\/.*)?\/?$/)?.[1] ?? null;
 
   function rememberPosition() {
     const id = candidateId(window.location.pathname);
@@ -16,10 +17,7 @@
     try {
       window.sessionStorage.setItem(
         storageKey,
-        JSON.stringify({
-          candidateId: id,
-          scrollY: window.scrollY,
-        }),
+        JSON.stringify({ candidateId: id, scrollY: window.scrollY }),
       );
     } catch (_error) {
       // Scroll restoration is a convenience; blocked storage must not break actions.
