@@ -558,3 +558,19 @@ def test_conflicting_review_transition_stays_json_for_api_clients() -> None:
 
     assert response.status_code == 409
     assert "already approved" in response.json()["detail"]
+
+
+def test_candidate_review_prioritizes_practice_and_collapses_supporting_details() -> (
+    None
+):
+    client, _, provider = _client()
+    candidate_id = _generate(client, provider, "Readable practice")
+
+    html = _candidate_page(client, candidate_id)
+
+    assert "Practice at a glance" in html
+    assert "Your task" in html
+    assert "Full generated content and review criteria" in html
+    assert "Full authoring brief" in html
+    assert 'id="candidate-next-step"' in html
+    assert 'src="/static/js/authoring-scroll.js"' in html

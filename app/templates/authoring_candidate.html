@@ -33,31 +33,34 @@
       makes it visible to learners.
     </p>
 
-    <ol class="stage-summary">
-      {% for step in view.stages %}
-      <li class="stage-summary__step{% if step.state != 'pending' %} stage-summary__step--{{ step.state }}{% endif %}">
-        {{ step.label }}{% if step.state == 'current' %} <span class="form-hint">current step</span>{% endif %}
-      </li>
-      {% endfor %}
-    </ol>
+    <details class="candidate-details">
+      <summary>Workflow and technical details</summary>
+      <ol class="stage-summary">
+        {% for step in view.stages %}
+        <li class="stage-summary__step{% if step.state != 'pending' %} stage-summary__step--{{ step.state }}{% endif %}">
+          {{ step.label }}{% if step.state == 'current' %} <span class="form-hint">current step</span>{% endif %}
+        </li>
+        {% endfor %}
+      </ol>
 
-    <div class="queue__meta">
-      <span class="tag tag--{{ view.status_variant }}">{{ view.status_label }}</span>
-      <span class="tag{% if view.is_published %} tag--success{% endif %}">{{ view.publication_label }}</span>
-      <span>Revision {{ candidate.revision }}</span>
-      {% if view.publication %}
-      <span>Published revision {{ view.publication.source_revision }}</span>
-      {% endif %}
-      <span>Provider {{ candidate.provider }}</span>
-      <span>Model {{ candidate.model }}</span>
-      <time datetime="{{ candidate.generated_at.isoformat() }}">Generated {{ candidate.generated_at.isoformat() }}</time>
-      {% if candidate.reviewer %}
-      <span>Last edited by {{ candidate.reviewer }}</span>
-      {% endif %}
-      {% if candidate.decided_at %}
-      <time datetime="{{ candidate.decided_at.isoformat() }}">Decided {{ candidate.decided_at.isoformat() }}</time>
-      {% endif %}
-    </div>
+      <div class="queue__meta">
+        <span class="tag tag--{{ view.status_variant }}">{{ view.status_label }}</span>
+        <span class="tag{% if view.is_published %} tag--success{% endif %}">{{ view.publication_label }}</span>
+        <span>Revision {{ candidate.revision }}</span>
+        {% if view.publication %}
+        <span>Published revision {{ view.publication.source_revision }}</span>
+        {% endif %}
+        <span>Provider {{ candidate.provider }}</span>
+        <span>Model {{ candidate.model }}</span>
+        <time datetime="{{ candidate.generated_at.isoformat() }}">Generated {{ candidate.generated_at.isoformat() }}</time>
+        {% if candidate.reviewer %}
+        <span>Last edited by {{ candidate.reviewer }}</span>
+        {% endif %}
+        {% if candidate.decided_at %}
+        <time datetime="{{ candidate.decided_at.isoformat() }}">Decided {{ candidate.decided_at.isoformat() }}</time>
+        {% endif %}
+      </div>
+    </details>
   </section>
 
   {% if candidate.validation %}
@@ -100,6 +103,8 @@
   </section>
   {% endif %}
 
+
+
   <section class="authoring-section" aria-labelledby="candidate-content-heading">
     <h2 id="candidate-content-heading" class="subheading authoring-section__heading">Generated Candidate Practice</h2>
     <p class="authoring-section__intro">
@@ -117,6 +122,28 @@
       <p>{{ candidate.candidate_data.description }}</p>
       {% endif %}
 
+      {% if candidate.candidate_data.contract is mapping %}
+      <div class="candidate-preview">
+        <h3>Practice at a glance</h3>
+        {% if candidate.candidate_data.contract.get('purpose') %}
+        <p>{{ candidate.candidate_data.contract.get('purpose') }}</p>
+        {% endif %}
+        {% if candidate.candidate_data.contract.get('task') %}
+        {% set task_lead, task_detail = split_task_text(candidate.candidate_data.contract.get('task')|string) %}
+        <div class="candidate-preview__task">
+          <h4>Your task</h4>
+          <p><strong>{{ task_lead }}</strong></p>
+          {% if task_detail %}<p>{{ task_detail }}</p>{% endif %}
+        </div>
+        {% endif %}
+        {% if candidate.candidate_data.contract.get('response_contract') %}
+        <p><strong>What to submit:</strong> {{ candidate.candidate_data.contract.get('response_contract') }}</p>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <details class="candidate-details">
+        <summary>Full generated content and review criteria</summary>
       {% if candidate.candidate_data.contract is mapping %}
       <h3>SPEC-029 practice content contract</h3>
       <dl class="definition-list">
@@ -152,9 +179,12 @@
         {% endif %}
         {% endfor %}
       </dl>
+      </details>
     </div>
 
-    <h3>Authoring brief</h3>
+    <details class="candidate-details">
+      <summary>Full authoring brief</summary>
+      <h3>Authoring brief</h3>
     <dl class="definition-list">
       <dt>Practice area</dt>
       <dd>{{ candidate.brief.practice_area }}</dd>
@@ -193,6 +223,42 @@
       <dd>{{ candidate.brief.continuation_intent }}</dd>
       {% endif %}
     </dl>
+    </details>
+  </section>
+
+  <section class="authoring-section" aria-labelledby="actions-heading" id="candidate-next-step">
+    <h2 id="actions-heading" class="subheading authoring-section__heading">Next step</h2>
+
+    <div class="action-group">
+      <p class="action-group__note">{{ view.action_note }}</p>
+
+      {% if view.can_approve %}
+      <form method="post" action="/authoring/candidates/{{ candidate.id }}/approve">
+        <button type="submit" class="button"
+                {% if not view.is_approvable %}disabled title="This candidate has validation errors that must be resolved before approval"{% endif %}>
+          Approve for Library
+        </button>
+      </form>
+      {% endif %}
+
+      {% if view.can_reject %}
+      <form method="post" action="/authoring/candidates/{{ candidate.id }}/reject">
+        <button type="submit" class="button button--secondary">Reject Candidate</button>
+      </form>
+      {% endif %}
+
+      {% if view.can_publish %}
+      <form method="post" action="/authoring/candidates/{{ candidate.id }}/publish">
+        <button type="submit" class="button">Publish to Learner Library</button>
+      </form>
+      {% endif %}
+
+      {% if view.can_withdraw %}
+      <form method="post" action="/authoring/candidates/{{ candidate.id }}/withdraw">
+        <button type="submit" class="button button--secondary">Withdraw from Library</button>
+      </form>
+      {% endif %}
+    </div>
   </section>
 
   {% if candidate.stimulus or candidate.stimulus_query %}
@@ -351,39 +417,6 @@
     {% endif %}
   </section>
 
-  <section class="authoring-section" aria-labelledby="actions-heading">
-    <h2 id="actions-heading" class="subheading authoring-section__heading">Next step</h2>
 
-    <div class="action-group">
-      <p class="action-group__note">{{ view.action_note }}</p>
-
-      {% if view.can_approve %}
-      <form method="post" action="/authoring/candidates/{{ candidate.id }}/approve">
-        <button type="submit" class="button"
-                {% if not view.is_approvable %}disabled title="This candidate has validation errors that must be resolved before approval"{% endif %}>
-          Approve for Library
-        </button>
-      </form>
-      {% endif %}
-
-      {% if view.can_reject %}
-      <form method="post" action="/authoring/candidates/{{ candidate.id }}/reject">
-        <button type="submit" class="button button--secondary">Reject Candidate</button>
-      </form>
-      {% endif %}
-
-      {% if view.can_publish %}
-      <form method="post" action="/authoring/candidates/{{ candidate.id }}/publish">
-        <button type="submit" class="button">Publish to Learner Library</button>
-      </form>
-      {% endif %}
-
-      {% if view.can_withdraw %}
-      <form method="post" action="/authoring/candidates/{{ candidate.id }}/withdraw">
-        <button type="submit" class="button button--secondary">Withdraw from Library</button>
-      </form>
-      {% endif %}
-    </div>
-  </section>
 </article>
 {% endblock %}
