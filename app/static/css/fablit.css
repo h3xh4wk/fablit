@@ -1470,3 +1470,53 @@ ol {
   color: var(--color-accent-hover);
   text-decoration: underline;
 }
+
+
+/* --- Candidate review: scan first, expand supporting detail on demand --- */
+.candidate-details {
+  margin: var(--space-3) 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.candidate-details > summary {
+  color: var(--color-ink);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.candidate-details[open] > summary {
+  margin-bottom: var(--space-3);
+}
+
+.candidate-details > summary:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+
+.candidate-preview {
+  margin: var(--space-4) 0;
+  padding: var(--space-4) var(--space-5);
+  border-left: 3px solid var(--color-accent);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: var(--color-bg);
+}
+
+.candidate-preview h3,
+.candidate-preview h4 {
+  margin-top: 0;
+}
+
+.candidate-preview__task {
+  margin: var(--space-4) 0;
+}
+
+.candidate-preview__task p:last-child {
+  margin-bottom: 0;
+}
+
+#candidate-next-step {
+  scroll-margin-top: var(--space-4);
+}
