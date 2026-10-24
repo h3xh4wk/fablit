@@ -30,7 +30,8 @@
       steps; the optional ones stay out of the way until you need them.
     </p>
 
-    <form method="post" action="/authoring/generate">
+    <form method="post" action="/authoring/generate"
+          hx-disabled-elt="find button" hx-sync="this:drop">
       <fieldset class="form-section">
         <legend class="form-section__legend">1. What the practice is for</legend>
         <p class="form-section__intro">Who it is for and the thinking it is meant to develop.</p>
@@ -159,7 +160,11 @@
       </details>
 
       <p class="form-actions">
-        <button type="submit" class="button">Generate candidate practice <span aria-hidden="true">→</span></button>
+        <button type="submit" class="button">
+          <span class="authoring-generate__idle">Generate candidate practice <span aria-hidden="true">→</span></span>
+          <span class="authoring-generate__progress">Generating candidate…</span>
+        </button>
+        <span class="htmx-indicator loading-indicator" role="status" aria-live="polite">Generating a candidate practice. This can take a moment.</span>
       </p>
     </form>
   </section>

@@ -1133,6 +1133,21 @@ ol {
   margin-bottom: var(--space-4);
 }
 
+/* Generation states (SPEC-038). The button says what is happening in plain
+   words, and the request has no progress to report, so no percentage is
+   invented. HTMX adds ``htmx-request`` to the submitting form. */
+.authoring-generate__progress {
+  display: none;
+}
+
+.htmx-request .authoring-generate__idle {
+  display: none;
+}
+
+.htmx-request .authoring-generate__progress {
+  display: inline;
+}
+
 /* --- Status tags -------------------------------------------------------- */
 .tag {
   display: inline-block;
