@@ -11,12 +11,13 @@
   const candidatePath = (path) => /^\/authoring\/candidates\/[^/]+\/?$/.test(path);
 
   function rememberPosition() {
-    if (!candidatePath(window.location.pathname)) return;
+    const id = candidateId(window.location.pathname);
+    if (!id) return;
     try {
       window.sessionStorage.setItem(
         storageKey,
         JSON.stringify({
-          path: window.location.pathname,
+          candidateId: id,
           scrollY: window.scrollY,
         }),
       );
@@ -26,12 +27,13 @@
   }
 
   function restorePosition() {
-    if (!candidatePath(window.location.pathname)) return;
+    const id = candidateId(window.location.pathname);
+    if (!id) return;
     try {
       const raw = window.sessionStorage.getItem(storageKey);
       if (!raw) return;
       const saved = JSON.parse(raw);
-      if (saved.path !== window.location.pathname || !Number.isFinite(saved.scrollY)) {
+      if (saved.candidateId !== id || !Number.isFinite(saved.scrollY)) {
         window.sessionStorage.removeItem(storageKey);
         return;
       }
