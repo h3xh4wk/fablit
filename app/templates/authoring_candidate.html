@@ -103,40 +103,7 @@
   </section>
   {% endif %}
 
-  <section class="authoring-section" aria-labelledby="actions-heading" id="candidate-next-step">
-    <h2 id="actions-heading" class="subheading authoring-section__heading">Next step</h2>
 
-    <div class="action-group">
-      <p class="action-group__note">{{ view.action_note }}</p>
-
-      {% if view.can_approve %}
-      <form method="post" action="/authoring/candidates/{{ candidate.id }}/approve">
-        <button type="submit" class="button"
-                {% if not view.is_approvable %}disabled title="This candidate has validation errors that must be resolved before approval"{% endif %}>
-          Approve for Library
-        </button>
-      </form>
-      {% endif %}
-
-      {% if view.can_reject %}
-      <form method="post" action="/authoring/candidates/{{ candidate.id }}/reject">
-        <button type="submit" class="button button--secondary">Reject Candidate</button>
-      </form>
-      {% endif %}
-
-      {% if view.can_publish %}
-      <form method="post" action="/authoring/candidates/{{ candidate.id }}/publish">
-        <button type="submit" class="button">Publish to Learner Library</button>
-      </form>
-      {% endif %}
-
-      {% if view.can_withdraw %}
-      <form method="post" action="/authoring/candidates/{{ candidate.id }}/withdraw">
-        <button type="submit" class="button button--secondary">Withdraw from Library</button>
-      </form>
-      {% endif %}
-    </div>
-  </section>
 
   <section class="authoring-section" aria-labelledby="candidate-content-heading">
     <h2 id="candidate-content-heading" class="subheading authoring-section__heading">Generated Candidate Practice</h2>
@@ -257,6 +224,41 @@
       {% endif %}
     </dl>
     </details>
+  </section>
+
+  <section class="authoring-section" aria-labelledby="actions-heading" id="candidate-next-step">
+    <h2 id="actions-heading" class="subheading authoring-section__heading">Next step</h2>
+
+    <div class="action-group">
+      <p class="action-group__note">{{ view.action_note }}</p>
+
+      {% if view.can_approve %}
+      <form method="post" action="/authoring/candidates/{{ candidate.id }}/approve">
+        <button type="submit" class="button"
+                {% if not view.is_approvable %}disabled title="This candidate has validation errors that must be resolved before approval"{% endif %}>
+          Approve for Library
+        </button>
+      </form>
+      {% endif %}
+
+      {% if view.can_reject %}
+      <form method="post" action="/authoring/candidates/{{ candidate.id }}/reject">
+        <button type="submit" class="button button--secondary">Reject Candidate</button>
+      </form>
+      {% endif %}
+
+      {% if view.can_publish %}
+      <form method="post" action="/authoring/candidates/{{ candidate.id }}/publish">
+        <button type="submit" class="button">Publish to Learner Library</button>
+      </form>
+      {% endif %}
+
+      {% if view.can_withdraw %}
+      <form method="post" action="/authoring/candidates/{{ candidate.id }}/withdraw">
+        <button type="submit" class="button button--secondary">Withdraw from Library</button>
+      </form>
+      {% endif %}
+    </div>
   </section>
 
   {% if candidate.stimulus or candidate.stimulus_query %}
