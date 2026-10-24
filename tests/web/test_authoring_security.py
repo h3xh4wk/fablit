@@ -401,6 +401,12 @@ def test_ai_provider_failure_returns_502_without_leaks(
     assert "api-key-leak-attempt" not in response.text
     assert "RuntimeError" not in response.text
     assert "api-key-leak-attempt" not in caplog.text
+    # Diagnostics name the provider, model, and failure type without echoing
+    # the provider's message or the submitted brief.
+    assert "provider=MagicMock" in caplog.text
+    assert "model=unknown" in caplog.text
+    assert "error=RuntimeError" in caplog.text
+    assert "Visual analysis" not in caplog.text
     candidates = client.get("/authoring/candidates", headers=headers)
     assert candidates.json() == {"candidates": []}
 

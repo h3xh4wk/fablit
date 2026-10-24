@@ -221,6 +221,73 @@ def test_invalid_brief_returns_the_form_with_the_answers_preserved() -> None:
     assert "Distinguish visible evidence from interpretation." not in response.text
 
 
+def test_provider_failure_returns_the_brief_with_every_answer_preserved() -> None:
+    """FIX-9: a failed generation must not cost the author their brief."""
+    client, _, provider = _client()
+    provider.generate.side_effect = RuntimeError(
+        "Sensitive provider response: api-key-leak-attempt"
+    )
+    optional_values = {
+        "examination_context": "A timed examination response.",
+        "primary_creative_thinking_lens": "Observe",
+        "constraints": "Use one paragraph.",
+        "stimulus_requirements": "Use an image of a public place.",
+        "continuation_intent": "Extend the same observation.",
+    }
+
+    response = client.post(
+        "/authoring/generate",
+        headers=HTML_HEADERS,
+        data={**BRIEF, **optional_values},
+    )
+
+    assert response.status_code == 502
+    assert 'role="alert"' in response.text
+    assert "temporarily unavailable" in response.text
+    assert "try again" in response.text
+
+    # Required and optional answers are all still in the form.
+    for name, value in BRIEF.items():
+        if name == "intended_mode":
+            continue
+        assert value in response.text, f"submitted value {value!r} was lost"
+    for value in optional_values.values():
+        assert value in response.text, f"submitted value {value!r} was lost"
+    assert '<option value="short-drill" selected>' in response.text
+    assert '<option value="Observe" selected>' in response.text
+
+    # Optional context is expanded, because it holds values to preserve.
+    optional_block = re.search(
+        r'<details class="form-optional-group"(?P<attrs>[^>]*)>',
+        response.text,
+    )
+    assert optional_block, "the optional brief fields are not in a disclosure group"
+    assert "open" in optional_block.group("attrs")
+
+    # The retry is offered without leaking the provider's own message.
+    assert "Generate candidate practice" in response.text
+    assert "api-key-leak-attempt" not in response.text
+    assert "RuntimeError" not in response.text
+
+
+def test_unconfigured_generation_keeps_the_brief_in_the_browser() -> None:
+    """FIX-9: a configuration failure is explained without losing answers."""
+    client, app, _ = _client()
+    app.state.authoring_ai_provider = None
+
+    response = client.post(
+        "/authoring/generate",
+        headers=HTML_HEADERS,
+        data=BRIEF,
+    )
+
+    assert response.status_code == 503
+    assert 'role="alert"' in response.text
+    assert "not configured" in response.text
+    assert 'value="Visual analysis"' in response.text
+    assert "Distinguish visible evidence from interpretation." in response.text
+
+
 def test_authoring_pages_carry_no_inline_styles() -> None:
     """Styling lives in the stylesheet, not in markup attributes."""
     client, _, provider = _client()

@@ -668,7 +668,29 @@ def require_author_access(request: Request) -> None:
         )
 
 
-async def _invoke_ai_provider(provider: Any, brief: AuthoringBrief) -> object:
+def _provider_diagnostics(provider: Any) -> tuple[str, str]:
+    """Name the configured provider and model for failure logs (FIX-9).
+
+    Only stable identifiers are returned: the exception message and the
+    authoring brief stay out of diagnostics because either can carry provider
+    response detail or sensitive request content.
+    """
+    provider_id = getattr(provider, "provider_id", None)
+    model_id = getattr(provider, "model_id", None)
+    provider_name = (
+        provider_id
+        if isinstance(provider_id, str) and provider_id.strip()
+        else type(provider).__name__
+    )
+    model_name = (
+        model_id if isinstance(model_id, str) and model_id.strip() else "unknown"
+    )
+    return provider_name, model_name
+
+
+async def _invoke_ai_provider(
+    request: Request, provider: Any, brief: AuthoringBrief
+) -> object:
     """Invoke the provider-neutral generation operation without blocking the loop."""
     fn = getattr(provider, "generate", None)
     if not callable(fn):
@@ -679,9 +701,13 @@ async def _invoke_ai_provider(provider: Any, brief: AuthoringBrief) -> object:
     try:
         return await asyncio.to_thread(fn, brief)
     except Exception as error:
+        provider_name, model_name = _provider_diagnostics(provider)
         logger.error(
-            "AI provider generation failed",
-            extra={"error_type": type(error).__name__},
+            "AI provider generation failed: provider=%s model=%s error=%s",
+            provider_name,
+            model_name,
+            type(error).__name__,
+            extra={"path": request.url.path, "method": request.method},
         )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -1093,6 +1119,42 @@ def _candidate_page(
     )
 
 
+#: Safe retry guidance appended to every HTML generation failure (FIX-9).
+_GENERATION_RETRY_HINT = (
+    "No candidate was created, and the brief you submitted is still below, "
+    "so you can review it and try again."
+)
+
+
+def _generation_failure_response(
+    request: Request,
+    *,
+    brief_values: Mapping[str, object],
+    status_code: int,
+    detail: str,
+) -> Response:
+    """Keep the submitted brief on screen when generation fails (FIX-9).
+
+    JSON clients keep the machine-readable error they already rely on. An
+    author working in the browser gets the workspace back with every submitted
+    value — required and optional — so a provider or configuration failure
+    never costs them the brief they just wrote.
+    """
+    if not wants_html(request):
+        raise HTTPException(status_code=status_code, detail=detail)
+    try:
+        candidates = _candidate_store(request).list()
+    except PersistenceError:
+        candidates = ()
+    return _render_workspace(
+        request,
+        candidates,
+        error=f"{detail} {_GENERATION_RETRY_HINT}",
+        brief=brief_values,
+        status_code=status_code,
+    )
+
+
 def _learner_registry(request: Request) -> LearnerApplicationRegistry:
     """Resolve the learner application registry publication writes into."""
     registry: object = request.app.state.learner_applications
@@ -1255,12 +1317,27 @@ async def authoring_generate(request: Request) -> Response:
 
     ai_provider = getattr(request.app.state, "authoring_ai_provider", None)
     if ai_provider is None:
-        raise HTTPException(
+        return _generation_failure_response(
+            request,
+            brief_values=brief_values,
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="The AI generation service is not configured.",
         )
-    result = await _invoke_ai_provider(ai_provider, brief)
-    candidate = _candidate_from_generation_result(result, brief)
+    try:
+        result = await _invoke_ai_provider(request, ai_provider, brief)
+        candidate = _candidate_from_generation_result(result, brief)
+    except HTTPException as error:
+        if error.status_code not in (
+            status.HTTP_502_BAD_GATEWAY,
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+        ):
+            raise
+        return _generation_failure_response(
+            request,
+            brief_values=brief_values,
+            status_code=error.status_code,
+            detail=str(error.detail),
+        )
     candidate = _attach_stimulus_options(request, candidate)
     try:
         _candidate_store(request).add(candidate)
