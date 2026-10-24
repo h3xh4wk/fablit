@@ -560,7 +560,7 @@ def test_conflicting_review_transition_stays_json_for_api_clients() -> None:
     assert "already approved" in response.json()["detail"]
 
 
-def test_candidate_review_prioritizes_the_practice_and_collapses_supporting_details() -> None:
+def test_candidate_review_prioritizes_practice_and_collapses_supporting_details() -> None:
     client, _, provider = _client()
     candidate_id = _generate(client, provider, "Readable practice")
 
