@@ -39,9 +39,18 @@ from .authoring import (
     validate_candidate,
     with_validation,
 )
+from .authoring_brief_draft import (
+    BRIEF_FIELDS,
+    FIELD_LABELS,
+    BriefDraft,
+    BriefFieldProposal,
+    BriefFieldSource,
+    parse_brief_draft,
+)
 from .authoring_llm import (
     AuthoringGenerationRequest,
     AuthoringLlmProvider,
+    BriefDraftingRequest,
     FakeAuthoringProvider,
     LlmGenerationResult,
 )
@@ -83,6 +92,7 @@ from .errors import (
     EvaluationFailedError,
     FeedbackNotFoundError,
     InvalidAuthoringBriefError,
+    InvalidBriefDraftError,
     InvalidPracticeResponseError,
     InvalidPublishedPracticeError,
     InvalidReflectionResponseError,
@@ -158,6 +168,14 @@ __all__ = [
     "AuthoringRevision",
     "AuthoringProviderConfigurationError",
     "AuthoringProviderError",
+    "BRIEF_FIELDS",
+    "BriefDraft",
+    "BriefDraftingRequest",
+    "BriefFieldProposal",
+    "BriefFieldSource",
+    "FIELD_LABELS",
+    "InvalidBriefDraftError",
+    "parse_brief_draft",
     "CandidateContentNotPublishableError",
     "CandidateNotApprovableError",
     "CandidateNotPublishableError",

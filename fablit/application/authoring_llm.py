@@ -8,6 +8,8 @@ needs:
 - :class:`AuthoringBrief` — type alias for the structured brief.
 - :class:`AuthoringGenerationRequest` — what the workflow asks the provider
   for (the structured authoring brief).
+- :class:`BriefDraftingRequest` — what the workflow asks the provider for when
+  it drafts the brief itself from the author's notes (SPEC-040).
 - :class:`LlmGenerationResult` — the structured generation result plus the
   provider/model/timestamp metadata SPEC-032 retains for provenance.
 - :class:`AuthoringLlmProvider` — the port. The workflow depends on this
@@ -67,6 +69,45 @@ class AuthoringGenerationRequest:
         if isinstance(self.brief, Mapping):
             return dict(self.brief)
         raise ValueError(f"cannot convert brief {self.brief!r} to payload")
+
+
+@dataclass(frozen=True)
+class BriefDraftingRequest:
+    """The workflow's provider-neutral request for an authoring brief draft.
+
+    SPEC-040: the author supplies rough notes, pasted source text, or a short
+    topic. ``current_values`` carries the brief as it stands so an adapter can
+    keep a single-field regeneration coherent with the rest of the form, and
+    ``target_field`` asks for exactly one field when the author regenerates
+    it. The notes are source data, never instructions to the provider.
+    """
+
+    notes: str
+    current_values: Mapping[str, str] = field(default_factory=dict)
+    target_field: str | None = None
+
+    def __post_init__(self) -> None:
+        """Require source notes before any brief can be drafted."""
+        if not isinstance(self.notes, str) or not self.notes.strip():
+            raise AuthoringProviderError(
+                "brief drafting requires non-blank source notes"
+            )
+        if self.target_field is not None and (
+            not isinstance(self.target_field, str) or not self.target_field.strip()
+        ):
+            raise AuthoringProviderError(
+                "brief drafting target field must be non-blank text when provided"
+            )
+
+    def as_payload(self) -> dict[str, Any]:
+        """Return a JSON-safe view of the request for adapter request building."""
+        return {
+            "notes": self.notes,
+            "current_values": {
+                str(name): str(value) for name, value in self.current_values.items()
+            },
+            "target_field": self.target_field,
+        }
 
 
 @dataclass(frozen=True)
@@ -161,6 +202,19 @@ class AuthoringLlmProvider(Protocol):
         """Compatibility method accepting an AuthoringGenerationRequest wrapper."""
         ...
 
+    def draft_brief(self, request: BriefDraftingRequest) -> Mapping[str, Any]:
+        """Draft the authoring brief from the author's notes (SPEC-040).
+
+        Returns the untrusted structured draft the workflow validates with
+        :func:`fablit.application.authoring_brief_draft.parse_brief_draft`.
+
+        Raises:
+            AuthoringProviderError: When the provider is unavailable or the
+                response is unusable. The workflow keeps the author's notes
+                and current values and offers a retry.
+        """
+        ...
+
 
 class FakeAuthoringProvider:
     """Deterministic in-process provider for tests (ARCH-001).
@@ -180,6 +234,8 @@ class FakeAuthoringProvider:
         model: str = "fake-model",
         error: Exception | None = None,
         generated_at: datetime | None = None,
+        brief_output: Mapping[str, Any] | None = None,
+        brief_error: Exception | None = None,
     ) -> None:
         raw_data = candidate_data if candidate_data is not None else output
         self._candidate_data: dict[str, Any] = dict(raw_data or {})
@@ -187,7 +243,10 @@ class FakeAuthoringProvider:
         self._model = model
         self._error = error
         self._generated_at = generated_at or datetime.now(UTC)
+        self._brief_output: dict[str, Any] = dict(brief_output or {})
+        self._brief_error = brief_error
         self.calls: list[Any] = []
+        self.brief_calls: list[BriefDraftingRequest] = []
 
     @property
     def provider_id(self) -> str:
@@ -220,3 +279,9 @@ class FakeAuthoringProvider:
             model=self._model,
             generated_at=self._generated_at,
         )
+
+    def draft_brief(self, request: BriefDraftingRequest) -> Mapping[str, Any]:
+        self.brief_calls.append(request)
+        if self._brief_error is not None:
+            raise self._brief_error
+        return dict(self._brief_output)

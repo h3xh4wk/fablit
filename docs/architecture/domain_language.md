@@ -1,9 +1,9 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 1.13.0
+**Version:** 1.14.0
 **Status:** Draft
-**Last Updated:** 2026-10-12
+**Last Updated:** 2026-10-25
 
 ---
 
@@ -1028,6 +1028,39 @@ Curated library isolation
 | AA-009 | Shared candidate state is persisted across application instances in an authoring-scoped namespace, strictly isolating candidate storage from learner routes. |
 | AA-010 | Unapproved candidates are governed by a configurable retention policy (default 30 days); approved candidates are retained indefinitely for curation. |
 | AA-011 | Candidate store failures result in service unavailable (503) responses and never report false authoring success. |
+
+## AI-Assisted Authoring Brief Drafting (SPEC-040)
+
+SPEC-040 lowers the entry barrier to SPEC-032 authoring without changing what
+a brief is. An authorised author who has only rough notes, pasted source text,
+or a short topic can ask Fablit to draft the *existing* Authoring Brief fields.
+A draft is application-boundary state, not a new domain concept and not a new
+persistence model: it is rendered straight back into the same editable brief
+form, and candidate generation, approval, and publication stay separate
+explicit actions.
+
+```
+Author's notes / pasted source / short topic
+      ↓
+Provider-neutral drafting request (notes + current brief)
+      ↓
+Untrusted structured draft (values · provenance · assumptions)
+      ↓ server-side validation: existing fields, allowed values, bounded text
+Editable brief form with source markers
+      ↓ author edits or regenerates a field
+Existing SPEC-032 candidate generation (separate explicit action)
+```
+
+### Rules
+
+| Rule | Description |
+|------|-------------|
+| BD-001 | Drafting reuses the existing brief fields and allowed values; it introduces no parallel brief model and no new persistence. |
+| BD-002 | A drafted value is labelled as notes-grounded, an AI suggestion, or an assumption to confirm; it is never presented as an author-supplied fact. |
+| BD-003 | Generated examination or institutional context is always an assumption to confirm; Fablit never presents it as official guidance. |
+| BD-004 | A single-field regeneration changes only that field; a whole-brief draft keeps the author's existing values unless replacement is explicitly chosen. |
+| BD-005 | Drafting never discards the original notes or current edits; failed, malformed, or invalid drafts leave the form retryable. |
+| BD-006 | Brief drafting and candidate generation are separate explicit actions; drafting never creates, approves, or publishes a candidate. |
 
 ## Published Practice Publication (SPEC-035)
 

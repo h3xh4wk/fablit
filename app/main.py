@@ -450,6 +450,7 @@ async def _http_exception_handler(request: Request, exc: Exception) -> Response:
         and (
             path.startswith("/authoring/generate")
             or path.startswith("/authoring/candidates")
+            or path.startswith("/authoring/brief")
         )
     ):
         error_name = "Unauthorized" if exc.status_code == 401 else "Error"

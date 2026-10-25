@@ -33,12 +33,23 @@ from fablit.application.authoring import (
     CandidateValidation,
     validate_candidate,
 )
+from fablit.application.authoring_brief_draft import (
+    BRIEF_FIELDS,
+    EXAMINATION_CONTEXT_DETAIL,
+    FIELD_LABELS,
+    MAX_NOTES_CHARS,
+    SOURCE_LABELS,
+    BriefDraft,
+    parse_brief_draft,
+)
+from fablit.application.authoring_llm import BriefDraftingRequest
 from fablit.application.demo_data import PRACTICE_CAPABILITIES
 from fablit.application.errors import (
     CandidateContentNotPublishableError,
     CandidateNotApprovableError,
     CandidateNotFoundError,
     CandidateNotPublishableError,
+    InvalidBriefDraftError,
     PublishedPracticeNotFoundError,
 )
 from fablit.application.image_search import (
@@ -79,6 +90,16 @@ class InvalidAuthoringBriefError(ValueError):
 
 class InvalidStimulusSelectionError(ValueError):
     """Raised when a selected image is not one of the stored search options."""
+
+
+#: Form controls that belong to AI brief drafting, not to the brief schema.
+_BRIEF_DRAFT_CONTROLS = frozenset({"notes", "replace"})
+
+#: Safe retry guidance appended to every HTML brief-drafting failure (SPEC-040 §7).
+_DRAFT_RETRY_HINT = (
+    "Your notes and the values in the form are still here, so you can review "
+    "them and try again."
+)
 
 
 def _truthy(value: object) -> bool:
@@ -1075,6 +1096,11 @@ def _render_workspace(
     message: str | None = None,
     error: str | None = None,
     brief: object | None = None,
+    notes: str | None = None,
+    draft_sources: Mapping[str, Mapping[str, str]] | None = None,
+    draft_assumptions: Iterable[str] = (),
+    draft_warnings: Iterable[str] = (),
+    replace_edits: bool = False,
     status_code: int = status.HTTP_200_OK,
 ) -> Response:
     """Render the workspace: the authoring brief and the candidate queue."""
@@ -1085,6 +1111,11 @@ def _render_workspace(
             "message": message,
             "error": error,
             "brief": brief,
+            "notes": notes,
+            "draft_sources": draft_sources,
+            "draft_assumptions": tuple(draft_assumptions),
+            "draft_warnings": tuple(draft_warnings),
+            "replace_edits": replace_edits,
             "queue": _queue_view(
                 candidates,
                 _publication_map(request),
@@ -1132,6 +1163,7 @@ def _generation_failure_response(
     brief_values: Mapping[str, object],
     status_code: int,
     detail: str,
+    notes: str | None = None,
 ) -> Response:
     """Keep the submitted brief on screen when generation fails (FIX-9).
 
@@ -1151,6 +1183,168 @@ def _generation_failure_response(
         candidates,
         error=f"{detail} {_GENERATION_RETRY_HINT}",
         brief=brief_values,
+        notes=notes,
+        status_code=status_code,
+    )
+
+
+class InvalidDraftInputError(ValueError):
+    """Raised when a brief-drafting request is malformed or out of bounds."""
+
+
+async def _submitted_values(request: Request) -> dict[str, object]:
+    """Read submitted authoring values from a JSON body or an HTML form."""
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            parsed = await request.json()
+        except ValueError:
+            parsed = None
+        if not isinstance(parsed, dict):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="The authoring brief must be a JSON object.",
+            )
+        return {str(key): value for key, value in parsed.items()}
+    form = await request.form()
+    return {key: value for key, value in form.items()}
+
+
+def _brief_form_values(values: Mapping[str, object]) -> dict[str, str]:
+    """Read the brief as submitted, leaving unsubmitted fields empty."""
+    result: dict[str, str] = {}
+    for name in BRIEF_FIELDS:
+        raw = values.get(name)
+        if isinstance(raw, str):
+            result[name] = raw
+        elif raw is None:
+            result[name] = ""
+        else:
+            result[name] = str(raw)
+    return result
+
+
+def _draft_request_parts(
+    values: Mapping[str, object],
+) -> tuple[str, str | None, bool]:
+    """Read the notes, optional target field, and replacement choice."""
+    raw_notes = values.get("notes")
+    if raw_notes is not None and not isinstance(raw_notes, str):
+        raise InvalidDraftInputError("The notes must be text.")
+    notes = raw_notes or ""
+
+    raw_field = values.get("field")
+    if raw_field is not None and not isinstance(raw_field, str):
+        raise InvalidDraftInputError("The field to regenerate must be text.")
+    field = raw_field.strip() if isinstance(raw_field, str) else ""
+    if field and field not in BRIEF_FIELDS:
+        raise InvalidDraftInputError(
+            f"Unsupported brief field for regeneration: {field!r}."
+        )
+
+    return notes, field or None, _truthy(values.get("replace", ""))
+
+
+def _merge_brief_draft(
+    current: Mapping[str, str],
+    draft: BriefDraft,
+    *,
+    replace: bool,
+    target_field: str | None,
+) -> tuple[dict[str, str], list[str], list[str]]:
+    """Merge a draft into the form without losing the author's work.
+
+    A whole-brief draft only fills fields the author left empty unless the
+    author explicitly asked to replace them (SPEC-040 §7). A single-field
+    regeneration replaces exactly that field and nothing else.
+    """
+    merged = dict(current)
+    applied: list[str] = []
+    kept: list[str] = []
+    for name, proposal in draft.fields.items():
+        if target_field is not None and name != target_field:
+            continue
+        existing = merged.get(name, "").strip()
+        if replace or not existing or name == target_field:
+            merged[name] = proposal.value
+            applied.append(name)
+        else:
+            kept.append(name)
+    return merged, applied, kept
+
+
+def _draft_source_view(
+    draft: BriefDraft, applied: Iterable[str]
+) -> dict[str, dict[str, str]]:
+    """Describe where each applied value came from for the review form."""
+    sources: dict[str, dict[str, str]] = {}
+    for name in applied:
+        proposal = draft.fields[name]
+        sources[name] = {
+            "label": SOURCE_LABELS[proposal.source],
+            "variant": proposal.source.value,
+            "detail": (
+                EXAMINATION_CONTEXT_DETAIL if name == "examination_context" else ""
+            ),
+        }
+    return sources
+
+
+async def _invoke_brief_draft(
+    request: Request, provider: object, drafting_request: BriefDraftingRequest
+) -> object:
+    """Invoke the provider-neutral brief draft without blocking the loop."""
+    fn = getattr(provider, "draft_brief", None)
+    if not callable(fn):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The AI brief drafting service is not configured.",
+        )
+    try:
+        return await asyncio.to_thread(fn, drafting_request)
+    except Exception as error:
+        provider_name, model_name = _provider_diagnostics(provider)
+        logger.error(
+            "AI brief drafting failed: provider=%s model=%s error=%s",
+            provider_name,
+            model_name,
+            type(error).__name__,
+            extra={"path": request.url.path, "method": request.method},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="The AI brief drafting service is temporarily unavailable.",
+        ) from None
+
+
+def _draft_failure_response(
+    request: Request,
+    *,
+    values: Mapping[str, str],
+    notes: str,
+    status_code: int,
+    detail: str,
+    replace_edits: bool = False,
+) -> Response:
+    """Keep the author's notes and values on screen when drafting fails.
+
+    SPEC-040 §7: provider failures, timeouts, malformed output, and validation
+    errors must never cost the author their notes or current edits, and the
+    retry has to be obvious.
+    """
+    if not wants_html(request):
+        raise HTTPException(status_code=status_code, detail=detail)
+    try:
+        candidates = _candidate_store(request).list()
+    except PersistenceError:
+        candidates = ()
+    return _render_workspace(
+        request,
+        candidates,
+        error=f"{detail} {_DRAFT_RETRY_HINT}",
+        brief=values,
+        notes=notes,
+        replace_edits=replace_edits,
         status_code=status_code,
     )
 
@@ -1268,6 +1462,186 @@ async def authoring_workspace(request: Request) -> Response:
     return _render_workspace(request, candidates)
 
 
+@router.post("/brief/draft")
+async def authoring_draft_brief(request: Request) -> Response:
+    """Draft the authoring brief from the author's notes (SPEC-040).
+
+    This is deliberately separate from candidate generation: a draft fills in
+    the editable form and nothing else. It never creates, approves, or
+    publishes a candidate, and it is behind the same SEC-001 gate as every
+    other authoring action.
+    """
+    require_author_access(request)
+
+    values = await _submitted_values(request)
+    current = _brief_form_values(values)
+    try:
+        notes, target_field, replace = _draft_request_parts(values)
+    except InvalidDraftInputError as error:
+        return _draft_failure_response(
+            request,
+            values=current,
+            notes=str(values.get("notes") or ""),
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(error),
+        )
+
+    if not notes.strip():
+        return _draft_failure_response(
+            request,
+            values=current,
+            notes=notes,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=(
+                "Add some notes, a pasted source, or a topic before asking for "
+                "a draft. Partial notes are fine."
+            ),
+            replace_edits=replace,
+        )
+    if len(notes) > MAX_NOTES_CHARS:
+        return _draft_failure_response(
+            request,
+            values=current,
+            notes=notes,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=(
+                f"The notes are longer than the supported {MAX_NOTES_CHARS} "
+                "characters. Shorten them and try again."
+            ),
+            replace_edits=replace,
+        )
+
+    ai_provider = getattr(request.app.state, "authoring_ai_provider", None)
+    if ai_provider is None:
+        return _draft_failure_response(
+            request,
+            values=current,
+            notes=notes,
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The AI brief drafting service is not configured.",
+            replace_edits=replace,
+        )
+
+    drafting_request = BriefDraftingRequest(
+        notes=notes,
+        current_values=current,
+        target_field=target_field,
+    )
+
+    try:
+        result = await _invoke_brief_draft(request, ai_provider, drafting_request)
+    except HTTPException as error:
+        if error.status_code not in (
+            status.HTTP_502_BAD_GATEWAY,
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+        ):
+            raise
+        return _draft_failure_response(
+            request,
+            values=current,
+            notes=notes,
+            status_code=error.status_code,
+            detail=str(error.detail),
+            replace_edits=replace,
+        )
+
+    if not isinstance(result, Mapping):
+        return _draft_failure_response(
+            request,
+            values=current,
+            notes=notes,
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=(
+                "The AI brief drafting service returned an unusable draft. "
+                "Nothing was changed."
+            ),
+            replace_edits=replace,
+        )
+    try:
+        draft = parse_brief_draft(result)
+    except InvalidBriefDraftError:
+        # The provider's payload is never logged or echoed: it can carry the
+        # author's notes and provider detail (SPEC-040 §8).
+        logger.warning(
+            "AI brief drafting returned an unusable draft",
+            extra={"path": request.url.path, "method": request.method},
+        )
+        return _draft_failure_response(
+            request,
+            values=current,
+            notes=notes,
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=(
+                "The AI brief drafting service returned a draft that could not "
+                "be used. Nothing was changed."
+            ),
+            replace_edits=replace,
+        )
+
+    merged, applied, kept = _merge_brief_draft(
+        current, draft, replace=replace, target_field=target_field
+    )
+    if target_field is not None and target_field not in applied:
+        return _draft_failure_response(
+            request,
+            values=current,
+            notes=notes,
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=(
+                "The AI did not propose a value for "
+                f"“{FIELD_LABELS[target_field]}”. Your other fields are "
+                "unchanged."
+            ),
+            replace_edits=replace,
+        )
+
+    if target_field is not None:
+        message = (
+            f"Drafted a new suggestion for “{FIELD_LABELS[target_field]}”. "
+            "Your other fields are unchanged."
+        )
+    else:
+        message = (
+            "Drafted the brief from your notes. Review and edit every field, then "
+            "generate a candidate when you are ready."
+        )
+        if kept:
+            field_word = "field" if len(kept) == 1 else "fields"
+            message += (
+                f" Kept your existing values in {len(kept)} {field_word}; tick "
+                "“Replace my current field values” to draft them too."
+            )
+
+    if not wants_html(request):
+        return JSONResponse(
+            {
+                "fields": {name: merged[name] for name in applied},
+                "sources": {name: draft.fields[name].source.value for name in applied},
+                "assumptions": list(draft.assumptions),
+                "warnings": list(draft.warnings),
+                "applied": applied,
+                "kept": kept,
+                "notes": notes,
+            }
+        )
+
+    try:
+        candidates = _candidate_store(request).list()
+    except PersistenceError:
+        candidates = ()
+    return _render_workspace(
+        request,
+        candidates,
+        message=message,
+        brief=merged,
+        notes=notes,
+        draft_sources=_draft_source_view(draft, applied),
+        draft_assumptions=draft.assumptions,
+        draft_warnings=draft.warnings,
+        replace_edits=replace,
+    )
+
+
 @router.post("/generate")
 async def authoring_generate(request: Request) -> Response:
     """Server-side AI-generation endpoint for practice candidates.
@@ -1277,20 +1651,15 @@ async def authoring_generate(request: Request) -> Response:
     require_author_access(request)
 
     content_type = request.headers.get("content-type", "")
-    if "application/json" in content_type:
-        try:
-            parsed = await request.json()
-        except ValueError:
-            parsed = None
-        if not isinstance(parsed, dict):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="The authoring brief must be a JSON object.",
-            )
-        brief_values: Mapping[str, object] = parsed
-    else:
-        form = await request.form()
-        brief_values = dict(form)
+    submitted = await _submitted_values(request)
+    raw_notes = submitted.get("notes")
+    notes = raw_notes if isinstance(raw_notes, str) else None
+    # Drafting controls travel with the same form but are not brief fields.
+    brief_values: Mapping[str, object] = {
+        key: value
+        for key, value in submitted.items()
+        if key not in _BRIEF_DRAFT_CONTROLS
+    }
 
     try:
         brief = AuthoringBrief.from_mapping(brief_values)
@@ -1311,7 +1680,8 @@ async def authoring_generate(request: Request) -> Response:
             request,
             candidates,
             error=message,
-            brief=brief_values,
+            brief=_brief_form_values(submitted),
+            notes=notes,
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         )
 
@@ -1322,6 +1692,7 @@ async def authoring_generate(request: Request) -> Response:
             brief_values=brief_values,
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="The AI generation service is not configured.",
+            notes=notes,
         )
     try:
         result = await _invoke_ai_provider(request, ai_provider, brief)
@@ -1337,6 +1708,7 @@ async def authoring_generate(request: Request) -> Response:
             brief_values=brief_values,
             status_code=error.status_code,
             detail=str(error.detail),
+            notes=notes,
         )
     candidate = _attach_stimulus_options(request, candidate)
     try:
@@ -1352,7 +1724,8 @@ async def authoring_generate(request: Request) -> Response:
             request,
             (),
             message="The authoring candidate store is temporarily unavailable.",
-            brief=brief_values,
+            brief=_brief_form_values(submitted),
+            notes=notes,
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
 

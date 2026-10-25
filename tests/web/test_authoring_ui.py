@@ -240,7 +240,7 @@ def test_brief_submission_announces_progress_and_blocks_duplicate_requests() -> 
     assert 'hx-sync="this:drop"' in opening_tag
 
     button = re.search(
-        r'<button[^>]*type="submit"[^>]*>(?P<label>.*?)</button>',
+        r'<button[^>]*formaction="/authoring/generate"[^>]*>(?P<label>.*?)</button>',
         form_html,
         re.DOTALL,
     )
@@ -250,14 +250,16 @@ def test_brief_submission_announces_progress_and_blocks_duplicate_requests() -> 
 
     # The status region is polite, present for assistive technology, and makes
     # no claim about progress the backend does not report.
-    status = re.search(
+    statuses = re.findall(
         r'<span class="htmx-indicator loading-indicator"[^>]*role="status"'
         r'[^>]*aria-live="polite"[^>]*>(?P<text>[^<]+)</span>',
         form_html,
     )
-    assert status, "the generation status region is missing"
-    assert "Generating a candidate practice" in status.group("text")
-    assert "%" not in status.group("text")
+    generating = [
+        text for text in statuses if "Generating a candidate practice" in text
+    ]
+    assert generating, "the generation status region is missing"
+    assert "%" not in generating[0]
 
 
 def test_generation_progress_styles_switch_the_button_only_during_request() -> None:
@@ -281,7 +283,9 @@ def test_a_failed_generation_returns_an_enabled_form_with_the_idle_label() -> No
     )
 
     assert response.status_code == 502
-    button = re.search(r'<button[^>]*type="submit"[^>]*>', response.text)
+    button = re.search(
+        r'<button[^>]*formaction="/authoring/generate"[^>]*>', response.text
+    )
     assert button, "the generate button is missing from the failed response"
     assert "disabled" not in button.group(0)
     assert "Generate candidate practice" in response.text
