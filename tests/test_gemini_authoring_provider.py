@@ -25,6 +25,7 @@ from fablit.application import (
     AuthoringLlmProvider,
     AuthoringProviderConfigurationError,
     AuthoringProviderError,
+    BriefDraftingRequest,
     LlmGenerationResult,
     PracticeAuthoringBrief,
     PracticeMode,
@@ -76,6 +77,21 @@ def _candidate_json() -> str:
 
 def _gemini_response(text: str) -> str:
     return json.dumps({"candidates": [{"content": {"parts": [{"text": text}]}}]})
+
+
+def _brief_draft_json() -> str:
+    return json.dumps(
+        {
+            "fields": {
+                "practice_area": {"value": "Visual analysis", "source": "notes"},
+                "intended_mode": {
+                    "value": "short-drill",
+                    "source": "suggested",
+                },
+            },
+            "assumptions": ["The learner group is Year 10."],
+        }
+    )
 
 
 class _Transport:
@@ -342,7 +358,80 @@ def test_http_error_body_is_not_surfaced() -> None:
     with pytest.raises(AuthoringProviderError) as excinfo:
         provider.generate(_brief())
 
+    assert "Sensitive" not in str(
+        excinfo.value
+    )  # --- Brief drafting (SPEC-040) ------------------------------------------------
+
+
+def test_draft_brief_returns_the_structured_mapping_and_builds_the_request() -> None:
+    transport = _Transport(_gemini_response(_brief_draft_json()))
+    provider = _provider(transport)
+    request = BriefDraftingRequest(
+        notes="Year 10 compared two posters.",
+        current_values={"purpose": "Notice evidence."},
+    )
+
+    output = provider.draft_brief(request)
+
+    assert output["fields"]["practice_area"]["value"] == "Visual analysis"
+    assert output["assumptions"] == ["The learner group is Year 10."]
+
+    url, body, headers = transport.calls[0]
+    assert url.endswith(":generateContent")
+    assert API_KEY not in url
+    assert headers["x-goog-api-key"] == API_KEY
+    payload = json.loads(body)
+    assert payload["generationConfig"]["responseMimeType"] == "application/json"
+    prompt = payload["contents"][0]["parts"][0]["text"]
+    # Notes are delimited as untrusted data, never as instructions.
+    assert "Year 10 compared two posters." in prompt
+    assert "untrusted data" in prompt
+    # The prompt states the existing allowed values and the provenance shape.
+    assert "short-drill" in prompt and "full-practice" in prompt
+    assert "Observe" in prompt
+    assert '"source"' in prompt
+    # The current brief is offered as context for a coherent draft.
+    assert "Notice evidence." in prompt
+
+
+def test_draft_brief_asks_only_for_the_target_field_on_regeneration() -> None:
+    transport = _Transport(_gemini_response(_brief_draft_json()))
+    provider = _provider(transport)
+
+    provider.draft_brief(
+        BriefDraftingRequest(notes="notes", target_field="feedback_intent")
+    )
+
+    prompt = json.loads(transport.calls[0][1])["contents"][0]["parts"][0]["text"]
+    assert "Only propose a new value for feedback_intent" in prompt
+
+
+def test_draft_brief_translates_provider_failure_without_leaking_details() -> None:
+    http_error = urllib.error.HTTPError(
+        "https://example.invalid", 500, f"Sensitive {API_KEY}", Message(), None
+    )
+    provider = _provider(_raising_fetch(http_error))
+
+    with pytest.raises(AuthoringProviderError) as excinfo:
+        provider.draft_brief(BriefDraftingRequest(notes="notes"))
+
+    assert API_KEY not in str(excinfo.value)
     assert "Sensitive" not in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        "not json at all",
+        json.dumps({"candidates": []}),
+        json.dumps({"candidates": [{"content": {"parts": [{"text": "[]"}]}}]}),
+    ],
+)
+def test_draft_brief_refuses_an_unusable_provider_response(response: str) -> None:
+    provider = _provider(_Transport(response))
+
+    with pytest.raises(AuthoringProviderError):
+        provider.draft_brief(BriefDraftingRequest(notes="notes"))
 
 
 # --- Default transport --------------------------------------------------------

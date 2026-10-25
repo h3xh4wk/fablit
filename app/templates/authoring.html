@@ -1,6 +1,31 @@
 {% extends "base.html" %}
 {% block title %}Authoring Workspace — Fablit{% endblock %}
 {% block content %}
+{# Provenance and per-field regeneration for an AI-drafted brief (SPEC-040).
+   The marker names where a value came from; the button asks for one field
+   again without touching any other value the author has typed. #}
+{% macro brief_draft_tools(name, notes, draft_sources) -%}
+  {%- set source = draft_sources.get(name) if draft_sources else none -%}
+  {%- if source %}
+  <p class="form-hint brief-source brief-source--{{ source.variant }}">
+    <span class="brief-source__label">{{ source.label }}</span>
+    {%- if source.detail %} {{ source.detail }}{% endif %}
+  </p>
+  {%- endif %}
+  {%- if notes %}
+  <p class="brief-field__assist">
+    <button type="submit" class="brief-field__assist-button"
+            formaction="/authoring/brief/draft" name="field" value="{{ name }}"
+            hx-post="/authoring/brief/draft" hx-include="closest form"
+            hx-vals='{"field": "{{ name }}"}'
+            hx-target="#main" hx-select="#main" hx-swap="outerHTML"
+            hx-sync="closest form:drop" hx-disabled-elt="this">
+      <span class="authoring-generate__idle">Draft this field</span>
+      <span class="authoring-generate__progress">Drafting…</span>
+    </button>
+  </p>
+  {%- endif %}
+{%- endmacro %}
 <article class="intention">
   {% include "_authoring_nav.html" %}
 
@@ -23,6 +48,27 @@
   </div>
   {% endif %}
 
+  {% if draft_assumptions or draft_warnings %}
+  <div class="validation-panel validation-panel--caution">
+    {% if draft_assumptions %}
+    <p>Confirm these assumptions before you generate a candidate:</p>
+    <ul>
+      {% for assumption in draft_assumptions %}
+      <li>{{ assumption }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% if draft_warnings %}
+    <p>What the draft changed or left alone:</p>
+    <ul>
+      {% for warning in draft_warnings %}
+      <li>{{ warning }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+  {% endif %}
+
   <section class="authoring-section" aria-labelledby="brief-heading">
     <h2 id="brief-heading" class="subheading authoring-section__heading">Authoring brief</h2>
     <p class="authoring-section__intro">
@@ -32,6 +78,44 @@
 
     <form method="post" action="/authoring/generate"
           hx-disabled-elt="find button" hx-sync="this:drop">
+      <fieldset class="form-draft">
+        <legend class="form-section__legend">Help me write the brief</legend>
+        <p class="form-section__intro">
+          Start from rough notes, a pasted source, or just a topic. Fablit drafts the
+          fields below and marks what came from your notes, what is a suggestion, and
+          what needs your confirmation. Partial notes are fine, and you review and edit
+          every field before generating a candidate.
+        </p>
+
+        <div class="form-field">
+          <label class="form-label" for="notes">Your notes or source text</label>
+          <textarea id="notes" name="notes" class="form-control" rows="4"
+                    maxlength="8000" aria-describedby="notes-hint">{{ notes if notes else '' }}</textarea>
+          <p class="form-hint" id="notes-hint">
+            Used only as source material for the draft. Fablit never presents an
+            official examination or institutional requirement as fact.
+          </p>
+        </div>
+
+        <label class="form-check" for="replace">
+          <input type="checkbox" id="replace" name="replace" value="1"{% if replace_edits %} checked{% endif %}>
+          Replace my current field values with the new draft
+        </label>
+
+        <p class="form-actions">
+          <button type="submit" class="button button--secondary"
+                  formaction="/authoring/brief/draft"
+                  hx-post="/authoring/brief/draft" hx-include="closest form"
+                  hx-target="#main" hx-select="#main" hx-swap="outerHTML"
+                  hx-sync="closest form:drop" hx-disabled-elt="this"
+                  hx-indicator="closest .form-actions">
+            <span class="authoring-generate__idle">Draft the brief <span aria-hidden="true">→</span></span>
+            <span class="authoring-generate__progress">Drafting the brief…</span>
+          </button>
+          <span class="htmx-indicator loading-indicator" role="status" aria-live="polite">Drafting the brief from your notes. This can take a moment.</span>
+        </p>
+      </fieldset>
+
       <fieldset class="form-section">
         <legend class="form-section__legend">1. What the practice is for</legend>
         <p class="form-section__intro">Who it is for and the thinking it is meant to develop.</p>
@@ -44,6 +128,7 @@
                  value="{{ brief.practice_area if brief else '' }}" required
                  aria-describedby="practice_area-hint">
           <p class="form-hint" id="practice_area-hint">The subject area, for example visual analysis or writing.</p>
+          {{ brief_draft_tools('practice_area', notes, draft_sources) }}
         </div>
 
         <div class="form-field">
@@ -53,6 +138,7 @@
           <textarea id="learner_context" name="learner_context" class="form-control" rows="2" required
                     aria-describedby="learner_context-hint">{{ brief.learner_context if brief else '' }}</textarea>
           <p class="form-hint" id="learner_context-hint">Who the learner is and what they are working on.</p>
+          {{ brief_draft_tools('learner_context', notes, draft_sources) }}
         </div>
 
         <div class="form-field">
@@ -62,6 +148,7 @@
           <textarea id="purpose" name="purpose" class="form-control" rows="2" required
                     aria-describedby="purpose-hint">{{ brief.purpose if brief else '' }}</textarea>
           <p class="form-hint" id="purpose-hint">The capability the practice is designed to strengthen.</p>
+          {{ brief_draft_tools('purpose', notes, draft_sources) }}
         </div>
       </fieldset>
 
@@ -78,6 +165,7 @@
               <option value="short-drill" {% if brief and brief.intended_mode == 'short-drill' %}selected{% endif %}>Short Drill</option>
               <option value="full-practice" {% if brief and brief.intended_mode == 'full-practice' %}selected{% endif %}>Full Practice</option>
             </select>
+            {{ brief_draft_tools('intended_mode', notes, draft_sources) }}
           </div>
 
           <div class="form-field">
@@ -86,6 +174,7 @@
             </label>
             <input type="text" id="response_form" name="response_form" class="form-control"
                    value="{{ brief.response_form if brief else '' }}" required>
+            {{ brief_draft_tools('response_form', notes, draft_sources) }}
           </div>
         </div>
       </fieldset>
@@ -102,6 +191,7 @@
             Evaluation intent <span class="form-required">Required</span>
           </label>
           <textarea id="evaluation_intent" name="evaluation_intent" class="form-control" rows="2" required>{{ brief.evaluation_intent if brief else '' }}</textarea>
+          {{ brief_draft_tools('evaluation_intent', notes, draft_sources) }}
         </div>
 
         <div class="form-field">
@@ -109,6 +199,7 @@
             Feedback intent <span class="form-required">Required</span>
           </label>
           <textarea id="feedback_intent" name="feedback_intent" class="form-control" rows="2" required>{{ brief.feedback_intent if brief else '' }}</textarea>
+          {{ brief_draft_tools('feedback_intent', notes, draft_sources) }}
         </div>
 
         <div class="form-field">
@@ -116,6 +207,7 @@
             Reflection intent <span class="form-required">Required</span>
           </label>
           <textarea id="reflection_intent" name="reflection_intent" class="form-control" rows="2" required>{{ brief.reflection_intent if brief else '' }}</textarea>
+          {{ brief_draft_tools('reflection_intent', notes, draft_sources) }}
         </div>
       </fieldset>
 
@@ -130,6 +222,7 @@
             <label class="form-label" for="examination_context">Examination context (optional)</label>
             <input type="text" id="examination_context" name="examination_context" class="form-control"
                    value="{{ brief.examination_context if brief and brief.examination_context else '' }}">
+            {{ brief_draft_tools('examination_context', notes, draft_sources) }}
           </div>
 
           <div class="form-field">
@@ -140,27 +233,31 @@
               <option value="{{ lens }}" {% if brief and brief.primary_creative_thinking_lens == lens %}selected{% endif %}>{{ lens }}</option>
               {% endfor %}
             </select>
+            {{ brief_draft_tools('primary_creative_thinking_lens', notes, draft_sources) }}
           </div>
         </div>
 
         <div class="form-field">
           <label class="form-label" for="constraints">Constraints (optional)</label>
           <textarea id="constraints" name="constraints" class="form-control" rows="2">{{ brief.constraints if brief and brief.constraints else '' }}</textarea>
+          {{ brief_draft_tools('constraints', notes, draft_sources) }}
         </div>
 
         <div class="form-field">
           <label class="form-label" for="stimulus_requirements">Stimulus or context requirements (optional)</label>
           <textarea id="stimulus_requirements" name="stimulus_requirements" class="form-control" rows="2">{{ brief.stimulus_requirements if brief and brief.stimulus_requirements else '' }}</textarea>
+          {{ brief_draft_tools('stimulus_requirements', notes, draft_sources) }}
         </div>
 
         <div class="form-field">
           <label class="form-label" for="continuation_intent">Continuation intent (optional)</label>
           <textarea id="continuation_intent" name="continuation_intent" class="form-control" rows="2">{{ brief.continuation_intent if brief and brief.continuation_intent else '' }}</textarea>
+          {{ brief_draft_tools('continuation_intent', notes, draft_sources) }}
         </div>
       </details>
 
       <p class="form-actions">
-        <button type="submit" class="button">
+        <button type="submit" class="button" formaction="/authoring/generate">
           <span class="authoring-generate__idle">Generate candidate practice <span aria-hidden="true">→</span></span>
           <span class="authoring-generate__progress">Generating candidate…</span>
         </button>

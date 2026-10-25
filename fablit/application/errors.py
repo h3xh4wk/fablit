@@ -94,6 +94,16 @@ class InvalidPublishedPracticeError(ApplicationError):
     """Raised when a published practice record violates an invariant (SPEC-035 §8)."""
 
 
+class InvalidBriefDraftError(ApplicationError):
+    """Raised when AI-drafted brief output cannot be used (SPEC-040 §8).
+
+    The provider's structured draft is untrusted: a missing or malformed
+    shape, an unknown field, or an out-of-range value never reaches the
+    authoring form. The workflow keeps the author's notes and current values
+    and offers a retry instead.
+    """
+
+
 class AuthoringProviderError(ApplicationError):
     """Raised when an authoring LLM provider cannot produce a candidate.
 

@@ -1,9 +1,9 @@
 # Fablit Architecture Blueprint
 
 **Document ID:** AB-001
-**Version:** 0.18.0
+**Version:** 0.19.0
 **Status:** Draft
-**Last Updated:** 2026-10-12
+**Last Updated:** 2026-10-25
 
 ---
 
@@ -843,6 +843,31 @@ Google Gemini REST API
 - **Composition-root wiring:** `app/main.py` builds the adapter only when `FABLIT_AI_PROVIDER_API_KEY` is configured (model selected via `FABLIT_AI_PROVIDER_MODEL`); otherwise the workflow uses the brief-derived draft path.
 - **Testable without live calls:** `FakeAuthoringProvider` (shipped beside the port) and an injectable adapter transport let the suite exercise the workflow with no external API call. SEC-001 remains the access-control boundary for every authoring route.
 - **Deliberately out of scope:** multi-provider routing, provider fallback, model-selection logic, agent frameworks, and learner-facing AI.
+
+### AI-Assisted Brief Drafting (SPEC-040)
+
+SPEC-040 adds a second, smaller AI operation to the same authoring workspace: an
+author with only partial notes can ask Fablit to draft the brief itself, then
+review and edit every field before the unchanged candidate flow begins.
+
+```text
+Authoring form (notes + current brief values)
+        ↓ POST /authoring/brief/draft            (SEC-001 protected)
+BriefDraftingRequest → AuthoringLlmProvider.draft_brief(...)
+        ↓ provider-neutral port, existing Gemini adapter / fake provider
+Untrusted structured draft (values · source · assumptions)
+        ↓ parse_brief_draft(...)  existing fields, allowed values, bounds
+Editable brief form + provenance markers + per-field regeneration
+        ↓ author confirms
+Existing POST /authoring/generate (candidate generation, unchanged)
+```
+
+- **No new model or store:** `fablit/application/authoring_brief_draft.py` describes the draft (`BriefDraft`, `BriefFieldProposal`, `BriefFieldSource`) using the existing brief field names and the existing `PracticeMode` / `PRACTICE_CAPABILITIES` allowed values. Nothing is persisted; the draft is rendered into the existing editable form.
+- **Same provider boundary, one new operation:** `BriefDraftingRequest` and `AuthoringLlmProvider.draft_brief(...)` extend `fablit/application/authoring_llm.py`, implemented by the existing Gemini adapter and the deterministic fake. Provider credentials, request construction, and response parsing stay inside the adapter (ARCH-001); the notes are delimited as untrusted data, not instructions.
+- **Provenance is visible:** each applied value carries `notes` / `suggested` / `assumed`, and generated examination context is always downgraded to an assumption to confirm (SPEC-040 §6, AC-5). The assumptions and refused values are shown above the form.
+- **Regeneration preserves work:** a single-field regeneration replaces exactly one field and keeps every other submitted value; a whole-brief draft only fills empty fields unless the author ticks “Replace my current field values”. The notes are part of the form, so they survive every action.
+- **Fail safe:** provider failure, timeout, malformed output, and validation errors keep the notes and current values, return `502`/`503`, and expose no credentials or raw provider payloads. Duplicate submissions are dropped while a request is in flight (`hx-sync`), with a truthful in-progress label.
+- **Separate from the lifecycle:** `/authoring/brief/draft` never creates, approves, or publishes a candidate; the existing generate, review, and publication gates and learner routes are untouched.
 
 ### Shared Candidate State & Production Authoring Persistence (FIX-7 / SPEC-032)
 

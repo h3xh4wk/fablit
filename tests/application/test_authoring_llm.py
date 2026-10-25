@@ -16,6 +16,7 @@ from fablit.application import (
     AuthoringGenerationRequest,
     AuthoringLlmProvider,
     AuthoringProviderError,
+    BriefDraftingRequest,
     FakeAuthoringProvider,
     LlmGenerationResult,
     PracticeAuthoringBrief,
@@ -157,3 +158,50 @@ def test_provider_free_path_still_works_alongside_the_port() -> None:
     """AI availability never gates authoring (SPEC-032 §17)."""
     candidate = draft_candidate_from_brief(_brief())
     assert candidate.validation.is_approvable is True
+
+
+# --- Brief drafting (SPEC-040) ------------------------------------------------
+
+
+def test_brief_drafting_request_carries_notes_and_current_brief() -> None:
+    request = BriefDraftingRequest(
+        notes="Year 10 group compared two posters.",
+        current_values={"practice_area": "Visual analysis"},
+        target_field="evaluation_intent",
+    )
+
+    payload = request.as_payload()
+
+    assert payload == {
+        "notes": "Year 10 group compared two posters.",
+        "current_values": {"practice_area": "Visual analysis"},
+        "target_field": "evaluation_intent",
+    }
+
+
+def test_brief_drafting_request_requires_source_notes() -> None:
+    with pytest.raises(AuthoringProviderError, match="source notes"):
+        BriefDraftingRequest(notes="   ")
+
+
+def test_fake_provider_returns_a_configured_brief_draft() -> None:
+    output = {"fields": {"practice_area": {"value": "Visual analysis"}}}
+    provider = FakeAuthoringProvider(brief_output=output)
+    request = BriefDraftingRequest(
+        notes="A short topic",
+        current_values={"purpose": "Notice evidence"},
+    )
+
+    assert provider.draft_brief(request) == output
+    assert provider.brief_calls == [request]
+    # Drafting is separate from candidate generation (SPEC-040 §5).
+    assert provider.calls == []
+
+
+def test_fake_provider_can_surface_a_brief_drafting_failure() -> None:
+    provider = FakeAuthoringProvider(
+        brief_error=AuthoringProviderError("provider down")
+    )
+
+    with pytest.raises(AuthoringProviderError, match="provider down"):
+        provider.draft_brief(BriefDraftingRequest(notes="A short topic"))

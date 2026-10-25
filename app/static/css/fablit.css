@@ -1148,6 +1148,76 @@ ol {
   display: inline;
 }
 
+/* AI brief drafting (SPEC-040). An author with only rough notes starts in the
+   notes fieldset; the provenance markers say where each proposed value came
+   from so facts, suggestions, and assumptions stay distinguishable. */
+.form-draft {
+  margin: 0 0 var(--space-5);
+  padding: var(--space-4) var(--space-5) var(--space-5);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+}
+
+.form-draft .form-check {
+  margin-bottom: var(--space-4);
+}
+
+.form-draft .form-actions {
+  margin-top: 0;
+}
+
+.brief-source {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1);
+}
+
+.brief-source__label {
+  padding: 0 var(--space-2);
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: var(--text-small);
+  font-weight: 600;
+}
+
+.brief-source--notes .brief-source__label {
+  color: var(--color-established);
+}
+
+.brief-source--suggested .brief-source__label {
+  color: var(--color-ink-muted);
+}
+
+.brief-source--assumed .brief-source__label {
+  color: var(--color-caution);
+}
+
+.brief-field__assist {
+  margin: var(--space-1) 0 0;
+}
+
+.brief-field__assist-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-accent);
+  font: inherit;
+  font-size: var(--text-small);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.brief-field__assist-button:hover {
+  color: var(--color-accent-hover);
+}
+
+.brief-field__assist-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* --- Status tags -------------------------------------------------------- */
 .tag {
   display: inline-block;
