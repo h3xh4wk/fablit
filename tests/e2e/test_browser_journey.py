@@ -271,9 +271,7 @@ def test_keyboard_navigation_reaches_core_actions() -> None:
 
             # Stories links to the curated Pulse feed.
             page.keyboard.press("Tab")
-            expect(
-                page.get_by_role("link", name="Stories", exact=True)
-            ).to_be_focused()
+            expect(page.get_by_role("link", name="Stories", exact=True)).to_be_focused()
 
             # History remains accessible under its existing label and route.
             page.keyboard.press("Tab")
