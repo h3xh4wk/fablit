@@ -142,7 +142,7 @@ def _text(value: object) -> str:
 def _text_tuple(value: object, name: str) -> tuple[str, ...]:
     if isinstance(value, str):
         items = (value,)
-    elif isinstance(value, (list, tuple)):
+    elif isinstance(value, list | tuple):
         items = tuple(value)
     else:
         raise ValueError(f"{name} must be text or a list of text")

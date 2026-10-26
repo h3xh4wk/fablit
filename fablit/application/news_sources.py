@@ -224,7 +224,7 @@ def parse_news_sources(value: object) -> tuple[NewsSource, ...]:
             raise InvalidNewsSourceError(
                 f"news sources must be valid JSON: {exc}"
             ) from exc
-    if isinstance(parsed, (list, tuple)):
+    if isinstance(parsed, list | tuple):
         entries = parsed
     elif isinstance(parsed, Mapping) and "sources" in parsed:
         entries = parsed["sources"]
@@ -232,7 +232,7 @@ def parse_news_sources(value: object) -> tuple[NewsSource, ...]:
         raise InvalidNewsSourceError(
             "news sources must be a JSON list of {name, feed_url, site_url} objects"
         )
-    if not isinstance(entries, (list, tuple)):
+    if not isinstance(entries, list | tuple):
         raise InvalidNewsSourceError("news sources must be a list")
 
     sources: list[NewsSource] = []
