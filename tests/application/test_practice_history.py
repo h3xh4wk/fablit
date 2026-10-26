@@ -160,6 +160,7 @@ def test_in_memory_repository_round_trips_a_completion() -> None:
     assert retrieved.submission.response == submission.response
     assert retrieved.evaluation.id == evaluation.id
     assert retrieved.feedback.content == feedback.content
+    assert retrieved.reflection is not None
     assert retrieved.reflection.content == reflection.content
     assert retrieved.stimulus is not None
     assert retrieved.stimulus.image_url == stimulus.image_url
@@ -531,9 +532,10 @@ class FailingRepository(InMemoryPracticeHistoryRepository):
         submission: Submission,
         evaluation: Evaluation,
         feedback: Feedback,
-        reflection: Reflection,
+        reflection: Reflection | None,
         stimulus: StimulusInstance | None,
         artifact: ArtifactRef | None = None,
+        completion_id: UUID | None = None,
     ) -> StoredPracticeCompletion:
         if self.fail_next_save:
             raise PersistenceError("Failed to save completed practice.")
@@ -547,6 +549,7 @@ class FailingRepository(InMemoryPracticeHistoryRepository):
             reflection=reflection,
             stimulus=stimulus,
             artifact=artifact,
+            completion_id=completion_id,
         )
 
 

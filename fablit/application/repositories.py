@@ -88,6 +88,7 @@ class InMemoryPracticeHistoryRepository(PracticeHistoryRepository):
         key = (learner_id, completion_id)
         existing = self._completions.get(key)
 
+        reflection_to_store: Reflection | None
         if existing is not None:
             completed_at = existing.completed_at
             # Attach reflection later if provided and not already present
