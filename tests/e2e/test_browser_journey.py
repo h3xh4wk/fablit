@@ -244,12 +244,9 @@ def test_learner_journey_on_mobile_viewport() -> None:
 def test_keyboard_navigation_reaches_core_actions() -> None:
     """Tab order reaches the core actions with visible focus (SPEC-013 §27).
 
-    SPEC-021 added the persistent "Your practice" header link, and SPEC-041
-    added the learner "Fashion & Design Pulse" link beside it, so the tab
-    order on every page is now: skip link → brand → Fashion & Design Pulse →
-    Your practice → page content. The test asserts that order and that the
-    header links are keyboard-reachable alongside the pre-existing core
-    actions.
+    The header exposes the dashboard as "Practice", curated content as
+    "Stories", and history as "Your practice". The tab order is skip link →
+    brand → Practice → Stories → Your practice → page content.
 
     SPEC-022 adds the dashboard's quiet practice-mode invitation as the
     first content link, before the activity cards.
@@ -266,17 +263,17 @@ def test_keyboard_navigation_reaches_core_actions() -> None:
             page.keyboard.press("Tab")
             expect(page.get_by_role("link", name="Fablit")).to_be_focused()
 
-            # SPEC-041: the header navigation to the curated Pulse is part
-            # of the core keyboard-reachable actions on every page.
+            # The dashboard remains the first learner destination.
             page.keyboard.press("Tab")
-            expect(
-                page.get_by_role("link", name="Fashion & Design Pulse")
-            ).to_be_focused()
+            expect(page.get_by_role("link", name="Practice", exact=True)).to_be_focused()
 
-            # SPEC-021: the header navigation to practice history is part of
-            # the core keyboard-reachable actions on every page.
+            # Stories links to the curated Pulse feed.
             page.keyboard.press("Tab")
-            expect(page.get_by_role("link", name="Your practice")).to_be_focused()
+            expect(page.get_by_role("link", name="Stories", exact=True)).to_be_focused()
+
+            # History remains accessible under its existing label and route.
+            page.keyboard.press("Tab")
+            expect(page.get_by_role("link", name="Your practice", exact=True)).to_be_focused()
 
             # SPEC-022: the optional practice-mode invitation is the first
             # keyboard-reachable content link on the dashboard.
