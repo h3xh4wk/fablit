@@ -265,15 +265,21 @@ def test_keyboard_navigation_reaches_core_actions() -> None:
 
             # The dashboard remains the first learner destination.
             page.keyboard.press("Tab")
-            expect(page.get_by_role("link", name="Practice", exact=True)).to_be_focused()
+            expect(
+                page.get_by_role("link", name="Practice", exact=True)
+            ).to_be_focused()
 
             # Stories links to the curated Pulse feed.
             page.keyboard.press("Tab")
-            expect(page.get_by_role("link", name="Stories", exact=True)).to_be_focused()
+            expect(
+                page.get_by_role("link", name="Stories", exact=True)
+            ).to_be_focused()
 
             # History remains accessible under its existing label and route.
             page.keyboard.press("Tab")
-            expect(page.get_by_role("link", name="Your practice", exact=True)).to_be_focused()
+            expect(
+                page.get_by_role("link", name="Your practice", exact=True)
+            ).to_be_focused()
 
             # SPEC-022: the optional practice-mode invitation is the first
             # keyboard-reachable content link on the dashboard.
