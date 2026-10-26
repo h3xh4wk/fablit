@@ -1590,3 +1590,29 @@ ol {
 #candidate-next-step {
   scroll-margin-top: var(--space-4);
 }
+
+
+/* Primary learner navigation: keep Practice and Stories visible on every
+   learner page, with a clear current-section indicator and a small-screen
+   layout that can wrap without horizontal scrolling. */
+.site-header__nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-5);
+  margin-top: var(--space-3);
+}
+
+.site-header__link {
+  display: inline-block;
+  padding: var(--space-1) 0;
+}
+
+.site-header__link[aria-current="page"] {
+  color: var(--color-ink);
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-color: var(--color-accent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.3em;
+}
