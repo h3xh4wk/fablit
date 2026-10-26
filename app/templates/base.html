@@ -20,7 +20,7 @@
     <a class="site-header__brand" href="/">Fablit</a>
     <nav class="site-header__nav" aria-label="Primary">
       <a class="site-header__link" href="/practice"
-         {% if not request.url.path.startswith('/pulse') %}aria-current="page"{% endif %}>Practice</a>
+         {% if not request.url.path.startswith('/pulse') and not request.url.path.startswith('/authoring') %}aria-current="page"{% endif %}>Practice</a>
       <a class="site-header__link" href="/pulse"
          {% if request.url.path.startswith('/pulse') %}aria-current="page"{% endif %}>Stories</a>
     </nav>
