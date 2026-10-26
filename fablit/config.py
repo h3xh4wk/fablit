@@ -9,6 +9,13 @@ from typing import Any, cast
 from pydantic import Field, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
+from fablit.application.errors import InvalidNewsSourceError
+from fablit.application.news_sources import (
+    DEFAULT_NEWS_SOURCES,
+    NewsSource,
+    parse_news_sources,
+)
+
 # Dynamically import PyYAML without needing a mypy type-ignore comment.
 # Annotate `yaml` as Any so assigning `None` is type-safe across envs.
 yaml: Any
@@ -24,6 +31,7 @@ SUPPORTED_PRACTICE_HISTORY_REPOSITORIES = {"memory", "datastore"}
 SUPPORTED_ARTIFACT_STORAGE_BACKENDS = {"file", "gcs"}
 SUPPORTED_AUTHORING_CANDIDATE_STORES = {"memory", "datastore"}
 SUPPORTED_PUBLISHED_PRACTICE_STORES = {"memory", "datastore"}
+SUPPORTED_NEWS_REPOSITORIES = {"memory", "datastore"}
 
 
 class ConfigError(RuntimeError):
@@ -183,6 +191,63 @@ class AppConfig(BaseSettings):
             "approved authoring candidates."
         ),
     )
+    news_repository: str = Field(
+        "memory",
+        description=(
+            "Curated news repository backend (SPEC-041): 'memory' (in-memory, "
+            "for tests and local development) or 'datastore' (Google Cloud "
+            "Datastore, for the deployed App Engine environment). Holds only "
+            "the curated Fashion & Design Pulse stories."
+        ),
+    )
+    news_sources: tuple[NewsSource, ...] = Field(
+        default_factory=lambda: DEFAULT_NEWS_SOURCES,
+        description=(
+            "Explicit allowlist of approved news sources (SPEC-041). A JSON "
+            "list of {name, feed_url, site_url} objects; story links must "
+            "belong to the source's publisher host. Empty disables curation "
+            "but keeps the existing feed readable."
+        ),
+    )
+    news_max_items_per_source: int = Field(
+        6,
+        ge=1,
+        le=50,
+        description="Maximum news items considered per source in one refresh.",
+    )
+    news_freshness_days: int = Field(
+        14,
+        ge=1,
+        le=90,
+        description=(
+            "How many days old a story may be and still be eligible for "
+            "publication (SPEC-041)."
+        ),
+    )
+    news_max_summary_chars: int = Field(
+        600,
+        ge=100,
+        le=2000,
+        description="Maximum curated summary length accepted for publication.",
+    )
+    news_relevance_threshold: float = Field(
+        0.5,
+        ge=0,
+        le=1,
+        description=(
+            "Minimum provider relevance score for a story to be published (SPEC-041)."
+        ),
+    )
+    news_fetch_timeout: float = Field(
+        10.0,
+        ge=0.1,
+        description="Timeout in seconds for one approved news source fetch.",
+    )
+    news_max_response_bytes: int = Field(
+        512_000,
+        ge=1024,
+        description="Maximum response size read from one news source.",
+    )
     config_file: Path | None = Field(None, description="Path to optional config file.")
     version: str = Field("0.1.0", description="Application version.")
 
@@ -320,6 +385,31 @@ class AppConfig(BaseSettings):
             return normalized
         return str(value)
 
+    @field_validator("news_repository", mode="before")
+    def normalize_news_repository(cls, value: object) -> str:
+        """Normalize the curated news repository; defaults to 'memory'."""
+        if value is None:
+            return "memory"
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if not normalized:
+                return "memory"
+            if normalized not in SUPPORTED_NEWS_REPOSITORIES:
+                allowed = ", ".join(sorted(SUPPORTED_NEWS_REPOSITORIES))
+                raise ValueError(
+                    f"Unsupported news repository '{value}'. Must be one of: {allowed}."
+                )
+            return normalized
+        return str(value)
+
+    @field_validator("news_sources", mode="before")
+    def parse_news_sources_config(cls, value: object) -> object:
+        """Accept the source allowlist as a JSON string or a list of objects."""
+        try:
+            return parse_news_sources(value)
+        except InvalidNewsSourceError as exc:
+            raise ValueError(str(exc)) from exc
+
     @field_validator("artifact_storage_bucket", mode="before")
     def normalize_artifact_storage_bucket(cls, value: object) -> str | None:
         """Strip whitespace from bucket name; empty string becomes None."""
@@ -412,6 +502,14 @@ def _resolve_environment_overrides() -> dict[str, Any]:
         "authoring_secret": "FABLIT_AUTHORING_SECRET",
         "authoring_candidate_store": "FABLIT_AUTHORING_CANDIDATE_STORE",
         "published_practice_store": "FABLIT_PUBLISHED_PRACTICE_STORE",
+        "news_repository": "FABLIT_NEWS_REPOSITORY",
+        "news_sources": "FABLIT_NEWS_SOURCES",
+        "news_max_items_per_source": "FABLIT_NEWS_MAX_ITEMS_PER_SOURCE",
+        "news_freshness_days": "FABLIT_NEWS_FRESHNESS_DAYS",
+        "news_max_summary_chars": "FABLIT_NEWS_MAX_SUMMARY_CHARS",
+        "news_relevance_threshold": "FABLIT_NEWS_RELEVANCE_THRESHOLD",
+        "news_fetch_timeout": "FABLIT_NEWS_FETCH_TIMEOUT",
+        "news_max_response_bytes": "FABLIT_NEWS_MAX_RESPONSE_BYTES",
         "authoring_candidate_retention_days": (
             "FABLIT_AUTHORING_CANDIDATE_RETENTION_DAYS"
         ),

@@ -69,6 +69,31 @@
   </div>
   {% endif %}
 
+  <section class="authoring-section" aria-labelledby="pulse-heading">
+    <h2 id="pulse-heading" class="subheading authoring-section__heading">Fashion &amp; Design Pulse</h2>
+    <p class="authoring-section__intro">
+      Curate a weekly batch of current fashion and design stories for all learners.
+      Eligible stories publish automatically after the source, freshness, safety,
+      relevance, and grounding checks pass. You can
+      <a href="/authoring/pulse">review the sources and the last batch result</a>
+      on the Pulse page.
+    </p>
+    <form method="post" action="/authoring/pulse/curate"
+          hx-post="/authoring/pulse/curate"
+          hx-target="#main" hx-select="#main" hx-swap="outerHTML"
+          hx-sync="this:drop" hx-disabled-elt="find button">
+      <p class="form-actions">
+        <button type="submit" class="button button--secondary">
+          <span class="authoring-generate__idle">Curate this week's news <span aria-hidden="true">→</span></span>
+          <span class="authoring-generate__progress">Curating the news…</span>
+        </button>
+        <span class="htmx-indicator loading-indicator" role="status" aria-live="polite">
+          Fetching approved sources and curating eligible stories. This can take a moment.
+        </span>
+      </p>
+    </form>
+  </section>
+
   <section class="authoring-section" aria-labelledby="brief-heading">
     <h2 id="brief-heading" class="subheading authoring-section__heading">Authoring brief</h2>
     <p class="authoring-section__intro">

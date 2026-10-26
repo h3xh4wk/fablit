@@ -244,10 +244,12 @@ def test_learner_journey_on_mobile_viewport() -> None:
 def test_keyboard_navigation_reaches_core_actions() -> None:
     """Tab order reaches the core actions with visible focus (SPEC-013 §27).
 
-    SPEC-021 added the persistent "Your practice" header link, so the tab
-    order on every page is now: skip link → brand → Your practice → page
-    content. The test asserts that order and that the new link is
-    keyboard-reachable alongside the pre-existing core actions.
+    SPEC-021 added the persistent "Your practice" header link, and SPEC-041
+    added the learner "Fashion & Design Pulse" link beside it, so the tab
+    order on every page is now: skip link → brand → Fashion & Design Pulse →
+    Your practice → page content. The test asserts that order and that the
+    header links are keyboard-reachable alongside the pre-existing core
+    actions.
 
     SPEC-022 adds the dashboard's quiet practice-mode invitation as the
     first content link, before the activity cards.
@@ -263,6 +265,13 @@ def test_keyboard_navigation_reaches_core_actions() -> None:
 
             page.keyboard.press("Tab")
             expect(page.get_by_role("link", name="Fablit")).to_be_focused()
+
+            # SPEC-041: the header navigation to the curated Pulse is part
+            # of the core keyboard-reachable actions on every page.
+            page.keyboard.press("Tab")
+            expect(
+                page.get_by_role("link", name="Fashion & Design Pulse")
+            ).to_be_focused()
 
             # SPEC-021: the header navigation to practice history is part of
             # the core keyboard-reachable actions on every page.

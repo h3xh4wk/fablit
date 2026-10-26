@@ -44,6 +44,7 @@ from app.learner_session import (
     learner_identity_middleware,
     practice_for_request,
 )
+from app.news import router as news_router
 from app.request_format import wants_html
 from app.task_text import split_task_text
 from fablit.application import (
@@ -55,9 +56,12 @@ from fablit.application import (
     FeedbackNotFoundError,
     FileArtifactStorage,
     ImageSearchProvider,
+    InMemoryNewsRepository,
     InMemoryPublishedPracticeStore,
     InvalidPracticeResponseError,
     InvalidReflectionResponseError,
+    NewsCurator,
+    NewsRepository,
     PracticeApplication,
     PracticeMode,
     PublishedPracticeStore,
@@ -293,6 +297,89 @@ def _build_authoring_candidate_store(
 
     logger.info("initialized in-memory authoring candidate store")
     return AuthoringCandidateStore(retention_days=retention_days)
+
+
+def _build_news_repository(app_config: AppConfig) -> NewsRepository:
+    """Build the news-specific repository (SPEC-041 §6.3).
+
+    Defaults to the in-memory store for local development and tests. In
+    production on App Engine, Google Cloud Datastore keeps the curated feed
+    consistent across instances in its own kind and namespace, separate from
+    learner history, authoring candidates, and published practices.
+    """
+    backend = app_config.news_repository
+
+    if backend == "datastore":
+        try:
+            from google.cloud import datastore
+
+            from fablit.platform.datastore_news_repository import (
+                DatastoreNewsRepository,
+            )
+
+            client: datastore.Client = datastore.Client()
+            logger.info(
+                "initialized Datastore news repository",
+                extra={"project_id": client.project},
+            )
+            return DatastoreNewsRepository(client)
+        except Exception as e:
+            logger.exception("failed to initialize datastore news repository")
+            raise RuntimeError(
+                "Could not initialize Google Cloud Datastore for curated news. "
+                "Check GCP configuration and credentials."
+            ) from e
+
+    logger.info("initialized in-memory news repository")
+    return InMemoryNewsRepository()
+
+
+def _build_news_curator(
+    app_config: AppConfig,
+    repository: NewsRepository,
+) -> NewsCurator | None:
+    """Build the on-demand curation workflow (SPEC-041 §6.1, §6.2).
+
+    The workflow depends on its own provider-neutral port; Gemini is wired
+    here at the composition root using the existing server-side credentials
+    and model configuration. Without a key, curation is simply unavailable
+    while the persisted learner feed keeps working.
+    """
+    api_key = app_config.ai_provider_api_key
+    if not api_key or not api_key.strip():
+        logger.info("news curation provider not configured; feed remains read-only")
+        return None
+
+    from fablit.platform.gemini_news_curation_provider import (
+        GeminiNewsCurationProvider,
+    )
+    from fablit.platform.news_source_fetcher import HttpNewsSourceFetcher
+
+    provider = GeminiNewsCurationProvider(
+        api_key=api_key,
+        model=app_config.ai_provider_model,
+    )
+    fetcher = HttpNewsSourceFetcher(
+        timeout=app_config.news_fetch_timeout,
+        max_response_bytes=app_config.news_max_response_bytes,
+    )
+    logger.info(
+        "initialized news curation workflow",
+        extra={
+            "model": app_config.ai_provider_model,
+            "sources": len(app_config.news_sources),
+        },
+    )
+    return NewsCurator(
+        repository=repository,
+        fetcher=fetcher,
+        provider=provider,
+        sources=app_config.news_sources,
+        max_items_per_source=app_config.news_max_items_per_source,
+        freshness_days=app_config.news_freshness_days,
+        max_summary_chars=app_config.news_max_summary_chars,
+        relevance_threshold=app_config.news_relevance_threshold,
+    )
 
 
 def _build_published_practice_store(
@@ -561,6 +648,9 @@ def create_app(config: AppConfig) -> FastAPI:
         app.state.authoring_image_search = _build_image_search(config)
         app.state.authoring_candidate_store = _build_authoring_candidate_store(config)
         app.state.published_practice_store = _build_published_practice_store(config)
+        app.state.news_repository = _build_news_repository(config)
+        app.state.news_curator = _build_news_curator(config, app.state.news_repository)
+        app.state.news_last_batch = None
         app.state.demo_content, app.state.learner_applications = (
             _build_learner_applications(config, app.state.published_practice_store)
         )
@@ -570,6 +660,9 @@ def create_app(config: AppConfig) -> FastAPI:
         app.state.authoring_image_search = None
         app.state.authoring_candidate_store = None
         app.state.published_practice_store = None
+        app.state.news_repository = None
+        app.state.news_curator = None
+        app.state.news_last_batch = None
         app.state.demo_content = None
         app.state.learner_applications = None
         logger.info("application shutdown")
@@ -592,6 +685,9 @@ def create_app(config: AppConfig) -> FastAPI:
     app.state.authoring_image_search = _build_image_search(config)
     app.state.authoring_candidate_store = _build_authoring_candidate_store(config)
     app.state.published_practice_store = _build_published_practice_store(config)
+    app.state.news_repository = _build_news_repository(config)
+    app.state.news_curator = _build_news_curator(config, app.state.news_repository)
+    app.state.news_last_batch = None
     app.state.demo_content, app.state.learner_applications = (
         _build_learner_applications(config, app.state.published_practice_store)
     )
@@ -606,6 +702,8 @@ def create_app(config: AppConfig) -> FastAPI:
     app.add_exception_handler(Exception, _unhandled_exception_handler)
     # SEC-001: internal authoring access and AI-generation routes
     app.include_router(authoring_router)
+    # SPEC-041: learner news feed and the protected on-demand curation action
+    app.include_router(news_router)
 
     @app.get("/", response_class=HTMLResponse)
     async def dashboard(request: Request) -> Response:

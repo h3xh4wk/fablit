@@ -366,3 +366,45 @@ Approval and publication are separate decisions: approval accepts a candidate's 
 - **Idempotency:** repeating a publish of the same approved revision returns the existing record; republishing a re-approved revision replaces the entity in place under the same activity identity, so no duplicate catalogue entries are created and completed learner history keeps resolving.
 - **Withdrawal:** the record is retained with `withdrawn_at` set; the practice leaves learner discovery while completed history stays readable. Republishing restores the same identity.
 - **Fail-safe operation:** publication and withdrawal routes translate storage errors into `PersistenceError` → HTTP `503 Service Unavailable`, and the learner catalogue is only updated after a successful write — a failure is never reported as success.
+
+---
+
+## 14. Curated Fashion & Design Pulse (SPEC-041)
+
+The learner feed and its internal curation action share the existing App Engine
+identity model (application-default credentials); no GitHub-managed secret or
+alternate deployment path is introduced.
+
+### Configuration
+
+- `FABLIT_NEWS_REPOSITORY="datastore"` in `app.yaml` stores curated stories in
+  Google Cloud Datastore under kind `NewsStory`, namespace `news` (separate
+  from practice history, authoring candidates, and published practices).
+- `FABLIT_NEWS_SOURCES` is an explicit JSON allowlist. It defaults to The
+  Guardian's Fashion and Art & Design RSS feeds; override it to pin the
+  publishers you have reviewed.
+- Curation reuses `FABLIT_AI_PROVIDER_API_KEY` and `FABLIT_AI_PROVIDER_MODEL`.
+  Without a key the protected curation action reports that curation is not
+  configured; the learner feed keeps serving persisted stories.
+- Optional limits: `FABLIT_NEWS_MAX_ITEMS_PER_SOURCE`,
+  `FABLIT_NEWS_FRESHNESS_DAYS`, `FABLIT_NEWS_MAX_SUMMARY_CHARS`,
+  `FABLIT_NEWS_RELEVANCE_THRESHOLD`, `FABLIT_NEWS_FETCH_TIMEOUT`, and
+  `FABLIT_NEWS_MAX_RESPONSE_BYTES`.
+
+### Operation
+
+1. Sign in at `/authoring/login` with `FABLIT_AUTHORING_SECRET`.
+2. Open `/authoring/pulse`, review the source list, and select **Curate this
+   week's news**.
+3. Read the batch summary (fetched, deduplicated, published, rejected, failed)
+   and any per-source or per-item safe failure reasons.
+4. Confirm new stories at `/pulse`.
+
+The action is on demand only. There is no GitHub Actions workflow, scheduled
+job, queue, or separate scheduler. Repeated runs are idempotent by canonical
+URL; overlapping runs are refused. A failed or empty refresh leaves previously
+published stories visible, and a Datastore outage degrades `/pulse` to a calm
+unavailable state without affecting learner practice.
+
+See [curated-news-feed.md](curated-news-feed.md) for the full source policy,
+validation rules, and local test instructions.

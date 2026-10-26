@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Fashion &amp; Design Pulse — Fablit{% endblock %}
+{% block content %}
+<article class="dashboard">
+  <h1 class="display">Fashion &amp; Design Pulse</h1>
+  <p class="lede">
+    A small, curated look at current fashion, textiles, sustainability, Indian
+    craft, and visual culture — with a note on why each story is worth noticing.
+  </p>
+
+  {% if view.is_unavailable %}
+  <div class="validation-panel validation-panel--caution" role="status">
+    <p>The Pulse is temporarily unavailable. Your practice is unaffected.</p>
+  </div>
+  {% endif %}
+
+  {% if view.has_any_stories %}
+  <ul class="filter-tabs" aria-label="Filter stories by category">
+    {% for filter in view.filters %}
+    <li>
+      <a class="filter-tabs__link" href="{{ filter.url }}"
+         {% if filter.is_active %}aria-current="true"{% endif %}>
+        {{ filter.label }} <span class="filter-tabs__count">{{ filter.count }}</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <ul class="card-grid">
+    {% for story in view.stories %}
+    <li class="card">
+      <div class="card__heading">
+        <h2 class="card__title">{{ story.headline }}</h2>
+      </div>
+      <p class="card__invitation">{{ story.summary }}</p>
+
+      <p class="card__skill">
+        {% for category in story.categories %}
+        <a class="tag" href="{{ category.url }}">{{ category.label }}</a>
+        {% endfor %}
+      </p>
+
+      <div class="practice__intention">
+        <p><strong>Why it matters for design learners:</strong> {{ story.educational_relevance }}</p>
+      </div>
+
+      {% if story.reflection_prompt %}
+      <div class="reflection__prompt">
+        <p><strong>Something to try:</strong> {{ story.reflection_prompt }}</p>
+      </div>
+      {% endif %}
+
+      <div class="card__footer">
+        <p class="card__skill">
+          {{ story.source_name }}
+          <time datetime="{{ story.published_iso }}">{{ story.display_date }}</time>
+        </p>
+        {% if story.url %}
+        <a class="card__action" href="{{ story.url }}"
+           target="_blank" rel="noopener noreferrer nofollow">
+          Read the original story <span aria-hidden="true">↗</span>
+        </a>
+        {% endif %}
+      </div>
+    </li>
+    {% else %}
+    <li class="history__empty">
+      {% if view.is_unavailable %}
+      <h2 class="history__empty-title">The Pulse is resting</h2>
+      <p class="history__empty-note">
+        Stories will be back when curation is available again. You can keep
+        practising as usual.
+      </p>
+      {% elif view.selected %}
+      <h2 class="history__empty-title">Nothing in this category yet</h2>
+      <p class="history__empty-note">
+        Try <a href="/pulse">all stories</a> to see what else is here.
+      </p>
+      {% else %}
+      <h2 class="history__empty-title">No stories yet</h2>
+      <p class="history__empty-note">
+        The next curated collection will appear here. In the meantime, there is
+        plenty to explore in practice.
+      </p>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</article>
+{% endblock %}

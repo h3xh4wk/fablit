@@ -1,9 +1,9 @@
 # Fablit Architecture Blueprint
 
 **Document ID:** AB-001
-**Version:** 0.19.0
+**Version:** 0.20.0
 **Status:** Draft
-**Last Updated:** 2026-10-25
+**Last Updated:** 2026-10-26
 
 ---
 
@@ -918,6 +918,35 @@ Dashboard / Full Practice → Practice → Evaluation → Feedback → Reflectio
 - **Runtime reconciliation:** `LearnerApplicationRegistry` owns the published set and `PracticeApplication.apply_publications(...)` reconciles it into each learner application on the next request (dashboard, Full Practice eligibility, evaluator activity map). Only shared catalogue content changes — in-flight learner journey state is never rebuilt or discarded.
 - **Withdrawal policy (§8):** `POST /authoring/candidates/{id}/withdraw` hides the practice from learner discovery (dashboard and practice modes) while the activity stays resolvable so in-flight practice finishes, completed history stays readable, and the publication record is retained; an explicit republish restores the same identity.
 - **Availability boundary (§9, §10):** a publication store that cannot be read at startup degrades to the seeded library (logged, never fatal) so learner practice never depends on the authoring workflow, and every publish/withdraw action remains behind SEC-001.
+
+## Curated Fashion & Design Intelligence Feed (SPEC-041)
+
+SPEC-041 adds a small, curated current-affairs feed for all learners. It is an
+independent application slice: it reuses the Gemini/Datastore infrastructure
+where practical, but it never changes the practice-authoring provider contract
+or the practice-publication lifecycle.
+
+```text
+Approved sources (explicit allowlist)
+        ↓ on-demand operator action (SEC-001 protected)
+Application NewsCurator
+   fetch (bounded) → normalize → allowlist/URL safety → dedupe
+        → freshness/field checks → AI curation (news port)
+        → schema/category/relevance/grounding checks
+        ↓ only after every check passes
+NewsStory → NewsRepository
+        ├── InMemoryNewsRepository   [local / testing]
+        └── DatastoreNewsRepository  [production: kind="NewsStory", namespace="news"]
+        ↓
+GET /pulse (persisted stories only; no live AI or network)
+```
+
+- **Application workflow (`fablit/application/news.py`):** owns source iteration, normalization, canonical URL deduplication, freshness and field checks, provider invocation, result validation, publication, and batch reporting (`fetched`, `deduplicated`, `published`, `rejected`, `failed`). It imports no Gemini SDK, Datastore SDK, FastAPI object, or credential store.
+- **News-specific AI port (`fablit/application/news_curation.py`):** `NewsCurationProvider`, `NewsCurationRequest`, and `NewsCurationResult` are separate from `AuthoringLlmProvider`. `fablit/platform/gemini_news_curation_provider.py` implements the port with the existing server-side key/model; `FakeNewsCurationProvider` keeps tests deterministic.
+- **News-specific persistence (`NewsRepository`):** `InMemoryNewsRepository` for tests/local development and `DatastoreNewsRepository` in kind `NewsStory`, namespace `news`. It is separate from practice history, authoring candidates, and published practices. Stories are written under a stable URL-derived identity and never bulk-replaced, so a failed or empty refresh leaves the existing feed intact.
+- **Source and URL safety (`fablit/application/news_sources.py`, `fablit/platform/news_source_fetcher.py`):** an explicit source allowlist, publisher-host matching, public-HTTP(S)-only URLs, DNS/redirect validation, bounded timeouts and response sizes, RSS/Atom parsing, and markup stripping. Source content is untrusted and delimited in the AI prompt; no full article or imagery is stored.
+- **Learner surface (`GET /pulse`):** renders persisted stories newest first with attribution, canonical link, date when reliable, summary, controlled categories, educational relevance, and an optional reflection prompt, plus lightweight category filtering, a calm empty state, and graceful degradation when the news store is unavailable. It never invokes Gemini or fetches a source.
+- **Operator surface (`GET /authoring/pulse`, `POST /authoring/pulse/curate`):** behind SEC-001, on demand only — no GitHub Actions schedule, background job, or separate scheduler. Unauthorised requests are refused before any source retrieval or AI call; overlapping runs are refused, and repeated runs are idempotent.
 
 ---
 
