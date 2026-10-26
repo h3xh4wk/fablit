@@ -432,3 +432,86 @@ def test_published_practice_store_reads_from_environment(
     config = load_config()
 
     assert config.published_practice_store == "datastore"
+
+
+# --- Curated news feed (SPEC-041) --------------------------------------------
+
+
+def test_news_repository_defaults_to_memory() -> None:
+    config = AppConfig.model_validate({})
+
+    assert config.news_repository == "memory"
+    assert [source.name for source in config.news_sources] == [
+        "The Guardian — Fashion",
+        "The Guardian — Art & Design",
+    ]
+    assert config.news_max_items_per_source == 6
+    assert config.news_freshness_days == 14
+    assert config.news_max_summary_chars == 600
+    assert config.news_relevance_threshold == 0.5
+    assert config.news_fetch_timeout == 10.0
+    assert config.news_max_response_bytes == 512_000
+
+
+def test_news_repository_accepts_datastore() -> None:
+    config = AppConfig.model_validate({"news_repository": "  DATASTORE "})
+
+    assert config.news_repository == "datastore"
+
+
+def test_unsupported_news_repository_raises() -> None:
+    with pytest.raises(ValidationError, match="Unsupported news repository"):
+        AppConfig.model_validate({"news_repository": "sqlite"})
+
+
+def test_news_sources_parse_from_json_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "FABLIT_NEWS_SOURCES",
+        json.dumps(
+            [
+                {
+                    "name": "Daily Weave",
+                    "feed_url": "https://news.example.com/rss",
+                    "site_url": "https://news.example.com",
+                }
+            ]
+        ),
+    )
+
+    config = load_config()
+
+    assert len(config.news_sources) == 1
+    assert config.news_sources[0].name == "Daily Weave"
+    assert config.news_sources[0].feed_url == "https://news.example.com/rss"
+    assert config.news_sources[0].publisher_host == "news.example.com"
+
+
+def test_invalid_news_sources_raise_validation_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FABLIT_NEWS_SOURCES", '[{"name": "Bad"}]')
+
+    with pytest.raises(ConfigValidationError, match="news source"):
+        load_config()
+
+
+def test_news_limits_read_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FABLIT_NEWS_MAX_ITEMS_PER_SOURCE", "3")
+    monkeypatch.setenv("FABLIT_NEWS_FRESHNESS_DAYS", "7")
+    monkeypatch.setenv("FABLIT_NEWS_MAX_SUMMARY_CHARS", "500")
+    monkeypatch.setenv("FABLIT_NEWS_RELEVANCE_THRESHOLD", "0.7")
+    monkeypatch.setenv("FABLIT_NEWS_FETCH_TIMEOUT", "4.5")
+    monkeypatch.setenv("FABLIT_NEWS_MAX_RESPONSE_BYTES", "2048")
+
+    config = load_config()
+
+    assert config.news_max_items_per_source == 3
+    assert config.news_freshness_days == 7
+    assert config.news_max_summary_chars == 500
+    assert config.news_relevance_threshold == 0.7
+    assert config.news_fetch_timeout == 4.5
+    assert config.news_max_response_bytes == 2048

@@ -121,3 +121,40 @@ class AuthoringProviderConfigurationError(AuthoringProviderError):
     credentials it needs. Configuration failures are surfaced cleanly rather
     than deferring to a confusing runtime error.
     """
+
+
+class NewsFeedError(ApplicationError):
+    """Base class for news-curation errors (SPEC-041)."""
+
+
+class InvalidNewsSourceError(NewsFeedError):
+    """Raised when a configured news source is invalid (SPEC-041 §4, §10)."""
+
+
+class UnsafeNewsUrlError(NewsFeedError):
+    """Raised when a news link is unsupported or unsafe to fetch (SPEC-041 §8)."""
+
+
+class NewsSourceFetchError(NewsFeedError):
+    """Raised when an approved news source cannot be retrieved (SPEC-041 §5.3).
+
+    The message is safe to log and report: it never carries the response body
+    or other untrusted source payload.
+    """
+
+
+class NewsCurationProviderError(NewsFeedError):
+    """Raised when the news-curation provider cannot produce a usable result.
+
+    SPEC-041 §6.2: provider failures, timeouts, and unusable responses are
+    translated at the provider boundary so the workflow never depends on a
+    vendor SDK's exceptions. A failed candidate is never published.
+    """
+
+
+class NewsCurationInProgressError(NewsFeedError):
+    """Raised when a second refresh starts while one is already running.
+
+    SPEC-041 §5.1: overlapping operator actions are refused rather than run
+    concurrently against the same feed.
+    """

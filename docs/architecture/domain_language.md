@@ -1,9 +1,9 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 1.14.0
+**Version:** 1.15.0
 **Status:** Draft
-**Last Updated:** 2026-10-25
+**Last Updated:** 2026-10-26
 
 ---
 
@@ -1100,6 +1100,48 @@ hidden from discovery; completed history preserved
 | PUB-006 | Publication state and provenance are kept behind the published practice store port; a storage failure is reported as a failure and never leaves misleading partial state. |
 | PUB-007 | Withdrawing a published practice removes it from learner discovery only: completed history stays readable, in-flight practice can finish, and the publication record is retained for traceability. |
 | PUB-008 | Learner-facing routes expose only published practice content — never authoring candidates, provenance, reviewer decisions, validation diagnostics, or provider details. |
+
+## Curated News Story (SPEC-041)
+
+A **Curated News Story** is a current fashion, textiles, sustainability, Indian
+craft, design, or visual-culture story that has passed source, freshness,
+safety, relevance, and grounding checks and is available in the learner-facing
+Fashion & Design Pulse. It is an **application-layer concept**, not part of the
+learning domain: it carries no learner identity, progress, evaluation, or
+mastery meaning, and it never affects practice history.
+
+A story retains its publisher attribution, canonical link, publication date
+when the source supplies one, retrieval and curation timestamps, a concise
+summary, controlled categories, an educational-relevance note, an optional
+reflection prompt, and curation provider/model provenance.
+
+```
+Approved source (explicit allowlist)
+        ↓ bounded fetch and normalization
+Untrusted source item
+        ↓ allowlisting · URL safety · freshness · deduplication
+Provider-neutral curation request
+        ↓ AI curation behind a news-specific port
+Untrusted structured result
+        ↓ schema · category · relevance · grounding · language checks
+Curated News Story
+        ↓ news-specific repository port
+Persisted feed → learner Pulse (no live AI or network)
+```
+
+### Rules
+
+| Rule | Description |
+|------|-------------|
+| NEWS-001 | Only stories from an explicit allowlist of approved sources may be curated; a story link must belong to the publisher host of the source that supplied it. |
+| NEWS-002 | Only absolute, public HTTP(S) links are accepted; credentials, private/loopback/link-local destinations, non-default ports, and unsafe redirects are refused. |
+| NEWS-003 | Retrieval and curation are bounded: per-source item counts, response size, timeouts, field lengths, and summary length all have explicit limits. |
+| NEWS-004 | Stories without a reliable publication date, or outside the freshness window, are rejected; Fablit never invents a date. |
+| NEWS-005 | A story is deduplicated by canonical URL against the current batch and persisted stories, so repeated refreshes are idempotent. |
+| NEWS-006 | AI output is untrusted until it passes schema, controlled-category, relevance-threshold, grounding-term, and learner-language checks; failed candidates are never published. |
+| NEWS-007 | News curation is separate from practice authoring: it has its own provider port, request/result types, persistence boundary, and publication decision. |
+| NEWS-008 | A failed, partial, or empty refresh never clears previously published stories. The learner feed reads persisted stories only and remains usable without live AI or network access. |
+| NEWS-009 | Learner-facing story copy stays qualitative and attributed; full articles, large source excerpts, and unlicensed imagery are not stored or rendered. |
 
 ## Learner Practice Application Flow (SPEC-012)
 

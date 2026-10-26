@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Fashion &amp; Design Pulse — Authoring{% endblock %}
+{% block content %}
+<article class="intention">
+  {% include "_authoring_nav.html" %}
+
+  <h1 class="display">Fashion &amp; Design Pulse</h1>
+  <p class="lede">
+    Curate a weekly batch of current fashion and design stories for all
+    learners. This runs only when you ask for it — there is no schedule.
+  </p>
+  <p class="authoring__intro">
+    Approved sources are fetched, checked, and curated by AI. A story is
+    published automatically only when every source, freshness, safety,
+    relevance, and grounding check passes. Existing stories stay visible if a
+    refresh fails or finds nothing.
+  </p>
+
+  {% if error %}
+  <div class="validation-panel validation-panel--error" role="alert">
+    <p>{{ error }}</p>
+  </div>
+  {% endif %}
+
+  <section class="authoring-section" aria-labelledby="curate-heading">
+    <h2 id="curate-heading" class="subheading authoring-section__heading">Curate this week's news</h2>
+
+    {% if not has_sources %}
+    <div class="validation-panel validation-panel--caution" role="status">
+      <p>
+        No approved sources are configured, so there is nothing to fetch.
+        Add <code>FABLIT_NEWS_SOURCES</code> to the deployment configuration
+        first.
+      </p>
+    </div>
+    {% endif %}
+    {% if not provider_configured %}
+    <div class="validation-panel validation-panel--caution" role="status">
+      <p>
+        AI curation is not configured. Set the server-side
+        <code>FABLIT_AI_PROVIDER_API_KEY</code> before refreshing the Pulse.
+      </p>
+    </div>
+    {% endif %}
+
+    <p class="authoring-section__intro">
+      {{ sources|length }} approved source{{ "" if sources|length == 1 else "s" }}.
+      A refresh can take a moment; repeated runs do not duplicate stories.
+    </p>
+
+    <ul class="queue">
+      {% for source in sources %}
+      <li class="queue__item">
+        <span class="queue__link">{{ source.name }}</span>
+        <div class="queue__meta">
+          <a href="{{ source.publisher_url }}"
+             target="_blank" rel="noopener noreferrer nofollow">{{ source.publisher_url }}</a>
+        </div>
+      </li>
+      {% else %}
+      <li class="queue__empty">No approved sources configured.</li>
+      {% endfor %}
+    </ul>
+
+    <form method="post" action="/authoring/pulse/curate"
+          hx-post="/authoring/pulse/curate"
+          hx-target="#main" hx-select="#main" hx-swap="outerHTML"
+          hx-sync="this:drop" hx-disabled-elt="find button">
+      <p class="form-actions">
+        <button type="submit" class="button"
+                {% if not has_sources or not provider_configured %}disabled{% endif %}>
+          <span class="authoring-generate__idle">Curate this week's news <span aria-hidden="true">→</span></span>
+          <span class="authoring-generate__progress">Curating the news…</span>
+        </button>
+        <span class="htmx-indicator loading-indicator" role="status" aria-live="polite">
+          Fetching approved sources and curating eligible stories. This can take a moment.
+        </span>
+      </p>
+    </form>
+  </section>
+
+  {% if batch %}
+  <section class="authoring-section" aria-labelledby="batch-heading">
+    <h2 id="batch-heading" class="subheading authoring-section__heading">Last refresh</h2>
+    <div class="authoring-outcome" role="status">
+      <p>{{ batch.summary_line }}</p>
+      <p class="form-hint">
+        {{ batch.sources_configured }} source{{ "" if batch.sources_configured == 1 else "s" }}
+        checked. Published stories are visible on the
+        <a href="/pulse">learner Pulse</a>.
+      </p>
+    </div>
+
+    <dl class="definition-list">
+      <dt>Fetched</dt><dd>{{ batch.fetched }}</dd>
+      <dt>Already known</dt><dd>{{ batch.deduplicated }}</dd>
+      <dt>Published</dt><dd>{{ batch.published }}</dd>
+      <dt>Rejected</dt><dd>{{ batch.rejected }}</dd>
+      <dt>Failed</dt><dd>{{ batch.failed }}</dd>
+    </dl>
+
+    {% if batch.source_failures %}
+    <h3 class="subheading">Sources that could not be read</h3>
+    <ul>
+      {% for failure in batch.source_failures %}
+      <li>{{ failure.source_name }} — {{ failure.reason }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if batch.rejections %}
+    <h3 class="subheading">Not published</h3>
+    <ul>
+      {% for item in batch.rejections %}
+      <li>
+        <strong>{{ item.title }}</strong>
+        <span class="form-hint">({{ item.source_name }})</span> — {{ item.reason }}
+        {% if item.url %}<a href="{{ item.url }}" target="_blank" rel="noopener noreferrer nofollow">source</a>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if batch.failures %}
+    <h3 class="subheading">Could not be completed</h3>
+    <ul>
+      {% for item in batch.failures %}
+      <li>
+        <strong>{{ item.title }}</strong>
+        <span class="form-hint">({{ item.source_name }})</span> — {{ item.reason }}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+  {% endif %}
+</article>
+{% endblock %}
