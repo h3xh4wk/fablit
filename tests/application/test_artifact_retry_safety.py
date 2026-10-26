@@ -240,7 +240,7 @@ def test_pending_artifact_survives_a_failed_durable_write_and_is_retryable(
 def test_pending_artifact_is_discarded_when_reflection_is_skipped(
     tmp_path: Path,
 ) -> None:
-    """Skipping the reflection must not leave the sketch pending or stored."""
+    """Skipping the reflection must not leave the sketch pending."""
     repository = InMemoryPracticeHistoryRepository()
     application = _application(tmp_path, repository=repository)
     activity_id = _reflection_activity_id_from_store(application)
@@ -250,7 +250,8 @@ def test_pending_artifact_is_discarded_when_reflection_is_skipped(
     application.submit_reflection(None)
 
     assert application._store.pending_artifact(activity_id) is None
-    assert repository.list_completions(LEARNER) == ()
+    # SPEC-159: completion is persisted regardless of reflection skip
+    assert len(repository.list_completions(LEARNER)) == 1
 
 
 def _demo_activity(title: str, activity_id: UUID | None = None) -> _DemoActivity:

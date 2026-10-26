@@ -40,6 +40,9 @@ class StoredPracticeCompletion:
     SPEC-033: the artifact field carries only the artifact reference, not the
     private binary payload. The bytes live behind the artifact-storage
     boundary.
+
+    SPEC-159: reflection is optional — a completion may be persisted when
+    the optional post-practice reflection is skipped or added later.
     """
 
     completion_id: UUID  # Stable identity of this completion record
@@ -51,7 +54,7 @@ class StoredPracticeCompletion:
     submission: Submission
     evaluation: Evaluation
     feedback: Feedback
-    reflection: Reflection
+    reflection: Reflection | None
     stimulus: StimulusInstance | None = None  # SPEC-015 stimulus preservation
     artifact: ArtifactRef | None = None  # SPEC-033 private sketchbook reference
 
@@ -86,6 +89,10 @@ class PracticeHistoryRepository(ABC):
     SPEC-033: the artifact parameter is an artifact reference, not the
     private binary payload. The bytes are stored by the artifact-storage
     boundary.
+
+    SPEC-159: completion persistence is independent of reflection. A
+    reflection may be absent at persistence time and attached later to an
+    existing completion (idempotent, no duplicate).
     """
 
     @abstractmethod
@@ -97,16 +104,18 @@ class PracticeHistoryRepository(ABC):
         submission: Submission,
         evaluation: Evaluation,
         feedback: Feedback,
-        reflection: Reflection,
+        reflection: Reflection | None,
         stimulus: StimulusInstance | None,
         artifact: ArtifactRef | None = None,
+        completion_id: UUID | None = None,
     ) -> StoredPracticeCompletion:
         """Persist a completed practice journey durably.
 
         SPEC-021 §14: completion persistence must be idempotent/retry-safe and
         must not silently report durable completion when the write fails.
-        Durable history exists only after a saved Reflection (PHR-001):
-        SPEC-026-skipped reflections complete the practice in memory only.
+        SPEC-159: completion is persisted regardless of whether a reflection
+        was saved or skipped; reflection may be added later to the same
+        completion.
 
         Args:
             learner_id: The learner whose practice is being completed.
@@ -116,10 +125,13 @@ class PracticeHistoryRepository(ABC):
                 ``pre_practice_intention`` (SPEC-026) is persisted with it.
             evaluation: The evaluation result (Evaluation domain object).
             feedback: The feedback derived from the evaluation (Feedback).
-            reflection: The learner's reflection (Reflection domain object).
+            reflection: The learner's reflection (Reflection domain object), or
+                None if skipped/absent.
             stimulus: The resolved stimulus shown during practice, if any.
             artifact: The private sketchbook reference uploaded for a
                 reflection practice, if present.
+            completion_id: Stable completion identity for idempotency/retry
+                and for attaching a later reflection to the same completion.
 
         Returns:
             StoredPracticeCompletion: The persisted record with stable identity.

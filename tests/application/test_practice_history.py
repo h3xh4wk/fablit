@@ -363,10 +363,9 @@ def test_completion_persisted_only_after_successful_reflection() -> None:
     assert len(repository.list_completions(LEARNER)) == 1
 
 
-def test_no_history_record_when_reflection_is_skipped() -> None:
-    """SPEC-026 with PHR-001: durable history exists only after a saved
-    Reflection. A skipped reflection completes the practice in memory but
-    never creates a durable history record."""
+def test_history_record_when_reflection_is_skipped() -> None:
+    """SPEC-159: durable history exists regardless of whether reflection
+    is saved or skipped."""
     repository = InMemoryPracticeHistoryRepository()
     application = make_history_application(repository=repository)
     activity_id = application.get_dashboard().activities[0].id
@@ -374,7 +373,11 @@ def test_no_history_record_when_reflection_is_skipped() -> None:
     application.submit_response(activity_id, "A response.")
     application.submit_reflection(None)
 
-    assert repository.list_completions(LEARNER) == ()
+    history = repository.list_completions(LEARNER)
+    assert len(history) == 1
+    completion = repository.get_completion(LEARNER, history[0].completion_id)
+    assert completion is not None
+    assert completion.reflection is None
 
 
 # --- SPEC-021 §8/§9: history and review through the application ---------------

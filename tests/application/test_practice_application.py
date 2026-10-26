@@ -461,7 +461,7 @@ def test_submit_reflection_still_rejects_non_string_content() -> None:
     assert store.recorded_completions() == ()
 
 
-def test_dashboard_marks_an_activity_practised_only_after_reflection() -> None:
+def test_dashboard_marks_an_activity_practised_after_completion() -> None:
     application, store = make_application()
     activity_id = first_activity_id(application)
 
@@ -494,7 +494,7 @@ def test_repeated_practice_records_each_completion_and_remains_available() -> No
     assert application.get_dashboard().activities[0].has_completed_practice
 
 
-def test_get_completion_requires_a_saved_reflection() -> None:
+def test_get_completion_after_completion_flow() -> None:
     application, _ = make_application()
 
     with pytest.raises(CompletionNotFoundError):

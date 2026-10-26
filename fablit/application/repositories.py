@@ -16,6 +16,7 @@ bytes live behind the artifact-storage boundary.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fablit.application.persistence import (
@@ -39,6 +40,9 @@ class InMemoryPracticeHistoryRepository(PracticeHistoryRepository):
     tests independent of production GCP credentials.
 
     SPEC-033: the artifact is persisted as a reference only.
+
+    SPEC-159: completion identity is independent of reflection; reflection
+    may be absent or attached later to an existing completion.
     """
 
     def __init__(self) -> None:
@@ -56,59 +60,81 @@ class InMemoryPracticeHistoryRepository(PracticeHistoryRepository):
         submission: Submission,
         evaluation: Evaluation,
         feedback: Feedback,
-        reflection: Reflection,
+        reflection: Reflection | None,
         stimulus: StimulusInstance | None,
         artifact: ArtifactRef | None = None,
+        completion_id: UUID | None = None,
     ) -> StoredPracticeCompletion:
         """Persist a completed practice journey in memory.
 
         SPEC-021 §14: this in-memory implementation is not crash-safe, but
         the interface supports idempotency at the application level via
-        stable identity (the reflection ID can serve as stable completion
-        identity).
+        stable identity.
 
-        Args:
-            learner_id: The learner whose practice is being completed.
-            activity_id: The activity that was practiced.
-            activity_title: The activity's display title.
-            submission: The learner's response.
-            evaluation: The evaluation result.
-            feedback: The feedback.
-            reflection: The learner's reflection.
-            stimulus: The resolved stimulus, if any.
-            artifact: The private sketchbook reference, if present.
-
-        Returns:
-            StoredPracticeCompletion: The persisted record.
-
-        Raises:
-            PersistenceError: Never in this test implementation, but kept
-                for interface compatibility.
+        SPEC-159: if a reflection is added later, it is attached to the
+        existing completion (by completion_id) without creating a duplicate.
         """
-        # Use reflection_id as the stable completion identity.
-        # SPEC-021 §10: each completed practice must remain independently
-        # reviewable. Repeated practice creates separate history records.
-        completion_id = reflection.id
-        # The completion timestamp is the moment the learner's Reflection was
-        # recorded — deterministic and identical to the Datastore adapter.
-        completed_at = reflection.created_at
+        # Use provided completion_id for idempotency/retry and for attaching
+        # reflections later; fall back to reflection.id for backward compat.
+        if completion_id is None:
+            if reflection is not None:
+                completion_id = reflection.id
+            else:
+                # Should not happen with new API, but be defensive
+                from uuid import uuid4
+
+                completion_id = uuid4()
+
+        key = (learner_id, completion_id)
+        existing = self._completions.get(key)
+
+        if existing is not None:
+            completed_at = existing.completed_at
+            # Attach reflection later if provided and not already present
+            if reflection is not None:
+                reflection_to_store = reflection
+            else:
+                reflection_to_store = existing.reflection
+            activity_title_to_store = activity_title or existing.activity_title
+            artifact_to_store = artifact if artifact is not None else existing.artifact
+            submission_to_store = submission or existing.submission
+            evaluation_to_store = evaluation or existing.evaluation
+            feedback_to_store = feedback or existing.feedback
+            stimulus_to_store = stimulus if stimulus is not None else existing.stimulus
+        else:
+            if reflection is not None:
+                completed_at = reflection.created_at
+            else:
+                # Use feedback/evaluation/submission timestamps as fallback
+                completed_at = (
+                    feedback.created_at
+                    if hasattr(feedback, "created_at")
+                    else datetime.now(UTC)
+                )
+            reflection_to_store = reflection
+            activity_title_to_store = activity_title
+            artifact_to_store = artifact
+            submission_to_store = submission
+            evaluation_to_store = evaluation
+            feedback_to_store = feedback
+            stimulus_to_store = stimulus
 
         completion = StoredPracticeCompletion(
             completion_id=completion_id,
             learner_id=learner_id,
             activity_id=activity_id,
-            activity_title=activity_title,
+            activity_title=activity_title_to_store,
             completed_at=completed_at,
-            submission=submission,
-            evaluation=evaluation,
-            feedback=feedback,
-            reflection=reflection,
-            stimulus=stimulus,
-            artifact=artifact,
+            submission=submission_to_store,
+            evaluation=evaluation_to_store,
+            feedback=feedback_to_store,
+            reflection=reflection_to_store,
+            stimulus=stimulus_to_store,
+            artifact=artifact_to_store,
         )
 
         # Store the completion
-        self._completions[(learner_id, completion_id)] = completion
+        self._completions[key] = completion
 
         # Track the completion in the learner's history list
         if learner_id not in self._learner_completions:

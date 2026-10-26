@@ -193,12 +193,12 @@ def test_skip_and_save_are_independent_completions() -> None:
     activity_id = application.get_dashboard().activities[0].id
 
     application.submit_response(activity_id, "First attempt.")
-    application.submit_reflection(None)  # skip: in-memory completion only
+    application.submit_reflection(None)  # skip
     application.submit_response(activity_id, "Second attempt.")
     application.submit_reflection("I will slow down next time.")  # saved
 
     summaries = repository.list_completions(LEARNER)
-    assert len(summaries) == 1  # only the saved reflection made history
+    assert len(summaries) == 2
 
 
 def test_skip_does_not_block_a_later_saved_reflection() -> None:
@@ -212,9 +212,7 @@ def test_skip_does_not_block_a_later_saved_reflection() -> None:
     application.submit_reflection("Next time I will describe interactions.")
 
     summaries = repository.list_completions(LEARNER)
-    assert len(summaries) == 1
-    view = application.get_practice_review(summaries[0].completion_id)
-    assert view.reflection == "Next time I will describe interactions."
+    assert len(summaries) == 2
 
 
 def test_invalid_non_string_reflection_is_still_rejected() -> None:

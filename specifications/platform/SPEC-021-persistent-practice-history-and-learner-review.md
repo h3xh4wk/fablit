@@ -201,14 +201,14 @@ Evaluation
       ↓
 Feedback
       ↓
-Reflection
+Reflection (optional)
       ↓
 Practice Completion
 ```
 
 A practice must not appear in completed-practice history merely because a response was submitted or evaluated.
 
-A completion becomes part of durable learner history only after the existing successful reflection/completion flow has succeeded.
+A completion becomes part of durable learner history when the practice completion flow succeeds, regardless of whether an optional reflection was saved or skipped. A skipped or blank reflection produces a durable, reviewable completion without a reflection; a reflection added later may be attached to the existing completion.
 
 Persistence failures must not silently create a false impression that completion was durably recorded.
 
@@ -447,12 +447,12 @@ SPEC-021 extends the journey after completion. It must not alter the meaning of 
 ### AC-021-03 — Completion Semantics
 
 **Given** a learner has submitted and evaluated a response
-**When** reflection has not successfully completed
-**Then** the practice does not appear as completed history.
+**When** the practice completion flow succeeds (with or without a reflection)
+**Then** the practice may appear as completed history in line with the completion boundary.
 
 ### AC-021-04 — Durable Completion
 
-**Given** a learner successfully completes reflection
+**Given** a learner completes a practice (with or without a reflection)
 **When** the completion persistence succeeds
 **Then** the completed practice can be retrieved after the in-memory application state is no longer available.
 
