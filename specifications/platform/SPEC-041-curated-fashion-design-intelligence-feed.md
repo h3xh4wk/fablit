@@ -1,7 +1,7 @@
 # SPEC-041: Curated Fashion & Design Intelligence Feed
 
-**Status:** Proposed  
-**Owner:** Fablit product  
+**Status:** Proposed
+**Owner:** Fablit product
 **Related architecture:** ARCH-001, SEC-001, SPEC-032, SPEC-035, SPEC-040
 
 ## 1. Overview and goal

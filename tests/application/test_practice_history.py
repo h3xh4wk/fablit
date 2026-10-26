@@ -160,6 +160,7 @@ def test_in_memory_repository_round_trips_a_completion() -> None:
     assert retrieved.submission.response == submission.response
     assert retrieved.evaluation.id == evaluation.id
     assert retrieved.feedback.content == feedback.content
+    assert retrieved.reflection is not None
     assert retrieved.reflection.content == reflection.content
     assert retrieved.stimulus is not None
     assert retrieved.stimulus.image_url == stimulus.image_url
@@ -363,10 +364,9 @@ def test_completion_persisted_only_after_successful_reflection() -> None:
     assert len(repository.list_completions(LEARNER)) == 1
 
 
-def test_no_history_record_when_reflection_is_skipped() -> None:
-    """SPEC-026 with PHR-001: durable history exists only after a saved
-    Reflection. A skipped reflection completes the practice in memory but
-    never creates a durable history record."""
+def test_history_record_when_reflection_is_skipped() -> None:
+    """SPEC-159: durable history exists regardless of whether reflection
+    is saved or skipped."""
     repository = InMemoryPracticeHistoryRepository()
     application = make_history_application(repository=repository)
     activity_id = application.get_dashboard().activities[0].id
@@ -374,7 +374,11 @@ def test_no_history_record_when_reflection_is_skipped() -> None:
     application.submit_response(activity_id, "A response.")
     application.submit_reflection(None)
 
-    assert repository.list_completions(LEARNER) == ()
+    history = repository.list_completions(LEARNER)
+    assert len(history) == 1
+    completion = repository.get_completion(LEARNER, history[0].completion_id)
+    assert completion is not None
+    assert completion.reflection is None
 
 
 # --- SPEC-021 §8/§9: history and review through the application ---------------
@@ -528,9 +532,10 @@ class FailingRepository(InMemoryPracticeHistoryRepository):
         submission: Submission,
         evaluation: Evaluation,
         feedback: Feedback,
-        reflection: Reflection,
+        reflection: Reflection | None,
         stimulus: StimulusInstance | None,
         artifact: ArtifactRef | None = None,
+        completion_id: UUID | None = None,
     ) -> StoredPracticeCompletion:
         if self.fail_next_save:
             raise PersistenceError("Failed to save completed practice.")
@@ -544,6 +549,7 @@ class FailingRepository(InMemoryPracticeHistoryRepository):
             reflection=reflection,
             stimulus=stimulus,
             artifact=artifact,
+            completion_id=completion_id,
         )
 
 

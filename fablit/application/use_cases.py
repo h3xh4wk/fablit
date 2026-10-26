@@ -476,18 +476,17 @@ class PracticeApplication:
         """Save the learner's Reflection and return the completion result.
 
         SPEC-026 §2.2: the reflection is optional. ``None`` (or a blank
-        string — accepted gracefully) skips the reflection: the practice is
-        still completed in the journey store, no ``Reflection`` domain record
-        is created, and nothing is written to durable history. SPEC-021's
-        boundary is unchanged: durable history records exist only after a
-        saved Reflection (PHR-001), so a skipped reflection completes the
-        practice in memory without creating a history record.
+        string — accepted gracefully) skips the reflection.
 
-        SPEC-021: after a saved reflection, the completion is persisted
-        durably through the history repository. If persistence fails, an
-        explicit error is raised and the learner is not falsely told the
-        completion was recorded (SPEC-021 §14).
+        SPEC-159: completion is persisted to durable history regardless of
+        whether the reflection is saved or skipped. A reflection may be
+        added later to the existing completion.
+
+        SPEC-021: if persistence fails, an explicit error is raised and the
+        learner is not falsely told the completion was recorded.
         """
+        from uuid import uuid4
+
         feedback = self._store.current_feedback()
         if isinstance(content, str):
             # SPEC-026 §2.2: blank input is an empty submission — accepted
@@ -498,20 +497,151 @@ class PracticeApplication:
                 "Please enter a reflection before saving."
             )
         activity = self._activity_for_feedback(feedback)
-        if content is None:
-            # SPEC-026 §2.2: skipping the reflection writes nothing to durable
-            # history, so the sketch cannot be persisted either. Discard it
-            # rather than leaving private bytes behind with no record.
-            self._store.clear_pending_artifact(activity.activity.id)
-            self._store.save_completion(
-                PracticeCompletion(
+        evaluation = self._store.get_evaluation(feedback.evaluation_id)
+        submission = self._store.get_submission(evaluation.submission_id)
+        stimulus = self._store.current_stimulus(activity.activity.id)
+
+        reflection = None
+        if content is not None:
+            reflection = Reflection(
+                feedback_id=feedback.id,
+                content=content,
+                created_at=self._clock(),
+            )
+            self._store.save_reflection(reflection)
+
+        # Determine stable completion_id for idempotency and attaching
+        # reflections later
+        existing_completions = self._store.recorded_completions()
+        completion_id = None
+        # Only attach reflection to an existing completion if it was created
+        # in this same attempt context without reflection
+        if reflection is not None:
+            for c in reversed(existing_completions):
+                if (
+                    c.activity_id == activity.activity.id
+                    and getattr(c, "reflection_id", None) is None
+                ):
+                    completion_id = getattr(c, "completion_id", None) or reflection.id
+                if completion_id is None:
+                    completion_id = reflection.id if reflection is not None else uuid4()
+
+        pending_artifact = self._store.pending_artifact(activity.activity.id)
+        artifact_ref = None
+        if pending_artifact is not None and self._history_repository is not None:
+            artifact_ref = pending_artifact.as_ref()
+        elif pending_artifact is not None and self._history_repository is None:
+            artifact_ref = None  # no durable history, discard
+        if pending_artifact is not None and artifact_ref is not None:
+            self._artifact_storage.save(artifact_ref, pending_artifact.data)
+
+        completed_at = (
+            reflection.created_at if reflection is not None else self._clock()
+        )
+        self._store.save_completion(
+            PracticeCompletion(
+                learner_id=self._store.learner_id,
+                activity_id=activity.activity.id,
+                reflection_id=reflection.id if reflection is not None else None,
+                completed_at=completed_at,
+                artifact=artifact_ref,
+            )
+        )
+
+        if self._history_repository is None:
+            if content is None:
+                self._store.clear_pending_artifact(activity.activity.id)
+                logger.info(
+                    "practice completed without reflection",
+                    extra={
+                        "learner_id": str(self._store.learner_id),
+                        "activity_id": str(activity.activity.id),
+                    },
+                )
+            else:
+                self._store.clear_pending_artifact(activity.activity.id)
+            return self._completion_view()
+
+        artifact_persisted = True
+        try:
+            try:
+                self._history_repository.save_completion(
                     learner_id=self._store.learner_id,
                     activity_id=activity.activity.id,
-                    reflection_id=None,
-                    completed_at=self._clock(),
-                    artifact=None,
+                    activity_title=activity.title,
+                    submission=submission,
+                    evaluation=evaluation,
+                    feedback=feedback,
+                    reflection=reflection,
+                    stimulus=stimulus,
+                    artifact=artifact_ref,
+                    completion_id=completion_id,
                 )
+            except TypeError as exc:
+                if "artifact" in str(exc) or "completion_id" in str(exc):
+                    # Try without new params for backward compat
+                    try:
+                        self._history_repository.save_completion(
+                            learner_id=self._store.learner_id,
+                            activity_id=activity.activity.id,
+                            activity_title=activity.title,
+                            submission=submission,
+                            evaluation=evaluation,
+                            feedback=feedback,
+                            reflection=reflection,
+                            stimulus=stimulus,
+                            artifact=artifact_ref,
+                        )
+                    except TypeError as exc2:
+                        if "artifact" in str(exc2):
+                            self._discard_staged_artifact(artifact_ref)
+                            artifact_persisted = False
+                        else:
+                            self._discard_staged_artifact(artifact_ref)
+                            raise
+                else:
+                    self._discard_staged_artifact(artifact_ref)
+                    raise
+        except Exception:
+            self._discard_staged_artifact(artifact_ref)
+            raise
+
+        if not artifact_persisted:
+            try:
+                self._history_repository.save_completion(
+                    learner_id=self._store.learner_id,
+                    activity_id=activity.activity.id,
+                    activity_title=activity.title,
+                    submission=submission,
+                    evaluation=evaluation,
+                    feedback=feedback,
+                    reflection=reflection,
+                    stimulus=stimulus,
+                    completion_id=completion_id,
+                )
+            except TypeError:
+                self._history_repository.save_completion(
+                    learner_id=self._store.learner_id,
+                    activity_id=activity.activity.id,
+                    activity_title=activity.title,
+                    submission=submission,
+                    evaluation=evaluation,
+                    feedback=feedback,
+                    reflection=reflection,
+                    stimulus=stimulus,
+                )
+
+        self._store.clear_pending_artifact(activity.activity.id)
+        if reflection is not None:
+            logger.info(
+                "practice completion persisted",
+                extra={
+                    "learner_id": str(self._store.learner_id),
+                    "activity_id": str(activity.activity.id),
+                    "reflection_id": str(reflection.id),
+                },
             )
+        else:
             logger.info(
                 "practice completed without reflection",
                 extra={
@@ -519,100 +649,6 @@ class PracticeApplication:
                     "activity_id": str(activity.activity.id),
                 },
             )
-            return self._completion_view()
-        reflection = Reflection(
-            feedback_id=feedback.id,
-            content=content,
-            created_at=self._clock(),
-        )
-        self._store.save_reflection(reflection)
-
-        # SPEC-033 / issue #113: stage the private bytes only when they can
-        # become part of durable history, and keep the pending artifact pending
-        # until the write goes through so a retry can still use the learner's
-        # sketch. Storage is keyed by the artifact identity, so a retry
-        # re-stages the same object rather than duplicating it.
-        pending_artifact = self._store.pending_artifact(activity.activity.id)
-        artifact_ref = (
-            pending_artifact.as_ref()
-            if pending_artifact is not None and self._history_repository is not None
-            else None
-        )
-        if pending_artifact is not None and artifact_ref is not None:
-            self._artifact_storage.save(artifact_ref, pending_artifact.data)
-
-        self._store.save_completion(
-            PracticeCompletion(
-                learner_id=self._store.learner_id,
-                activity_id=activity.activity.id,
-                reflection_id=reflection.id,
-                completed_at=self._clock(),
-                artifact=artifact_ref,
-            )
-        )
-
-        if self._history_repository is None:
-            # No durable history: the sketch has nowhere to live, so do not
-            # leave it pending for a completion that will never be stored.
-            self._store.clear_pending_artifact(activity.activity.id)
-            return self._completion_view()
-
-        # SPEC-021: persist the completion durably. Older repositories may not
-        # yet accept the optional sketch artifact parameter; keep this
-        # compatibility path for those implementations.
-        evaluation = self._store.get_evaluation(feedback.evaluation_id)
-        submission = self._store.get_submission(evaluation.submission_id)
-        stimulus = self._store.current_stimulus(activity.activity.id)
-        artifact_persisted = True
-        try:
-            self._history_repository.save_completion(
-                learner_id=self._store.learner_id,
-                activity_id=activity.activity.id,
-                activity_title=activity.title,
-                submission=submission,
-                evaluation=evaluation,
-                feedback=feedback,
-                reflection=reflection,
-                stimulus=stimulus,
-                artifact=artifact_ref,
-            )
-        except TypeError as exc:
-            if "artifact" not in str(exc):
-                self._discard_staged_artifact(artifact_ref)
-                raise
-            # The repository cannot persist the reference at all, so the
-            # staged bytes must not be left orphaned.
-            self._discard_staged_artifact(artifact_ref)
-            artifact_persisted = False
-        except Exception:
-            # Issue #113: a failed durable write must not strand or lose the
-            # learner's sketch. Roll the staged bytes back (the retry re-stages
-            # the same pending artifact under the same identity) and re-raise so
-            # the failure stays explicit and is never reported as durable.
-            self._discard_staged_artifact(artifact_ref)
-            raise
-
-        if not artifact_persisted:
-            self._history_repository.save_completion(
-                learner_id=self._store.learner_id,
-                activity_id=activity.activity.id,
-                activity_title=activity.title,
-                submission=submission,
-                evaluation=evaluation,
-                feedback=feedback,
-                reflection=reflection,
-                stimulus=stimulus,
-            )
-
-        self._store.clear_pending_artifact(activity.activity.id)
-        logger.info(
-            "practice completion persisted",
-            extra={
-                "learner_id": str(self._store.learner_id),
-                "activity_id": str(activity.activity.id),
-                "reflection_id": str(reflection.id),
-            },
-        )
 
         return self._completion_view()
 
@@ -620,10 +656,8 @@ class PracticeApplication:
         """Return the completion confirmation once the journey is complete.
 
         SPEC-026 §2.2: completion no longer requires a saved Reflection —
-        skipping the reflection completes the practice too. The acknowledgement
-        still requires a recorded practice completion (in-memory journey
-        state), preserving the SPEC-018 boundary that a submitted or
-        evaluated response alone never completes a journey.
+        skipping the reflection completes the practice too.
+        SPEC-159: completion is created regardless of reflection.
         """
         if not self._store.recorded_completions():
             raise CompletionNotFoundError("No completed practice yet.")
@@ -708,6 +742,9 @@ class PracticeApplication:
                 image_url=f"/history/{completion.completion_id}/artifact",
             )
 
+        reflection_content = (
+            completion.reflection.content if completion.reflection is not None else ""
+        )
         return PracticeReviewView(
             activity_title=completion.activity_title,
             activity_id=completion.activity_id,
@@ -718,7 +755,7 @@ class PracticeApplication:
             improvements=improvements,
             next_steps=next_steps,
             feedback=completion.feedback.content,
-            reflection=completion.reflection.content,
+            reflection=reflection_content,
             completion_id=completion.completion_id,
             artifact=artifact,
             pre_practice_intention=completion.submission.pre_practice_intention,

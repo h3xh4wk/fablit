@@ -807,7 +807,7 @@ redesigning the stored evidence.
 
 | Rule | Description |
 |------|-------------|
-| PHR-001 | A Practice History Record exists only after a successful Reflection/Completion (SPEC-018 boundary unchanged). |
+| PHR-001 | A Practice History Record exists when the practice completion flow succeeds regardless of whether reflection is saved or skipped (SPEC-018/SPEC-159); a reflection may be absent or attached later. |
 | PHR-002 | A Practice History Record retains the evidence required for review: activity, stimulus, response, evaluation, feedback, reflection, completion time. |
 | PHR-003 | A Practice History Record has a stable identity distinct from the activity identity; repeated practice creates separate records. |
 | PHR-004 | A reviewed practice shows the stimulus originally resolved for that attempt, never a newly resolved one. |

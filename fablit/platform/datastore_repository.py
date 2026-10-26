@@ -86,60 +86,77 @@ class DatastorePracticeHistoryRepository(PracticeHistoryRepository):
         submission: Submission,
         evaluation: Evaluation,
         feedback: Feedback,
-        reflection: Reflection,
+        reflection: Reflection | None,
         stimulus: StimulusInstance | None,
         artifact: ArtifactRef | None = None,
+        completion_id: UUID | None = None,
     ) -> StoredPracticeCompletion:
         """Persist a completed practice journey to Datastore.
 
         SPEC-021 §14: completion writes are idempotent via stable completion
-        identity (reflection ID). A retry does not unintentionally create
-        duplicate history for the same completion.
+        identity. A retry does not unintentionally create duplicate history
+        for the same completion.
 
-        Args:
-            learner_id: The learner whose practice is being completed.
-            activity_id: The activity that was practiced.
-            activity_title: The activity's display title.
-            submission: The learner's response.
-            evaluation: The evaluation result.
-            feedback: The feedback.
-            reflection: The learner's reflection.
-            stimulus: The resolved stimulus, if any.
-
-        Returns:
-            StoredPracticeCompletion: The persisted record.
-
-        Raises:
-            PersistenceError: If the Datastore write fails.
+        SPEC-159: reflection may be absent or attached later to the same
+        completion.
         """
-        completion_id = reflection.id
-        # The completion timestamp is the moment the learner's Reflection was
-        # recorded — deterministic, and consistent with the in-memory journey
-        # record for the same completion.
-        completed_at = reflection.created_at
+        if completion_id is None:
+            if reflection is not None:
+                completion_id = reflection.id
+            else:
+                from uuid import uuid4
+
+                completion_id = uuid4()
 
         try:
-            # Use the reflection ID as the stable completion identity.
-            # This makes the write idempotent: retrying with the same completion_id
-            # will overwrite the previous attempt with identical data.
             key = self._client.key(
                 "PracticeCompletion",
                 str(completion_id),
                 namespace=f"learner_{learner_id}",
             )
 
+            # Check if exists for update (attach reflection later)
+            existing_entity = self._client.get(key)
+            if existing_entity is not None:
+                completed_at = existing_entity.get("completed_at")
+                if reflection is not None:
+                    reflection_to_store = reflection
+                    completed_at = (
+                        reflection.created_at
+                    )  # update timestamp if reflection added
+                else:
+                    reflection_to_store = None
+                    if existing_entity.get("reflection"):
+                        reflection_to_store = self._deserialize_reflection(
+                            existing_entity["reflection"]
+                        )
+                activity_title_to_store = activity_title or existing_entity.get(
+                    "activity_title", ""
+                )
+            else:
+                if reflection is not None:
+                    completed_at = reflection.created_at
+                else:
+                    completed_at = feedback.created_at
+                reflection_to_store = reflection
+                activity_title_to_store = activity_title
+
             entity = self._client.entity(key)
             entity.update(
                 {
                     "learner_id": str(learner_id),
                     "activity_id": str(activity_id),
-                    "activity_title": activity_title,
+                    "activity_title": activity_title_to_store,
                     "completed_at": completed_at,
                     # Serialize journey records
                     "submission": self._serialize_submission(submission),
                     "evaluation": self._serialize_evaluation(evaluation),
                     "feedback": self._serialize_feedback(feedback),
-                    "reflection": self._serialize_reflection(reflection),
+                    "reflection": (
+                        self._serialize_reflection(reflection_to_store)
+                        if reflection_to_store is not None
+                        else None
+                    ),
                     "stimulus": (
                         self._serialize_stimulus(stimulus) if stimulus else None
                     ),
@@ -163,12 +180,12 @@ class DatastorePracticeHistoryRepository(PracticeHistoryRepository):
                 completion_id=completion_id,
                 learner_id=learner_id,
                 activity_id=activity_id,
-                activity_title=activity_title,
+                activity_title=activity_title_to_store,
                 completed_at=completed_at,
                 submission=submission,
                 evaluation=evaluation,
                 feedback=feedback,
-                reflection=reflection,
+                reflection=reflection_to_store,
                 stimulus=stimulus,
                 artifact=artifact,
             )
@@ -216,6 +233,13 @@ class DatastorePracticeHistoryRepository(PracticeHistoryRepository):
             if UUID(entity["learner_id"]) != learner_id:
                 return None
 
+            reflection = None
+            if entity.get("reflection"):
+                try:
+                    reflection = self._deserialize_reflection(entity["reflection"])
+                except Exception:
+                    reflection = None
+
             return StoredPracticeCompletion(
                 completion_id=completion_id,
                 learner_id=learner_id,
@@ -225,7 +249,7 @@ class DatastorePracticeHistoryRepository(PracticeHistoryRepository):
                 submission=self._deserialize_submission(entity["submission"]),
                 evaluation=self._deserialize_evaluation(entity["evaluation"]),
                 feedback=self._deserialize_feedback(entity["feedback"]),
-                reflection=self._deserialize_reflection(entity["reflection"]),
+                reflection=reflection,
                 stimulus=(
                     self._deserialize_stimulus(entity["stimulus"])
                     if entity.get("stimulus")

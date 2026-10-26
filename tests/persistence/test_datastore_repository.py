@@ -253,6 +253,7 @@ def test_get_completion_reconstructs_the_full_journey() -> None:
     ]
     assert retrieved.evaluation.findings[1].evidence is None
     assert retrieved.feedback.content == fixtures["feedback"].content
+    assert retrieved.reflection is not None
     assert retrieved.reflection.content == "I will look for balance next time."
     assert retrieved.completed_at == fixtures["reflection"].created_at
 
@@ -429,6 +430,7 @@ def test_long_reflection_is_persisted_instead_of_failing_the_write() -> None:
 
     retrieved = repository.get_completion(LEARNER, completion_id)
     assert retrieved is not None
+    assert retrieved.reflection is not None
     assert retrieved.reflection.content == long_reflection
 
 
