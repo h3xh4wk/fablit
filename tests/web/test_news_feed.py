@@ -236,17 +236,18 @@ def test_feed_works_without_ai_configuration_or_any_curation_call() -> None:
     provider.curate.assert_not_called()
 
 
-def test_primary_navigation_exposes_practice_and_stories() -> None:
+def test_primary_navigation_exposes_dashboard_stories_and_history() -> None:
     client, _ = _client()
 
     response = client.get("/")
 
     assert response.status_code == 200
-    assert 'href="/practice"' in response.text
+    assert 'href="/"\n         aria-current="page"' in response.text
     assert 'href="/pulse"' in response.text
-    assert '>Practice</a>' in response.text
-    assert '>Stories</a>' in response.text
-    assert 'href="/practice"\n         aria-current="page"' in response.text
+    assert 'href="/history"' in response.text
+    assert ">Practice</a>" in response.text
+    assert ">Stories</a>" in response.text
+    assert ">Your practice</a>" in response.text
 
 
 def test_primary_navigation_marks_stories_as_current_on_pulse() -> None:
@@ -256,7 +257,7 @@ def test_primary_navigation_marks_stories_as_current_on_pulse() -> None:
 
     assert response.status_code == 200
     assert 'href="/pulse"\n         aria-current="page"' in response.text
-    assert 'href="/practice"\n         aria-current="page"' not in response.text
+    assert 'href="/"\n         aria-current="page"' not in response.text
 
 
 # --- Protected authoring action ---------------------------------------------
