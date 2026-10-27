@@ -136,7 +136,7 @@ def test_status_recovers_from_temporary_failure_and_reloads_final_report() -> No
         page.add_init_script(
             "const originalSetTimeout = window.setTimeout.bind(window);"
             "window.setTimeout = (callback, delay, ...args) => "
-            "originalSetTimeout(callback, Math.min(delay, 80), ...args);"
+            "originalSetTimeout(callback, Math.min(delay, 250), ...args);"
         )
         page.route("https://fablit.test/authoring/pulse", handle_page)
         page.route(
