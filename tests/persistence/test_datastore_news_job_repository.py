@@ -85,6 +85,34 @@ def test_queued_job_round_trips_in_the_news_namespace() -> None:
     assert entity["status"] == "queued"
 
 
+def test_job_state_is_visible_across_repository_instances() -> None:
+    client = FakeDatastoreClient()
+    accepting_repository = DatastoreNewsCurationJobRepository(client)
+    executing_repository = DatastoreNewsCurationJobRepository(client)
+    job = make_job()
+
+    assert accepting_repository.start(job) == job
+    assert executing_repository.get(job.job_id) == job
+
+    claimed = executing_repository.claim(
+        job.job_id,
+        owner="worker-1",
+        now=NOW,
+        lease_until=NOW + LEASE,
+    )
+    assert claimed is not None
+    finished = claimed.complete(
+        report=make_report(),
+        counters=NewsCurationCounters(sources_configured=1, sources_processed=1),
+        at=NOW + timedelta(minutes=1),
+    )
+    executing_repository.save(finished)
+
+    assert accepting_repository.get(job.job_id) == finished
+    assert accepting_repository.latest() == finished
+    assert accepting_repository.find_active() is None
+
+
 def test_running_job_round_trips_with_its_lease() -> None:
     client = FakeDatastoreClient()
     repository = DatastoreNewsCurationJobRepository(client)

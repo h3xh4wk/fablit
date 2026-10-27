@@ -181,6 +181,39 @@ def test_starting_curation_returns_a_durable_job_identity() -> None:
     assert stored.status is NewsCurationJobStatus.QUEUED
 
 
+def test_status_for_another_job_identity_never_leaks_job_details() -> None:
+    client, app = client_for()
+    repository = InMemoryNewsCurationJobRepository()
+    service = install_job_workflow(
+        app, dispatcher=RecordingDispatcher(), job_repository=repository
+    )
+    job = service.start()
+    # The route has no user-controlled job ownership; the entire endpoint is
+    # restricted to the author. A learner without the author credential cannot
+    # enumerate even a known valid job identity.
+    denied = client.get(f"/authoring/pulse/jobs/{job.job_id}")
+    assert denied.status_code == 401
+    assert job.message not in denied.text
+    assert repository.get(job.job_id) == job
+
+
+def test_task_handler_rejects_author_session_even_when_job_is_valid() -> None:
+    client, app = client_for()
+    service = install_job_workflow(app, dispatcher=RecordingDispatcher())
+    job = service.start()
+
+    response = client.post(
+        "/tasks/news-curation",
+        json={"job_id": str(job.job_id)},
+        headers=HEADERS,
+    )
+
+    assert response.status_code == 401
+    stored = app.state.news_job_repository.get(job.job_id)
+    assert stored is not None
+    assert stored.status is NewsCurationJobStatus.QUEUED
+
+
 def test_job_status_is_protected_and_reports_persisted_state() -> None:
     client, app = client_for()
     service = install_job_workflow(app, dispatcher=InlineNewsCurationTaskDispatcher())
