@@ -102,7 +102,7 @@
     </div>
 
     <div class="curation-progress" aria-label="Curation progress counters">
-      <div class="curation-progress__item"><span>Sources processed</span><strong id="curation-sources-processed">{{ job.counters.sources_processed }}</strong><span class="curation-progress__total">of <span id="curation-sources-total">{{ job.counters.sources_configured }}</span></span></div>
+      <div class="curation-progress__item"><span>Sources processed</span><strong id="curation-sources-processed">{{ job.counters.sources_processed }}</strong><span class="curation-progress__total">of <span id="curation-sources-total">{{ job.counters.sources_configured or sources|length }}</span></span></div>
       <div class="curation-progress__item"><span>Fetched</span><strong id="curation-items-fetched">{{ job.counters.items_fetched }}</strong></div>
       <div class="curation-progress__item"><span>Already known</span><strong id="curation-items-deduplicated">{{ job.counters.items_deduplicated }}</strong></div>
       <div class="curation-progress__item"><span>Published</span><strong id="curation-items-published">{{ job.counters.items_published }}</strong></div>
