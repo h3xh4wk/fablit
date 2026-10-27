@@ -145,8 +145,22 @@ with its per-source and per-item safe reasons, and the attempt number.
   canonical URL, so no duplicate story is created.
 - A running job whose lease has expired, and a queued job that has waited
   thirty minutes, no longer block a new start: the next start closes it as
-  `interrupted` and accepts the new job.
-- A failed or partial job never deletes or replaces existing stories.
+  `interrupted` and accepts the new job. The recovery action is explicit in
+  the persisted status and safe diagnostic; inspect the previous job report
+  before starting a replacement if you need to understand where it stopped.
+- A failed or partial job never deletes or replaces existing stories. A story
+  that was successfully published before a later source, provider, or task-unit
+  failure remains in the learner feed.
+- If a status request fails temporarily, the authoring page reports that status
+  cannot currently be retrieved and retries polling. This does not change the
+  job state. Reopen `/authoring/pulse` to retrieve the persisted status and
+  report after a browser refresh or disconnect.
+- A `provider_retries` count above zero is not by itself a failed batch.
+  Interpret it alongside `provider_outcome`: `recovered` means a retry
+  succeeded; `retries_exhausted` means bounded transient retries were
+  exhausted; `failed` indicates a non-retryable provider failure. The report
+  exposes only bounded diagnostics, never credentials, full prompts, or raw
+  provider responses.
 
 ### Cloud Tasks setup
 
