@@ -32,6 +32,7 @@ SUPPORTED_ARTIFACT_STORAGE_BACKENDS = {"file", "gcs"}
 SUPPORTED_AUTHORING_CANDIDATE_STORES = {"memory", "datastore"}
 SUPPORTED_PUBLISHED_PRACTICE_STORES = {"memory", "datastore"}
 SUPPORTED_NEWS_REPOSITORIES = {"memory", "datastore"}
+SUPPORTED_NEWS_TASK_DISPATCH = {"inline", "cloud_tasks"}
 
 
 class ConfigError(RuntimeError):
@@ -248,6 +249,52 @@ class AppConfig(BaseSettings):
         ge=1024,
         description="Maximum response size read from one news source.",
     )
+    news_max_sources_per_task: int = Field(
+        2,
+        ge=1,
+        le=10,
+        description=(
+            "Maximum approved sources processed by one durable curation task "
+            "(SPEC-042). A larger batch is checkpointed and continued in "
+            "bounded, resumable task units."
+        ),
+    )
+    news_task_dispatch: str = Field(
+        "inline",
+        description=(
+            "Durable dispatch backend for curation jobs (SPEC-042): 'inline' "
+            "for local development and tests (runs the task in the request) "
+            "or 'cloud_tasks' for managed production dispatch."
+        ),
+    )
+    news_task_queue: str = Field(
+        "",
+        description=(
+            "Full Cloud Tasks queue resource name used for curation jobs, for "
+            "example projects/<project>/locations/<region>/queues/news-curation."
+        ),
+    )
+    news_task_handler_url: str = Field(
+        "",
+        description=(
+            "Absolute HTTPS URL of the protected curation task handler in this "
+            "application, for example https://<project>.appspot.com/tasks/news-curation."
+        ),
+    )
+    news_task_service_account: str = Field(
+        "",
+        description=(
+            "Service account email Cloud Tasks uses for the curation task OIDC "
+            "token, and the only identity the task handler accepts."
+        ),
+    )
+    news_task_audience: str = Field(
+        "",
+        description=(
+            "Expected OIDC audience for curation task requests; defaults to the "
+            "configured task handler URL."
+        ),
+    )
     config_file: Path | None = Field(None, description="Path to optional config file.")
     version: str = Field("0.1.0", description="Application version.")
 
@@ -402,6 +449,24 @@ class AppConfig(BaseSettings):
             return normalized
         return str(value)
 
+    @field_validator("news_task_dispatch", mode="before")
+    def normalize_news_task_dispatch(cls, value: object) -> str:
+        """Normalize the durable dispatch backend; defaults to 'inline'."""
+        if value is None:
+            return "inline"
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if not normalized:
+                return "inline"
+            if normalized not in SUPPORTED_NEWS_TASK_DISPATCH:
+                allowed = ", ".join(sorted(SUPPORTED_NEWS_TASK_DISPATCH))
+                raise ValueError(
+                    f"Unsupported news task dispatch '{value}'. Must be one of: "
+                    f"{allowed}."
+                )
+            return normalized
+        return str(value)
+
     @field_validator("news_sources", mode="before")
     def parse_news_sources_config(cls, value: object) -> object:
         """Accept the source allowlist as a JSON string or a list of objects."""
@@ -510,6 +575,12 @@ def _resolve_environment_overrides() -> dict[str, Any]:
         "news_relevance_threshold": "FABLIT_NEWS_RELEVANCE_THRESHOLD",
         "news_fetch_timeout": "FABLIT_NEWS_FETCH_TIMEOUT",
         "news_max_response_bytes": "FABLIT_NEWS_MAX_RESPONSE_BYTES",
+        "news_max_sources_per_task": "FABLIT_NEWS_MAX_SOURCES_PER_TASK",
+        "news_task_dispatch": "FABLIT_NEWS_TASK_DISPATCH",
+        "news_task_queue": "FABLIT_NEWS_TASK_QUEUE",
+        "news_task_handler_url": "FABLIT_NEWS_TASK_HANDLER_URL",
+        "news_task_service_account": "FABLIT_NEWS_TASK_SERVICE_ACCOUNT",
+        "news_task_audience": "FABLIT_NEWS_TASK_AUDIENCE",
         "authoring_candidate_retention_days": (
             "FABLIT_AUTHORING_CANDIDATE_RETENTION_DAYS"
         ),

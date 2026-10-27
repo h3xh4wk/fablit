@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from unittest.mock import Mock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -17,6 +17,11 @@ from fablit.application.news import (
     NewsStory,
 )
 from fablit.application.news_curation import FakeNewsCurationProvider
+from fablit.application.news_jobs import (
+    InlineNewsCurationTaskDispatcher,
+    InMemoryNewsCurationJobRepository,
+    NewsCurationJobService,
+)
 from fablit.application.news_sources import (
     FakeNewsSourceFetcher,
     NewsSource,
@@ -99,11 +104,22 @@ def make_item(**overrides: object) -> NewsSourceItem:
     return NewsSourceItem(**values)  # type: ignore[arg-type]
 
 
+class RecordingDispatcher:
+    """A task dispatcher that records jobs without running them."""
+
+    def __init__(self) -> None:
+        self.dispatched: list[UUID] = []
+
+    def dispatch(self, job_id: UUID) -> None:
+        self.dispatched.append(job_id)
+
+
 def install_curator(
     app: FastAPI,
     *,
     items: tuple[NewsSourceItem, ...] = (),
     provider: FakeNewsCurationProvider | None = None,
+    dispatcher: InlineNewsCurationTaskDispatcher | RecordingDispatcher | None = None,
 ) -> NewsCurator:
     repository = app.state.news_repository
     assert isinstance(repository, InMemoryNewsRepository)
@@ -115,6 +131,18 @@ def install_curator(
         clock=lambda: NOW,
     )
     app.state.news_curator = curator
+    job_repository = app.state.news_job_repository
+    assert isinstance(job_repository, InMemoryNewsCurationJobRepository)
+    job_dispatcher = dispatcher or InlineNewsCurationTaskDispatcher()
+    service = NewsCurationJobService(
+        repository=job_repository,
+        curator=curator,
+        dispatcher=job_dispatcher,
+    )
+    if isinstance(job_dispatcher, InlineNewsCurationTaskDispatcher):
+        job_dispatcher.bind(service.run_locally)
+    app.state.news_job_dispatcher = job_dispatcher
+    app.state.news_job_service = service
     return curator
 
 
@@ -297,7 +325,7 @@ def test_authorized_curation_publishes_and_reports_counts() -> None:
 
     response = client.post("/authoring/pulse/curate", headers=HEADERS)
 
-    assert response.status_code == 200
+    assert response.status_code == 202
     assert "1 fetched, 0 duplicates, 1 published, 0 rejected, 0 failed" in response.text
     assert "Handloom revival" not in response.text  # no article body, only the report
     assert client.get("/pulse").text.count('<h2 class="card__title">') == 1
@@ -310,8 +338,8 @@ def test_repeated_curation_is_idempotent() -> None:
     first = client.post("/authoring/pulse/curate", headers=HEADERS)
     second = client.post("/authoring/pulse/curate", headers=HEADERS)
 
-    assert first.status_code == 200
-    assert second.status_code == 200
+    assert first.status_code == 202
+    assert second.status_code == 202
     assert "1 fetched, 1 duplicate, 0 published, 0 rejected, 0 failed" in second.text
     assert len(app.state.news_repository.list_stories()) == 1
 
@@ -327,18 +355,19 @@ def test_curation_without_a_provider_reports_configuration_not_success() -> None
     assert app.state.news_repository.list_stories() == ()
 
 
-def test_overlapping_curation_is_refused() -> None:
+def test_a_second_start_is_refused_while_a_job_is_queued() -> None:
     client, app = _client()
-    curator = install_curator(app, items=(make_item(),))
+    dispatcher = RecordingDispatcher()
+    install_curator(app, items=(make_item(),), dispatcher=dispatcher)
 
-    assert curator._lock.acquire(blocking=False)
-    try:
-        response = client.post("/authoring/pulse/curate", headers=HEADERS)
-    finally:
-        curator._lock.release()
+    accepted = client.post("/authoring/pulse/curate", headers=HEADERS)
+    overlapping = client.post("/authoring/pulse/curate", headers=HEADERS)
 
-    assert response.status_code == 409
-    assert "already running" in response.text
+    assert accepted.status_code == 202
+    assert "Queued" in accepted.text
+    assert overlapping.status_code == 409
+    assert "already queued or running" in overlapping.text
+    assert len(dispatcher.dispatched) == 1
 
 
 def test_batch_report_shows_rejections_without_raw_provider_detail() -> None:
@@ -346,7 +375,8 @@ def test_batch_report_shows_rejections_without_raw_provider_detail() -> None:
     provider = FakeNewsCurationProvider(error=RuntimeError("secret upstream payload"))
     install_curator(app, items=(make_item(),), provider=provider)
 
-    client.post("/authoring/pulse/curate", headers=HEADERS)
+    accepted = client.post("/authoring/pulse/curate", headers=HEADERS)
+    assert accepted.status_code == 202
 
     page = client.get("/authoring/pulse", headers=HEADERS)
     assert page.status_code == 200

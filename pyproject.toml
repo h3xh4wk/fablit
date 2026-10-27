@@ -74,9 +74,9 @@ strict = true
 packages = ["app", "fablit", "tests"]
 
 [[tool.mypy.overrides]]
-# google-cloud-datastore is an optional extra; its lazy import is guarded at
-# runtime, so type checking treats it as Any when the package is absent.
-module = "google.cloud.*"
+# Google Cloud SDKs are optional extras; their lazy imports are guarded at
+# runtime, so type checking treats them as Any when a package is absent.
+module = ["google", "google.cloud.*", "google.auth.*", "google.oauth2.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

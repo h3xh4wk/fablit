@@ -54,3 +54,16 @@ env_variables:
   # FABLIT_NEWS_RELEVANCE_THRESHOLD: "0.5"
   # FABLIT_NEWS_FETCH_TIMEOUT: "10.0"
   # FABLIT_NEWS_MAX_RESPONSE_BYTES: "512000"
+  # Durable curation jobs (SPEC-042). Accepted curation work is dispatched
+  # through Cloud Tasks to the protected handler below, so it continues after
+  # the author leaves and is shared across instances. Local development and
+  # tests default to the non-durable "inline" dispatcher; enable cloud_tasks
+  # together with the three required settings, otherwise the application
+  # refuses to start instead of silently running work in the request.
+  # See docs/engineering/curated-news-feed.md §4 for queue and IAM setup.
+  # FABLIT_NEWS_TASK_DISPATCH: "cloud_tasks"
+  # FABLIT_NEWS_TASK_QUEUE: "projects/<project>/locations/<region>/queues/news-curation"
+  # FABLIT_NEWS_TASK_HANDLER_URL: "https://<project>.appspot.com/tasks/news-curation"
+  # FABLIT_NEWS_TASK_SERVICE_ACCOUNT: "news-tasks@<project>.iam.gserviceaccount.com"
+  # FABLIT_NEWS_TASK_AUDIENCE: ""
+  # FABLIT_NEWS_MAX_SOURCES_PER_TASK: "2"

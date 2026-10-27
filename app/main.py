@@ -56,10 +56,15 @@ from fablit.application import (
     FeedbackNotFoundError,
     FileArtifactStorage,
     ImageSearchProvider,
+    InlineNewsCurationTaskDispatcher,
+    InMemoryNewsCurationJobRepository,
     InMemoryNewsRepository,
     InMemoryPublishedPracticeStore,
     InvalidPracticeResponseError,
     InvalidReflectionResponseError,
+    NewsCurationJobRepository,
+    NewsCurationJobService,
+    NewsCurationTaskDispatcher,
     NewsCurator,
     NewsRepository,
     PracticeApplication,
@@ -332,6 +337,111 @@ def _build_news_repository(app_config: AppConfig) -> NewsRepository:
 
     logger.info("initialized in-memory news repository")
     return InMemoryNewsRepository()
+
+
+def _build_news_job_repository(app_config: AppConfig) -> NewsCurationJobRepository:
+    """Build the durable curation job store (SPEC-042 §6).
+
+    Jobs share the curated-news backend selection: Datastore in production so
+    status, progress, and the final report are shared across App Engine
+    instances and survive a restart, in-memory for local development and
+    tests.
+    """
+    if app_config.news_repository == "datastore":
+        try:
+            from google.cloud import datastore
+
+            from fablit.platform.datastore_news_job_repository import (
+                DatastoreNewsCurationJobRepository,
+            )
+
+            client: datastore.Client = datastore.Client()
+            logger.info(
+                "initialized Datastore news curation job repository",
+                extra={"project_id": client.project},
+            )
+            return DatastoreNewsCurationJobRepository(client)
+        except Exception as e:
+            logger.exception("failed to initialize datastore news job repository")
+            raise RuntimeError(
+                "Could not initialize Google Cloud Datastore for curation jobs. "
+                "Check GCP configuration and credentials."
+            ) from e
+
+    logger.info("initialized in-memory news curation job repository")
+    return InMemoryNewsCurationJobRepository()
+
+
+def _build_news_task_dispatcher(
+    app_config: AppConfig,
+) -> NewsCurationTaskDispatcher:
+    """Build the durable task dispatcher (SPEC-042 §7).
+
+    Production uses Cloud Tasks so accepted work is independent of the
+    author's request and of the instance that accepted it. The inline
+    dispatcher exists for local development and tests only and is not a
+    durability mechanism.
+    """
+    if app_config.news_task_dispatch == "cloud_tasks":
+        from fablit.platform.cloud_tasks_dispatcher import (
+            CloudTasksNewsCurationDispatcher,
+        )
+
+        missing = [
+            name
+            for name, value in (
+                ("FABLIT_NEWS_TASK_QUEUE", app_config.news_task_queue),
+                ("FABLIT_NEWS_TASK_HANDLER_URL", app_config.news_task_handler_url),
+                (
+                    "FABLIT_NEWS_TASK_SERVICE_ACCOUNT",
+                    app_config.news_task_service_account,
+                ),
+            )
+            if not value.strip()
+        ]
+        if missing:
+            raise RuntimeError(
+                "Cloud Tasks curation dispatch requires " + ", ".join(missing) + "."
+            )
+        logger.info(
+            "initialized Cloud Tasks news curation dispatcher",
+            extra={"queue": app_config.news_task_queue},
+        )
+        return CloudTasksNewsCurationDispatcher(
+            queue_path=app_config.news_task_queue,
+            handler_url=app_config.news_task_handler_url,
+            service_account_email=app_config.news_task_service_account,
+            audience=app_config.news_task_audience or None,
+        )
+
+    logger.info("initialized inline news curation dispatcher (local only)")
+    return InlineNewsCurationTaskDispatcher()
+
+
+def _build_news_job_service(
+    app_config: AppConfig,
+    *,
+    repository: NewsCurationJobRepository,
+    dispatcher: NewsCurationTaskDispatcher,
+    curator: NewsCurator | None,
+) -> NewsCurationJobService | None:
+    """Assemble the durable curation job service (SPEC-042 §6, §7).
+
+    Without a configured provider there is nothing to execute, so no job
+    service is built and the authoring surface reports configuration rather
+    than accepting work it cannot do.
+    """
+    if curator is None:
+        return None
+    service = NewsCurationJobService(
+        repository=repository,
+        curator=curator,
+        dispatcher=dispatcher,
+        max_sources_per_task=app_config.news_max_sources_per_task,
+    )
+    if isinstance(dispatcher, InlineNewsCurationTaskDispatcher):
+        dispatcher.bind(service.run_locally)
+    return service
 
 
 def _build_news_curator(
@@ -650,7 +760,15 @@ def create_app(config: AppConfig) -> FastAPI:
         app.state.published_practice_store = _build_published_practice_store(config)
         app.state.news_repository = _build_news_repository(config)
         app.state.news_curator = _build_news_curator(config, app.state.news_repository)
-        app.state.news_last_batch = None
+        app.state.news_job_repository = _build_news_job_repository(config)
+        app.state.news_job_dispatcher = _build_news_task_dispatcher(config)
+        app.state.news_job_service = _build_news_job_service(
+            config,
+            repository=app.state.news_job_repository,
+            dispatcher=app.state.news_job_dispatcher,
+            curator=app.state.news_curator,
+        )
+        app.state.news_task_verifier = None
         app.state.demo_content, app.state.learner_applications = (
             _build_learner_applications(config, app.state.published_practice_store)
         )
@@ -662,7 +780,10 @@ def create_app(config: AppConfig) -> FastAPI:
         app.state.published_practice_store = None
         app.state.news_repository = None
         app.state.news_curator = None
-        app.state.news_last_batch = None
+        app.state.news_job_repository = None
+        app.state.news_job_dispatcher = None
+        app.state.news_job_service = None
+        app.state.news_task_verifier = None
         app.state.demo_content = None
         app.state.learner_applications = None
         logger.info("application shutdown")
@@ -687,7 +808,15 @@ def create_app(config: AppConfig) -> FastAPI:
     app.state.published_practice_store = _build_published_practice_store(config)
     app.state.news_repository = _build_news_repository(config)
     app.state.news_curator = _build_news_curator(config, app.state.news_repository)
-    app.state.news_last_batch = None
+    app.state.news_job_repository = _build_news_job_repository(config)
+    app.state.news_job_dispatcher = _build_news_task_dispatcher(config)
+    app.state.news_job_service = _build_news_job_service(
+        config,
+        repository=app.state.news_job_repository,
+        dispatcher=app.state.news_job_dispatcher,
+        curator=app.state.news_curator,
+    )
+    app.state.news_task_verifier = None
     app.state.demo_content, app.state.learner_applications = (
         _build_learner_applications(config, app.state.published_practice_store)
     )

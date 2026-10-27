@@ -103,6 +103,21 @@ class FakeDatastoreClient:
     def query(self, kind: str, namespace: str | None = None, **_: Any) -> FakeQuery:
         return FakeQuery(self, kind, namespace or "")
 
+    def transaction(self) -> FakeDatastoreClient:
+        """Mirror ``google.cloud.datastore.Client.transaction``.
+
+        The fake has no isolation to offer, but it is a context manager with
+        the same ``get``/``put`` surface the adapters use, so the transactional
+        call path is exercised without GCP credentials.
+        """
+        return self
+
+    def __enter__(self) -> FakeDatastoreClient:
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        return None
+
 
 def _make_candidate(
     *,

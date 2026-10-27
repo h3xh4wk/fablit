@@ -153,8 +153,26 @@ class NewsCurationProviderError(NewsFeedError):
 
 
 class NewsCurationInProgressError(NewsFeedError):
-    """Raised when a second refresh starts while one is already running.
+    """Raised when a second refresh starts while one is already active.
 
-    SPEC-041 §5.1: overlapping operator actions are refused rather than run
-    concurrently against the same feed.
+    SPEC-041 §5.1 / SPEC-042 §7: overlapping operator actions are refused
+    rather than run concurrently against the same feed. An active job that is
+    queued or leased counts as running; a stale lease is recoverable.
+    """
+
+
+class NewsCurationDispatchError(NewsFeedError):
+    """Raised when durable dispatch of a curation job fails (SPEC-042 §7).
+
+    The job is persisted as failed before this is raised, so the author is
+    never told that work was queued when it was not.
+    """
+
+
+class NewsCurationJobTransitionError(NewsFeedError):
+    """Raised when a curation job lifecycle transition is not allowed.
+
+    SPEC-042 §6: the lifecycle is explicit — a terminal job cannot be revived
+    or finalized again, and a running job cannot be claimed while its worker
+    lease is still live.
     """

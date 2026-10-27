@@ -46,7 +46,9 @@ The platform exposes:
 - `GET /history` — the learner's practice history (completed practice, newest first; SPEC-021)
 - `GET /history/{completion_id}` — review of one completed practice (response, feedback, reflection, stimulus, completion time; SPEC-021)
 - `GET /pulse` — the learner-facing Fashion & Design Pulse feed of curated stories (SPEC-041)
-- `GET /authoring/pulse` and `POST /authoring/pulse/curate` — the SEC-001-protected on-demand curation page and refresh action (SPEC-041)
+- `GET /authoring/pulse` and `POST /authoring/pulse/curate` — the SEC-001-protected on-demand curation page and durable job start (SPEC-041, SPEC-042)
+- `GET /authoring/pulse/jobs/latest` and `GET /authoring/pulse/jobs/{job_id}` — persisted curation job status, progress, counters, and final report, behind the same author credential (SPEC-042)
+- `POST /tasks/news-curation` — the task handler that runs one bounded unit of an accepted curation job, authenticated by the task's own OIDC identity rather than an author session (SPEC-042)
 - `GET /health` — returns `{ "status": "healthy" }`
 - `GET /metrics` — returns in-memory Prometheus-style metrics
 - `GET /docs` — FastAPI Swagger UI (development and testing environments only)
@@ -101,6 +103,12 @@ Key settings include:
 - `FABLIT_NEWS_FRESHNESS_DAYS` — oldest eligible publication date in days (default `14`)
 - `FABLIT_NEWS_MAX_SUMMARY_CHARS` — longest accepted curated summary (default `600`)
 - `FABLIT_NEWS_RELEVANCE_THRESHOLD` — minimum provider relevance score, 0–1 (default `0.5`)
+- `FABLIT_NEWS_MAX_SOURCES_PER_TASK` — approved sources processed by one durable curation task unit (default `2`; a larger batch is checkpointed and continued)
+- `FABLIT_NEWS_TASK_DISPATCH` — durable dispatch for curation jobs: `inline` (default; local development and tests, not durable) or `cloud_tasks` (managed production dispatch)
+- `FABLIT_NEWS_TASK_QUEUE` — full Cloud Tasks queue resource name used when `FABLIT_NEWS_TASK_DISPATCH=cloud_tasks`
+- `FABLIT_NEWS_TASK_HANDLER_URL` — absolute HTTPS URL of this application's `/tasks/news-curation` handler
+- `FABLIT_NEWS_TASK_SERVICE_ACCOUNT` — service account that signs task requests and is the only accepted task identity
+- `FABLIT_NEWS_TASK_AUDIENCE` — optional expected OIDC audience when it differs from the handler URL
 - `FABLIT_NEWS_FETCH_TIMEOUT` — per-source fetch timeout in seconds (default `10.0`)
 - `FABLIT_NEWS_MAX_RESPONSE_BYTES` — maximum feed response size (default `512000`)
 
@@ -253,7 +261,8 @@ To verify a published practice end to end: set `FABLIT_AUTHORING_SECRET`, genera
 
 A small, curated feed of current fashion, textiles, sustainability, Indian craft, design, and visual-culture stories for all learners. It is separate from practice authoring and publication: its own application workflow, provider-neutral news-curation port, and news-specific persistence boundary.
 
-- **On demand, never scheduled:** an authorised operator opens `/authoring/pulse` (behind SEC-001) and selects **Curate this week's news**. There is no GitHub Actions schedule, background job, or separate scheduler.
+- **On demand, never scheduled:** an authorised operator opens `/authoring/pulse` (behind SEC-001) and selects **Curate this week's news**. There is no GitHub Actions schedule or scheduled refresh.
+- **Durable, not browser-bound:** starting curation persists a job and dispatches it as a managed task, so accepted work continues after the author leaves, refreshes, or closes the browser. Status, progress, counters, and the final report are shared across instances and survive a restart; a second start is refused while a job is active, duplicate task delivery is a no-op, and an interrupted worker is recovered safely.
 - **Automatic publication after checks:** each candidate must pass source allowlisting, safe HTTP(S) link handling, bounded retrieval, freshness, deduplication, schema validation, relevance, grounding, and controlled-category checks. There is no per-story approval step; invalid or failed candidates never reach learners.
 - **Accurate batch reporting:** fetched, already-known (deduplicated), published, rejected, and failed counts, with safe reasons for rejected/failed items and per-source failures. Raw provider payloads and secrets are never shown.
 - **Learner browsing is independent of AI:** `/pulse` reads only persisted stories, shows attribution, canonical links, dates when reliable, summaries, categories, educational relevance, and optional reflection prompts, with lightweight category filtering and a calm empty/unavailable state. A failed or empty refresh never clears the feed.
