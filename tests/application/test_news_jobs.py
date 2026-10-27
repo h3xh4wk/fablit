@@ -832,7 +832,7 @@ def test_partial_source_failure_preserves_previously_published_stories() -> None
     assert partial_result is not None
     assert partial_result.status is NewsCurationJobStatus.PARTIALLY_SUCCEEDED
     assert partial_result.report is not None
-    assert partial_result.report.sources_failed == 1
+    assert len(partial_result.report.source_failures) == 1
     assert stories.list_stories() == previously_published
     assert "private feed detail" not in (partial_result.error_message or "")
 
