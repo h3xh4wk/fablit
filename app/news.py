@@ -282,6 +282,16 @@ def _job_view(job: NewsCurationJob) -> dict[str, Any]:
         "is_terminal": job.is_terminal,
         "created_display": job.created_at.strftime("%d %B %Y, %H:%M UTC"),
         "error_message": job.error_message or "",
+        "counters": {
+            "sources_configured": job.counters.sources_configured,
+            "sources_processed": job.counters.sources_processed,
+            "sources_failed": job.counters.sources_failed,
+            "items_fetched": job.counters.items_fetched,
+            "items_deduplicated": job.counters.items_deduplicated,
+            "items_published": job.counters.items_published,
+            "items_rejected": job.counters.items_rejected,
+            "items_failed": job.counters.items_failed,
+        },
     }
 
 
