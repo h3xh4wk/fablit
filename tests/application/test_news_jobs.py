@@ -805,6 +805,38 @@ def test_job_state_is_shared_across_separately_constructed_services() -> None:
     assert finished.is_terminal
 
 
+def test_partial_source_failure_preserves_previously_published_stories() -> None:
+    curator, stories, _ = make_curator()
+    first_service, _, _ = make_service(curator=curator)
+    first_job = first_service.start()
+    first_result = first_service.handle_task(first_job.job_id, owner="worker-1")
+    assert first_result is not None
+    assert first_result.status is NewsCurationJobStatus.SUCCEEDED
+    previously_published = stories.list_stories()
+    assert previously_published
+
+    failing_curator = NewsCurator(
+        repository=stories,
+        fetcher=FakeNewsSourceFetcher(
+            default=(),
+            errors={SOURCE_B.feed_url: RuntimeError("private feed detail")},
+        ),
+        provider=FakeNewsCurationProvider(),
+        sources=(SOURCE_A, SOURCE_B),
+        clock=lambda: NOW,
+    )
+    partial_service, _, _ = make_service(curator=failing_curator)
+    partial_job = partial_service.start()
+    partial_result = partial_service.handle_task(partial_job.job_id, owner="worker-2")
+
+    assert partial_result is not None
+    assert partial_result.status is NewsCurationJobStatus.PARTIALLY_SUCCEEDED
+    assert partial_result.report is not None
+    assert partial_result.report.sources_failed == 1
+    assert stories.list_stories() == previously_published
+    assert "private feed detail" not in (partial_result.error_message or "")
+
+
 def test_execution_failure_is_safe_and_preserves_existing_stories() -> None:
     curator, stories, _ = make_curator()
     service, repository, _ = make_service(curator=curator)
