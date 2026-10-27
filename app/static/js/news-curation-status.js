@@ -10,6 +10,7 @@
   const COUNTERS = {
     sources_processed: "curation-sources-processed",
     sources_configured: "curation-sources-total",
+    sources_failed: "curation-sources-failed",
     items_fetched: "curation-items-fetched",
     items_deduplicated: "curation-items-deduplicated",
     items_published: "curation-items-published",
