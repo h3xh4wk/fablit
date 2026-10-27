@@ -290,6 +290,59 @@ class NewsSourceFailure:
     reason: str
 
 
+class NewsBatchStage(StrEnum):
+    """Observable phases a running batch reports to a progress observer.
+
+    SPEC-042 §8: only stages that reflect real work are reported, so the
+    durable job never claims a phase the workflow has not reached.
+    """
+
+    FETCHING_SOURCES = "fetching_sources"
+    CURATING_ITEMS = "curating_items"
+    FINALIZING_REPORT = "finalizing_report"
+
+
+@dataclass(frozen=True)
+class NewsBatchProgress:
+    """One observed step of a running batch (SPEC-042 §6).
+
+    Counts describe the current invocation only: a batch that is split into
+    bounded task-sized units restarts its counters for each unit, and the
+    durable job adds them to the totals it has already persisted.
+    """
+
+    stage: NewsBatchStage
+    sources_configured: int
+    sources_processed: int
+    fetched: int
+    deduplicated: int
+    published: int
+    rejected: int
+    failed: int
+
+    def __post_init__(self) -> None:
+        """Require a controlled stage and non-negative counters."""
+        if not isinstance(self.stage, NewsBatchStage):
+            raise ValueError(f"news batch stage must be controlled, got {self.stage!r}")
+        for name in (
+            "sources_configured",
+            "sources_processed",
+            "fetched",
+            "deduplicated",
+            "published",
+            "rejected",
+            "failed",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"news batch progress {name} must be >= 0")
+        if self.sources_processed > self.sources_configured:
+            raise ValueError(
+                "news batch progress sources_processed cannot be greater than "
+                "sources_configured"
+            )
+
+
 @dataclass(frozen=True)
 class NewsBatchResult:
     """Accurate outcome counts and safe detail for one refresh (SPEC-041 §5.1)."""
@@ -297,6 +350,7 @@ class NewsBatchResult:
     started_at: datetime
     finished_at: datetime
     sources_configured: int = 0
+    sources_processed: int = 0
     fetched: int = 0
     deduplicated: int = 0
     published: int = 0
@@ -361,8 +415,25 @@ class NewsCurator:
         self._clock = clock or (lambda: datetime.now(UTC))
         self._lock = Lock()
 
-    def curate_batch(self) -> NewsBatchResult:
+    @property
+    def sources(self) -> tuple[NewsSource, ...]:
+        """The approved sources this workflow may fetch, in configured order."""
+        return self._sources
+
+    def curate_batch(
+        self,
+        *,
+        sources: Iterable[NewsSource] | None = None,
+        on_progress: Callable[[NewsBatchProgress], None] | None = None,
+    ) -> NewsBatchResult:
         """Run one bounded refresh and report exactly what happened.
+
+        ``sources`` narrows the run to a bounded slice of the configured
+        allowlist so a large batch can be split across task-sized units; the
+        slice is still subject to every source and URL check. ``on_progress``
+        observes the phases the batch actually reaches (SPEC-042 §8); an
+        observer that raises aborts the run rather than letting a job report
+        progress that was never persisted.
 
         Raises:
             NewsCurationInProgressError: When another refresh is already
@@ -373,19 +444,43 @@ class NewsCurator:
         if not self._lock.acquire(blocking=False):
             raise NewsCurationInProgressError("a news refresh is already running")
         try:
-            return self._run()
+            selected = self._sources if sources is None else tuple(sources)
+            return self._run(selected, on_progress=on_progress)
         finally:
             self._lock.release()
 
-    def _run(self) -> NewsBatchResult:
+    def _run(
+        self,
+        selected: tuple[NewsSource, ...],
+        *,
+        on_progress: Callable[[NewsBatchProgress], None] | None,
+    ) -> NewsBatchResult:
         started_at = self._clock()
         fetched = deduplicated = published = rejected = failed = 0
         rejections: list[NewsItemOutcome] = []
         failures: list[NewsItemOutcome] = []
         source_failures: list[NewsSourceFailure] = []
         seen_urls: set[str] = set()
+        processed = 0
 
-        for source in self._sources:
+        def report(stage: NewsBatchStage, sources_processed: int) -> None:
+            if on_progress is None:
+                return
+            on_progress(
+                NewsBatchProgress(
+                    stage=stage,
+                    sources_configured=len(selected),
+                    sources_processed=sources_processed,
+                    fetched=fetched,
+                    deduplicated=deduplicated,
+                    published=published,
+                    rejected=rejected,
+                    failed=failed,
+                )
+            )
+
+        for index, source in enumerate(selected):
+            report(NewsBatchStage.FETCHING_SOURCES, index)
             try:
                 items = tuple(self._fetcher.fetch(source))
             except Exception as error:
@@ -402,6 +497,7 @@ class NewsCurator:
                         reason="source could not be retrieved",
                     )
                 )
+                processed += 1
                 continue
 
             for item in items[: self._max_items_per_source]:
@@ -423,12 +519,16 @@ class NewsCurator:
                         rejections.append(outcome)
                 elif story is not None:
                     published += 1
+                report(NewsBatchStage.CURATING_ITEMS, index)
+            processed += 1
 
+        report(NewsBatchStage.FINALIZING_REPORT, processed)
         finished_at = self._clock()
         return NewsBatchResult(
             started_at=started_at,
             finished_at=finished_at,
-            sources_configured=len(self._sources),
+            sources_configured=len(selected),
+            sources_processed=processed,
             fetched=fetched,
             deduplicated=deduplicated,
             published=published,

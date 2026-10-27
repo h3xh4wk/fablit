@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -599,7 +600,11 @@ def test_journey_records_use_timezone_aware_timestamps() -> None:
 def test_application_layer_has_no_examination_specific_terminology(
     forbidden: str,
 ) -> None:
-    assert forbidden.lower() not in _application_source_text().lower()
+    # Match the acronym as a word, not as a substring of an ordinary word:
+    # the durable job lifecycle (SPEC-042) legitimately uses "succeeded".
+    assert not re.search(
+        rf"\b{re.escape(forbidden.lower())}\b", _application_source_text().lower()
+    )
 
 
 def test_application_layer_has_no_framework_or_persistence_dependencies() -> None:

@@ -369,11 +369,12 @@ Approval and publication are separate decisions: approval accepts a candidate's 
 
 ---
 
-## 14. Curated Fashion & Design Pulse (SPEC-041)
+## 14. Curated Fashion & Design Pulse (SPEC-041, SPEC-042)
 
-The learner feed and its internal curation action share the existing App Engine
-identity model (application-default credentials); no GitHub-managed secret or
-alternate deployment path is introduced.
+The learner feed, the internal curation action, and the durable curation task
+share the existing App Engine identity model (application-default
+credentials); no GitHub-managed secret or alternate deployment path is
+introduced.
 
 ### Configuration
 
@@ -390,20 +391,56 @@ alternate deployment path is introduced.
   `FABLIT_NEWS_FRESHNESS_DAYS`, `FABLIT_NEWS_MAX_SUMMARY_CHARS`,
   `FABLIT_NEWS_RELEVANCE_THRESHOLD`, `FABLIT_NEWS_FETCH_TIMEOUT`, and
   `FABLIT_NEWS_MAX_RESPONSE_BYTES`.
+- `FABLIT_NEWS_MAX_SOURCES_PER_TASK` (default `2`) bounds how many approved
+  sources one durable task unit processes.
+
+### Durable curation jobs (SPEC-042)
+
+Accepted curation work must survive the author's browser and the accepting
+App Engine instance. In production it is dispatched through Cloud Tasks:
+
+- `FABLIT_NEWS_TASK_DISPATCH="cloud_tasks"` enables managed dispatch. Without
+  the three settings below the application refuses to start, rather than
+  silently running the batch inside the author's request. `inline` is the
+  default for local development and tests only.
+- `FABLIT_NEWS_TASK_QUEUE` is the full queue resource name, for example
+  `projects/<project>/locations/europe-west1/queues/news-curation`.
+- `FABLIT_NEWS_TASK_HANDLER_URL` is this application's handler, for example
+  `https://<project>.appspot.com/tasks/news-curation`.
+- `FABLIT_NEWS_TASK_SERVICE_ACCOUNT` is the identity Cloud Tasks uses for the
+  request's OIDC token and the only identity the handler accepts.
+  `FABLIT_NEWS_TASK_AUDIENCE` overrides the expected audience when it differs
+  from the handler URL.
+- Jobs are stored in Datastore under kinds `NewsCurationJob` and
+  `NewsCurationJobActive` in the same `news` namespace, so status, progress,
+  counters, and the final report are shared across instances and survive a
+  restart.
+
+One-time setup and IAM (App Engine runtime account needs
+`roles/cloudtasks.enqueuer`; create a dedicated service account for signed task
+requests) is documented in
+[curated-news-feed.md §4](curated-news-feed.md#4-durable-curation-jobs).
 
 ### Operation
 
 1. Sign in at `/authoring/login` with `FABLIT_AUTHORING_SECRET`.
 2. Open `/authoring/pulse`, review the source list, and select **Curate this
-   week's news**.
-3. Read the batch summary (fetched, deduplicated, published, rejected, failed)
+   week's news**. The server returns a durable job identity.
+3. Leave or refresh the page freely: accepted work is not tied to the request.
+   Returning to `/authoring/pulse` shows the current or most recent job;
+   `GET /authoring/pulse/jobs/latest` and
+   `GET /authoring/pulse/jobs/<job-id>` return the same persisted state as
+   JSON behind the author credential.
+4. Read the final report (fetched, deduplicated, published, rejected, failed)
    and any per-source or per-item safe failure reasons.
-4. Confirm new stories at `/pulse`.
+5. Confirm new stories at `/pulse`.
 
-The action is on demand only. There is no GitHub Actions workflow, scheduled
-job, queue, or separate scheduler. Repeated runs are idempotent by canonical
-URL; overlapping runs are refused. A failed or empty refresh leaves previously
-published stories visible, and a Datastore outage degrades `/pulse` to a calm
+The action is on demand only. There is no GitHub Actions workflow or scheduled
+refresh. Repeated runs are idempotent by canonical URL; a start is refused
+while a job is queued or running, duplicate task delivery is a no-op, and an
+interrupted worker is recovered through its lease or closed as `interrupted`
+by the next start. A failed or empty refresh leaves previously published
+stories visible, and a Datastore outage degrades `/pulse` to a calm
 unavailable state without affecting learner practice.
 
 See [curated-news-feed.md](curated-news-feed.md) for the full source policy,

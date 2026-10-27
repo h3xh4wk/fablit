@@ -929,6 +929,14 @@ or the practice-publication lifecycle.
 ```text
 Approved sources (explicit allowlist)
         ↓ on-demand operator action (SEC-001 protected)
+POST /authoring/pulse/curate
+        ↓ persist before acknowledgement (SPEC-042)
+NewsCurationJob → NewsCurationJobRepository
+        ├── InMemoryNewsCurationJobRepository  [local / testing]
+        └── DatastoreNewsCurationJobRepository [production: kind="NewsCurationJob"]
+        ↓ durable dispatch (Cloud Tasks in production)
+POST /tasks/news-curation (independent OIDC task identity)
+        ↓ lease + bounded unit of work
 Application NewsCurator
    fetch (bounded) → normalize → allowlist/URL safety → dedupe
         → freshness/field checks → AI curation (news port)
@@ -946,7 +954,10 @@ GET /pulse (persisted stories only; no live AI or network)
 - **News-specific persistence (`NewsRepository`):** `InMemoryNewsRepository` for tests/local development and `DatastoreNewsRepository` in kind `NewsStory`, namespace `news`. It is separate from practice history, authoring candidates, and published practices. Stories are written under a stable URL-derived identity and never bulk-replaced, so a failed or empty refresh leaves the existing feed intact.
 - **Source and URL safety (`fablit/application/news_sources.py`, `fablit/platform/news_source_fetcher.py`):** an explicit source allowlist, publisher-host matching, public-HTTP(S)-only URLs, DNS/redirect validation, bounded timeouts and response sizes, RSS/Atom parsing, and markup stripping. Source content is untrusted and delimited in the AI prompt; no full article or imagery is stored.
 - **Learner surface (`GET /pulse`):** renders persisted stories newest first with attribution, canonical link, date when reliable, summary, controlled categories, educational relevance, and an optional reflection prompt, plus lightweight category filtering, a calm empty state, and graceful degradation when the news store is unavailable. It never invokes Gemini or fetches a source.
-- **Operator surface (`GET /authoring/pulse`, `POST /authoring/pulse/curate`):** behind SEC-001, on demand only — no GitHub Actions schedule, background job, or separate scheduler. Unauthorised requests are refused before any source retrieval or AI call; overlapping runs are refused, and repeated runs are idempotent.
+- **Operator surface (`GET /authoring/pulse`, `POST /authoring/pulse/curate`, `GET /authoring/pulse/jobs/*`):** behind SEC-001, on demand only — no GitHub Actions schedule or scheduled refresh, and no separate worker application. Unauthorised requests are refused before any source retrieval or AI call; a start is refused while a job is queued or running, and repeated runs are idempotent.
+- **Durable job lifecycle (`fablit/application/news_jobs.py`, SPEC-042):** a validated immutable `NewsCurationJob` with explicit `queued → running → succeeded | partially_succeeded | failed` transitions, progress stages that are only reported once reached, cumulative counters, attempt/lease metadata, a bounded safe diagnostic, and the accumulated batch report. `NewsCurationJobRepository.start` and `.claim` are atomic (transactional in Datastore), so at most one job is active and at most one worker owns it; terminal outcomes cannot be rewritten.
+- **Dispatch and task security (`fablit/platform/cloud_tasks_dispatcher.py`, `fablit/platform/task_auth.py`, `POST /tasks/news-curation`):** the job is persisted before the task is enqueued, a dispatch failure is stored as a failed job and reported truthfully, and the handler accepts only a Google-signed OIDC token for the configured audience and service account — never an author cookie or session. The browser is not part of the durability guarantee.
+- **Bounded execution and recovery:** one task unit processes at most `FABLIT_NEWS_MAX_SOURCES_PER_TASK` approved sources; the rest is checkpointed (report, counters, next source index) and continued in a fresh unit. Duplicate delivery during a live lease is a no-op, a delivery after a terminal outcome returns the finished job, an expired lease can be taken over, and a stale active job is closed as `interrupted` by the next start rather than blocking curation forever.
 
 ---
 

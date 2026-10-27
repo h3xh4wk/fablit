@@ -1,7 +1,7 @@
 # SPEC-042: Durable News Curation Jobs and Operational Visibility
 
-**Status:** Proposed  
-**Owner:** Fablit product  
+**Status:** Proposed
+**Owner:** Fablit product
 **Related architecture:** ARCH-001, SEC-001, SPEC-041
 
 ## 1. Overview and goal

@@ -19,6 +19,8 @@ from fablit.application.errors import (
 )
 from fablit.application.news import (
     InMemoryNewsRepository,
+    NewsBatchProgress,
+    NewsBatchStage,
     NewsCategory,
     NewsCurator,
     NewsStory,
@@ -594,3 +596,90 @@ def test_parse_news_sources_accepts_json_and_refuses_mistakes() -> None:
         parse_news_sources("not json")
     with pytest.raises(InvalidNewsSourceError):
         parse_news_sources([{"name": "One", "feed_url": "ftp://a.example/rss"}])
+
+
+# --- Progress observation and bounded source slices (SPEC-042) ----------------
+
+
+def test_progress_reports_only_stages_the_batch_reaches() -> None:
+    curator, _, _ = make_curator()
+    observed: list[NewsBatchProgress] = []
+
+    result = curator.curate_batch(on_progress=observed.append)
+
+    assert [step.stage for step in observed] == [
+        NewsBatchStage.FETCHING_SOURCES,
+        NewsBatchStage.CURATING_ITEMS,
+        NewsBatchStage.FINALIZING_REPORT,
+    ]
+    assert observed[0].sources_configured == 1
+    assert observed[0].fetched == 0
+    assert observed[1].fetched == 1
+    assert observed[1].published == 1
+    assert observed[1].sources_processed == 0
+    assert observed[-1].sources_processed == 1
+    assert result.sources_processed == 1
+
+
+def test_a_bounded_source_slice_still_applies_every_check() -> None:
+    other_item = make_item(
+        source_name=OTHER_SOURCE.name,
+        title="Handloom weavers share repair techniques at a craft fair",
+        url="https://craft.example.org/story/1",
+        excerpt="Handloom weavers are taking their work directly to buyers.",
+    )
+    curator, repository, provider = make_curator(
+        sources=(SOURCE, OTHER_SOURCE),
+        fetcher=FakeNewsSourceFetcher(
+            items={
+                SOURCE.feed_url: (make_item(),),
+                OTHER_SOURCE.feed_url: (other_item,),
+            }
+        ),
+    )
+
+    first = curator.curate_batch(sources=curator.sources[1:])
+
+    assert first.sources_configured == 1
+    assert first.sources_processed == 1
+    assert first.published == 1
+    assert [request.url for request in provider.requests] == [other_item.url]
+    assert len(repository.list_stories()) == 1
+    assert curator.sources == (SOURCE, OTHER_SOURCE)
+
+
+def test_a_progress_observer_failure_aborts_the_batch() -> None:
+    curator, repository, _ = make_curator()
+
+    def fail(_: NewsBatchProgress) -> None:
+        raise PersistenceError("simulated progress write failure")
+
+    with pytest.raises(PersistenceError):
+        curator.curate_batch(on_progress=fail)
+
+    assert repository.list_stories() == ()
+
+
+def test_batch_progress_validates_its_stage_and_counters() -> None:
+    with pytest.raises(ValueError):
+        NewsBatchProgress(
+            stage="fetching_sources",  # type: ignore[arg-type]
+            sources_configured=1,
+            sources_processed=0,
+            fetched=0,
+            deduplicated=0,
+            published=0,
+            rejected=0,
+            failed=0,
+        )
+    with pytest.raises(ValueError, match="sources_processed"):
+        NewsBatchProgress(
+            stage=NewsBatchStage.CURATING_ITEMS,
+            sources_configured=1,
+            sources_processed=2,
+            fetched=0,
+            deduplicated=0,
+            published=0,
+            rejected=0,
+            failed=0,
+        )

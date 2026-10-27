@@ -79,9 +79,25 @@
     </form>
   </section>
 
+  {% if job %}
+  <section class="authoring-section" aria-labelledby="job-heading">
+    <h2 id="job-heading" class="subheading authoring-section__heading">Curation job</h2>
+    <div class="authoring-outcome" role="status">
+      <p><strong>{{ job.status_label }}</strong> — {{ job.message }}</p>
+      <p class="form-hint">
+        Created {{ job.created_display }}. Accepted curation work runs on the
+        server, so leaving or refreshing this page does not stop it.
+      </p>
+      {% if job.error_message %}
+      <p class="form-hint">{{ job.error_message }}</p>
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+
   {% if batch %}
   <section class="authoring-section" aria-labelledby="batch-heading">
-    <h2 id="batch-heading" class="subheading authoring-section__heading">Last refresh</h2>
+    <h2 id="batch-heading" class="subheading authoring-section__heading">Latest curation report</h2>
     <div class="authoring-outcome" role="status">
       <p>{{ batch.summary_line }}</p>
       <p class="form-hint">
