@@ -545,6 +545,6 @@ def test_curation_status_script_is_served_and_wired_into_the_page() -> None:
     assert 'src="/static/js/news-curation-status.js" defer' in page.text
     assert script.status_code == 200
     assert "authoring/pulse/jobs/" in script.text
-    assert "credentials: \"same-origin\"" in script.text
+    assert 'credentials: "same-origin"' in script.text
     assert "window.location.reload()" in script.text
     assert "setTimeout" in script.text
