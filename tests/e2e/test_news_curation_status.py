@@ -58,11 +58,11 @@ def test_status_recovers_from_temporary_failure_and_reloads_final_report() -> No
             '<strong id="curation-items-published">0</strong>'
             '<strong id="curation-items-rejected">0</strong>'
             '<strong id="curation-items-failed">0</strong>'
-            '</section>'
-            f'{report}'
-            '</main>'
-            f'<script>{script}</script>'
-            '</body></html>'
+            "</section>"
+            f"{report}"
+            "</main>"
+            f"<script>{script}</script>"
+            "</body></html>"
         )
 
     def handle_page(route: Route) -> None:
@@ -140,9 +140,7 @@ def test_status_recovers_from_temporary_failure_and_reloads_final_report() -> No
             "originalSetTimeout(callback, Math.min(delay, 250), ...args);"
         )
         page.route("https://fablit.test/authoring/pulse", handle_page)
-        page.route(
-            "https://fablit.test/authoring/pulse/jobs/job-1", handle_status
-        )
+        page.route("https://fablit.test/authoring/pulse/jobs/job-1", handle_status)
         try:
             page.goto("https://fablit.test/authoring/pulse")
 
