@@ -499,7 +499,9 @@ def test_learners_cannot_read_job_status(route: str) -> None:
 def test_author_page_renders_durable_progress_for_an_active_job() -> None:
     client, app = client_for()
     install_job_workflow(app, dispatcher=RecordingDispatcher())
-    accepted = client.post("/authoring/pulse/curate", headers=HEADERS)
+    accepted = client.post(
+        "/authoring/pulse/curate", headers={**HEADERS, "Accept": "text/html"}
+    )
     assert accepted.status_code == 202
     job_id = accepted.text.split('data-job-id="', 1)[1].split('"', 1)[0]
 
