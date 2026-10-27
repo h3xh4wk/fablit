@@ -20,6 +20,7 @@
   let timerId = null;
   let requestInFlight = false;
   let pollAttempt = 0;
+  let lastProgressSignature = "";
 
   function setText(id, value) {
     const node = document.getElementById(id);
@@ -105,8 +106,17 @@
       if (!response.ok) throw new Error("status request failed");
       const job = await response.json();
       if (job.job_id !== activeJobId) throw new Error("status identity mismatch");
+      const signature = JSON.stringify([
+        job.status,
+        job.stage,
+        job.message,
+        job.counters || {}
+      ]);
+      if (signature !== lastProgressSignature) {
+        lastProgressSignature = signature;
+        pollAttempt = 0;
+      }
       updateStatus(job);
-      pollAttempt = 0;
 
       if (job.is_terminal) {
         stopPolling();
@@ -140,6 +150,7 @@
     stopPolling();
     activeJobId = jobId;
     pollAttempt = 0;
+    lastProgressSignature = "";
     // Refresh immediately after a page/HTMX swap, then use bounded polling.
     pollStatus();
   }
