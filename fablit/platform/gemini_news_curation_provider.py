@@ -14,13 +14,17 @@ still validated by the application workflow before publication.
 
 from __future__ import annotations
 
+import email.utils
 import json
 import logging
 import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
-from typing import Final
+from contextlib import suppress
+from dataclasses import replace
+from datetime import UTC, datetime
+from typing import Any, Final
 
 from fablit.application.errors import (
     NewsCurationProviderError,
@@ -47,6 +51,7 @@ DEFAULT_GEMINI_NEWS_ENDPOINT: Final[str] = (
 
 MAX_NEWS_ATTEMPTS: Final[int] = 3
 NEWS_RETRY_BACKOFF_SECONDS: Final[float] = 0.5
+MAX_RETRY_DELAY_SECONDS: Final[float] = 10.0
 _RETRYABLE_STATUS_CODES: Final[frozenset[int]] = frozenset({429, 503})
 _UNAVAILABLE_MESSAGE = "the news curation provider is unavailable"
 
@@ -67,6 +72,8 @@ class GeminiNewsCurationProvider:
         fetch: GeminiNewsTransport | None = None,
         max_attempts: int = MAX_NEWS_ATTEMPTS,
         retry_backoff_seconds: float = NEWS_RETRY_BACKOFF_SECONDS,
+        sleeper: Callable[[float], None] = time.sleep,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         if not isinstance(api_key, str) or not api_key.strip():
             raise NewsCurationProviderError(
@@ -91,6 +98,8 @@ class GeminiNewsCurationProvider:
         self._fetch: GeminiNewsTransport = fetch or self._default_fetch
         self._max_attempts = max_attempts
         self._retry_backoff_seconds = retry_backoff_seconds
+        self._sleeper = sleeper
+        self._clock = clock or (lambda: datetime.now(UTC))
 
     @property
     def provider_id(self) -> str:
@@ -109,18 +118,24 @@ class GeminiNewsCurationProvider:
             "x-goog-api-key": self._api_key,
         }
         try:
-            payload = self._fetch_with_retry(url, body, headers)
+            payload, retries = self._fetch_with_retry(url, body, headers)
         except NewsCurationProviderError:
             raise
         except urllib.error.HTTPError as exc:
             raise NewsCurationProviderError(
-                f"{_UNAVAILABLE_MESSAGE} (status {exc.code})"
+                f"{_UNAVAILABLE_MESSAGE} (status {exc.code})",
+                status_code=exc.code,
+                retries=0,
+                exhausted=False,
             ) from exc
         except Exception as exc:
             raise NewsCurationProviderError(_UNAVAILABLE_MESSAGE) from exc
 
         output = self._parse_response(payload)
-        return coerce_news_curation_result(output)
+        result = coerce_news_curation_result(output)
+        if retries > 0:
+            result = replace(result, retry_count=retries)
+        return result
 
     def _build_payload(self, request: NewsCurationRequest) -> dict[str, object]:
         return {
@@ -182,27 +197,84 @@ class GeminiNewsCurationProvider:
 
     def _fetch_with_retry(
         self, url: str, body: bytes, headers: Mapping[str, str]
-    ) -> str:
+    ) -> tuple[str, int]:
         attempt = 1
+        retries = 0
         while True:
             try:
-                return self._fetch(url, body, headers)
+                return self._fetch(url, body, headers), retries
             except urllib.error.HTTPError as exc:
-                if (
-                    exc.code not in _RETRYABLE_STATUS_CODES
-                    or attempt >= self._max_attempts
-                ):
-                    raise
+                if exc.code not in _RETRYABLE_STATUS_CODES:
+                    raise NewsCurationProviderError(
+                        f"{_UNAVAILABLE_MESSAGE} (status {exc.code})",
+                        status_code=exc.code,
+                        retries=retries,
+                        exhausted=False,
+                    ) from exc
+                if attempt >= self._max_attempts:
+                    logger.warning(
+                        "Gemini news provider retry attempts exhausted",
+                        extra={
+                            "status_code": exc.code,
+                            "attempt": attempt,
+                            "max_attempts": self._max_attempts,
+                        },
+                    )
+                    raise NewsCurationProviderError(
+                        f"{_UNAVAILABLE_MESSAGE} (status {exc.code})",
+                        status_code=exc.code,
+                        retries=retries,
+                        exhausted=True,
+                    ) from exc
+
+                parsed_delay = self._parse_retry_after(getattr(exc, "headers", None))
+                base_delay = (
+                    parsed_delay
+                    if parsed_delay is not None
+                    else (self._retry_backoff_seconds * attempt)
+                )
+                delay = min(MAX_RETRY_DELAY_SECONDS, max(0.0, base_delay))
                 logger.warning(
                     "transient Gemini news provider error; retrying",
                     extra={
                         "status_code": exc.code,
                         "attempt": attempt,
                         "max_attempts": self._max_attempts,
+                        "retry_delay": delay,
                     },
                 )
-                time.sleep(self._retry_backoff_seconds * attempt)
+                self._sleeper(delay)
+                retries += 1
                 attempt += 1
+
+    def _parse_retry_after(self, headers: Any) -> float | None:
+        if headers is None:
+            return None
+        header_val: str | None = None
+        if hasattr(headers, "get"):
+            header_val = headers.get("Retry-After") or headers.get("retry-after")
+        elif hasattr(headers, "__getitem__"):
+            with suppress(KeyError, TypeError):
+                header_val = headers["Retry-After"]
+            if header_val is None:
+                with suppress(KeyError, TypeError):
+                    header_val = headers["retry-after"]
+        if not header_val or not isinstance(header_val, str):
+            return None
+        val = header_val.strip()
+        try:
+            return max(0.0, float(val))
+        except ValueError:
+            pass
+        try:
+            parsed_dt = email.utils.parsedate_to_datetime(val)
+            if parsed_dt.tzinfo is None:
+                parsed_dt = parsed_dt.replace(tzinfo=UTC)
+            now = self._clock()
+            diff = (parsed_dt - now).total_seconds()
+            return max(0.0, diff)
+        except Exception:
+            return None
 
     def _default_fetch(self, url: str, body: bytes, headers: Mapping[str, str]) -> str:
         request = urllib.request.Request(

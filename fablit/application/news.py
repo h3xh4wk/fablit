@@ -290,6 +290,54 @@ class NewsSourceFailure:
     reason: str
 
 
+class NewsProviderOutcome(StrEnum):
+    """The aggregate Gemini provider outcome for one curation batch or job."""
+
+    OK = "ok"
+    RECOVERED = "recovered"
+    RETRIES_EXHAUSTED = "retries_exhausted"
+    FAILED = "failed"
+
+
+@dataclass(frozen=True)
+class NewsCurationDiagnostics:
+    """Safe structured diagnostics for provider curation and retry behavior.
+
+    SPEC-042 §9: observes provider retry performance and terminal outcomes
+    without exposing raw payloads, prompts, or provider credentials.
+    """
+
+    provider_id: str
+    model_id: str
+    provider_retries: int = 0
+    transient_retries_recovered: int = 0
+    exhausted_retries: int = 0
+    provider_outcome: NewsProviderOutcome = NewsProviderOutcome.OK
+    last_status_code: int | None = None
+
+    def __post_init__(self) -> None:
+        """Enforce non-negative counters and valid outcome."""
+        for name in (
+            "provider_retries",
+            "transient_retries_recovered",
+            "exhausted_retries",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"news curation diagnostics {name} must be >= 0")
+        if not isinstance(self.provider_outcome, NewsProviderOutcome):
+            raise ValueError(
+                "news provider outcome must be controlled, "
+                f"got {self.provider_outcome!r}"
+            )
+        if self.last_status_code is not None and (
+            isinstance(self.last_status_code, bool)
+            or not isinstance(self.last_status_code, int)
+            or not (100 <= self.last_status_code <= 599)
+        ):
+            raise ValueError("last_status_code must be a valid HTTP status code")
+
+
 class NewsBatchStage(StrEnum):
     """Observable phases a running batch reports to a progress observer.
 
@@ -319,6 +367,7 @@ class NewsBatchProgress:
     published: int
     rejected: int
     failed: int
+    provider_retries: int = 0
 
     def __post_init__(self) -> None:
         """Require a controlled stage and non-negative counters."""
@@ -332,6 +381,7 @@ class NewsBatchProgress:
             "published",
             "rejected",
             "failed",
+            "provider_retries",
         ):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
@@ -356,6 +406,8 @@ class NewsBatchResult:
     published: int = 0
     rejected: int = 0
     failed: int = 0
+    provider_retries: int = 0
+    diagnostics: NewsCurationDiagnostics | None = None
     rejections: tuple[NewsItemOutcome, ...] = ()
     failures: tuple[NewsItemOutcome, ...] = ()
     source_failures: tuple[NewsSourceFailure, ...] = ()
@@ -368,6 +420,15 @@ class NewsBatchResult:
             f"{'' if self.deduplicated == 1 else 's'}, {self.published} published, "
             f"{self.rejected} rejected, {self.failed} failed"
         )
+
+
+@dataclass(frozen=True)
+class _ItemCurationStats:
+    retries: int = 0
+    recovered: bool = False
+    exhausted: bool = False
+    provider_failed: bool = False
+    status_code: int | None = None
 
 
 class NewsCurator:
@@ -457,6 +518,11 @@ class NewsCurator:
     ) -> NewsBatchResult:
         started_at = self._clock()
         fetched = deduplicated = published = rejected = failed = 0
+        provider_retries = 0
+        transient_retries_recovered = 0
+        exhausted_retries = 0
+        provider_failures = 0
+        last_status_code: int | None = None
         rejections: list[NewsItemOutcome] = []
         failures: list[NewsItemOutcome] = []
         source_failures: list[NewsSourceFailure] = []
@@ -476,6 +542,7 @@ class NewsCurator:
                     published=published,
                     rejected=rejected,
                     failed=failed,
+                    provider_retries=provider_retries,
                 )
             )
 
@@ -502,16 +569,26 @@ class NewsCurator:
 
             for item in items[: self._max_items_per_source]:
                 fetched += 1
-                outcome, story = self._process_item(
+                outcome, story, stats = self._process_item(
                     item,
                     source,
                     now=started_at,
                     seen_urls=seen_urls,
                 )
+                provider_retries += stats.retries
+                if stats.recovered:
+                    transient_retries_recovered += stats.retries
+                if stats.exhausted:
+                    exhausted_retries += 1
+                if stats.provider_failed:
+                    provider_failures += 1
+                if stats.status_code is not None:
+                    last_status_code = stats.status_code
+
                 if outcome is not None:
                     if outcome.reason == "duplicate":
                         deduplicated += 1
-                    elif outcome.reason in _FAILURE_REASONS:
+                    elif _is_failure_reason(outcome.reason):
                         failed += 1
                         failures.append(outcome)
                     else:
@@ -524,6 +601,26 @@ class NewsCurator:
 
         report(NewsBatchStage.FINALIZING_REPORT, processed)
         finished_at = self._clock()
+
+        if exhausted_retries > 0:
+            provider_outcome = NewsProviderOutcome.RETRIES_EXHAUSTED
+        elif provider_failures > 0:
+            provider_outcome = NewsProviderOutcome.FAILED
+        elif transient_retries_recovered > 0:
+            provider_outcome = NewsProviderOutcome.RECOVERED
+        else:
+            provider_outcome = NewsProviderOutcome.OK
+
+        diagnostics = NewsCurationDiagnostics(
+            provider_id=_provider_identity(self._provider, "provider_id"),
+            model_id=_provider_identity(self._provider, "model_id"),
+            provider_retries=provider_retries,
+            transient_retries_recovered=transient_retries_recovered,
+            exhausted_retries=exhausted_retries,
+            provider_outcome=provider_outcome,
+            last_status_code=last_status_code,
+        )
+
         return NewsBatchResult(
             started_at=started_at,
             finished_at=finished_at,
@@ -534,6 +631,8 @@ class NewsCurator:
             published=published,
             rejected=rejected,
             failed=failed,
+            provider_retries=provider_retries,
+            diagnostics=diagnostics,
             rejections=tuple(rejections),
             failures=tuple(failures),
             source_failures=tuple(source_failures),
@@ -546,7 +645,7 @@ class NewsCurator:
         *,
         now: datetime,
         seen_urls: set[str],
-    ) -> tuple[NewsItemOutcome | None, NewsStory | None]:
+    ) -> tuple[NewsItemOutcome | None, NewsStory | None, _ItemCurationStats]:
         title = " ".join(item.title.split())[:MAX_HEADLINE_CHARS]
         try:
             canonical_url = normalize_http_url(item.url)
@@ -556,6 +655,7 @@ class NewsCurator:
                     source.name, title, "", "link is not a safe public HTTP(S) URL"
                 ),
                 None,
+                _ItemCurationStats(),
             )
 
         if not link_belongs_to_source(canonical_url, source):
@@ -567,10 +667,15 @@ class NewsCurator:
                     "link is outside the approved source",
                 ),
                 None,
+                _ItemCurationStats(),
             )
 
         if canonical_url in seen_urls:
-            return _outcome(source.name, title, canonical_url, "duplicate"), None
+            return (
+                _outcome(source.name, title, canonical_url, "duplicate"),
+                None,
+                _ItemCurationStats(),
+            )
         seen_urls.add(canonical_url)
 
         try:
@@ -583,13 +688,22 @@ class NewsCurator:
             return (
                 _outcome(source.name, title, canonical_url, "news storage unavailable"),
                 None,
+                _ItemCurationStats(),
             )
         if existing is not None:
-            return _outcome(source.name, title, canonical_url, "duplicate"), None
+            return (
+                _outcome(source.name, title, canonical_url, "duplicate"),
+                None,
+                _ItemCurationStats(),
+            )
 
         rejection = self._deterministic_rejection(item, now=now)
         if rejection is not None:
-            return _outcome(source.name, title, canonical_url, rejection), None
+            return (
+                _outcome(source.name, title, canonical_url, rejection),
+                None,
+                _ItemCurationStats(),
+            )
 
         request = NewsCurationRequest(
             source_name=source.name,
@@ -598,11 +712,50 @@ class NewsCurator:
             excerpt=item.excerpt,
             allowed_categories=tuple(category.value for category in NewsCategory),
         )
+        retries = 0
+        recovered = False
+        exhausted = False
+        provider_failed = False
+        status_code: int | None = None
+
         try:
             raw_result = self._provider.curate(request)
+        except NewsCurationProviderError as error:
+            retries = error.retries
+            status_code = error.status_code
+            exhausted = error.exhausted
+            provider_failed = not error.exhausted
+            if exhausted:
+                reason = (
+                    f"curation provider retries exhausted (status {status_code})"
+                    if status_code is not None
+                    else "curation provider retries exhausted"
+                )
+            elif status_code is not None:
+                reason = f"curation provider failed (status {status_code})"
+            else:
+                reason = "curation provider failed"
+            logger.warning(
+                "news curation provider failed",
+                extra={
+                    "error_type": type(error).__name__,
+                    "status_code": status_code,
+                    "retries": retries,
+                    "exhausted": exhausted,
+                },
+            )
+            return (
+                _outcome(source.name, title, canonical_url, reason),
+                None,
+                _ItemCurationStats(
+                    retries=retries,
+                    recovered=False,
+                    exhausted=exhausted,
+                    provider_failed=provider_failed,
+                    status_code=status_code,
+                ),
+            )
         except Exception as error:
-            # A provider failure (unavailable, timed out, unreadable response)
-            # is a failed candidate, never a rejected one and never published.
             logger.warning(
                 "news curation provider failed",
                 extra={"error_type": type(error).__name__},
@@ -610,6 +763,13 @@ class NewsCurator:
             return (
                 _outcome(source.name, title, canonical_url, "curation provider failed"),
                 None,
+                _ItemCurationStats(
+                    retries=0,
+                    recovered=False,
+                    exhausted=False,
+                    provider_failed=True,
+                    status_code=None,
+                ),
             )
         try:
             result = coerce_news_curation_result(raw_result)
@@ -622,11 +782,28 @@ class NewsCurator:
                     "curation result could not be used",
                 ),
                 None,
+                _ItemCurationStats(
+                    retries=0,
+                    recovered=False,
+                    exhausted=False,
+                    provider_failed=True,
+                    status_code=None,
+                ),
             )
+
+        retries = getattr(result, "retry_count", 0)
+        recovered = retries > 0
+        stats = _ItemCurationStats(
+            retries=retries,
+            recovered=recovered,
+            exhausted=False,
+            provider_failed=False,
+            status_code=None,
+        )
 
         rejection = self._result_rejection(result, item, title)
         if rejection is not None:
-            return _outcome(source.name, title, canonical_url, rejection), None
+            return _outcome(source.name, title, canonical_url, rejection), None, stats
 
         categories = _categories(result.categories)
         reflection = _optional_text(result.reflection_prompt)
@@ -659,8 +836,9 @@ class NewsCurator:
                     source.name, title, canonical_url, "story could not be stored"
                 ),
                 None,
+                stats,
             )
-        return None, story
+        return None, story, stats
 
     def _deterministic_rejection(
         self, item: NewsSourceItem, *, now: datetime
@@ -729,9 +907,18 @@ _FAILURE_REASONS = frozenset(
     {
         "news storage unavailable",
         "curation provider failed",
+        "curation provider retries exhausted",
         "story could not be stored",
     }
 )
+
+
+def _is_failure_reason(reason: str) -> bool:
+    if reason in _FAILURE_REASONS:
+        return True
+    return reason.startswith("curation provider failed") or reason.startswith(
+        "curation provider retries exhausted"
+    )
 
 
 def _outcome(source_name: str, title: str, url: str, reason: str) -> NewsItemOutcome:

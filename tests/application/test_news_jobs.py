@@ -23,8 +23,10 @@ from fablit.application.news import (
     InMemoryNewsRepository,
     NewsBatchProgress,
     NewsBatchResult,
+    NewsCurationDiagnostics,
     NewsCurator,
     NewsItemOutcome,
+    NewsProviderOutcome,
     NewsSourceFailure,
 )
 from fablit.application.news_curation import FakeNewsCurationProvider
@@ -465,12 +467,33 @@ def test_repository_allows_a_stale_lease_takeover() -> None:
 
 
 def test_reports_merge_into_one_accumulated_report() -> None:
-    first = make_report(fetched=2, published=1, deduplicated=1)
+    first = make_report(
+        fetched=2,
+        published=1,
+        deduplicated=1,
+        provider_retries=1,
+        diagnostics=NewsCurationDiagnostics(
+            provider_id="gemini",
+            model_id="test",
+            provider_retries=1,
+            transient_retries_recovered=1,
+            provider_outcome=NewsProviderOutcome.RECOVERED,
+        ),
+    )
     second = make_report(
         sources_configured=1,
         sources_processed=1,
         fetched=1,
         rejected=1,
+        provider_retries=2,
+        diagnostics=NewsCurationDiagnostics(
+            provider_id="gemini",
+            model_id="test",
+            provider_retries=2,
+            exhausted_retries=1,
+            provider_outcome=NewsProviderOutcome.RETRIES_EXHAUSTED,
+            last_status_code=429,
+        ),
         rejections=(NewsItemOutcome("B", "C", "https://b.example.com/1", "too old"),),
     )
 
@@ -483,8 +506,47 @@ def test_reports_merge_into_one_accumulated_report() -> None:
     assert merged.fetched == 3
     assert merged.published == 1
     assert merged.rejected == 1
+    assert merged.provider_retries == 3
     assert merged.rejections[0].reason == "too old"
     assert merged.started_at == NOW - timedelta(minutes=5)
+    assert merged.diagnostics is not None
+    assert merged.diagnostics.provider_retries == 3
+    assert merged.diagnostics.transient_retries_recovered == 1
+    assert merged.diagnostics.exhausted_retries == 1
+    assert merged.diagnostics.provider_outcome == NewsProviderOutcome.RETRIES_EXHAUSTED
+    assert merged.diagnostics.last_status_code == 429
+
+
+def test_counters_for_derives_provider_retries() -> None:
+    report = make_report(
+        sources_processed=1,
+        fetched=2,
+        published=1,
+        provider_retries=3,
+    )
+    counters = counters_for(report, sources_configured=1)
+    assert counters.provider_retries == 3
+
+
+def test_job_diagnostics_property_exposes_batch_diagnostics() -> None:
+    diag = NewsCurationDiagnostics(
+        provider_id="gemini",
+        model_id="test",
+        provider_retries=2,
+        transient_retries_recovered=2,
+        provider_outcome=NewsProviderOutcome.RECOVERED,
+    )
+    report = make_report(provider_retries=2, diagnostics=diag)
+    job = make_job(report=report)
+    assert job.diagnostics == diag
+
+    job_without_report = make_job()
+    assert job_without_report.diagnostics is None
+
+
+def test_counters_validates_provider_retries() -> None:
+    with pytest.raises(ValueError, match="provider_retries"):
+        NewsCurationCounters(provider_retries=-1)
 
 
 # --- Job service ------------------------------------------------------------

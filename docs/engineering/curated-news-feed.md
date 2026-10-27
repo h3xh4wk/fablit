@@ -228,6 +228,45 @@ running.
 - If the news store is unavailable, `/pulse` shows a calm unavailable/empty
   state and ordinary practice, history, and authoring remain usable.
 
+### Gemini retry observability and safe diagnostics
+
+When curating news with Gemini, transient failures (HTTP 429 Too Many Requests,
+HTTP 503 Service Unavailable) are retried with exponential backoff and jitter,
+honouring `Retry-After` headers bounded by `MAX_RETRY_DELAY_SECONDS` (10 seconds).
+Non-retryable provider errors (such as HTTP 400 Bad Request or HTTP 401/403
+authentication/permission errors) fail immediately without retrying.
+
+The batch report and job status distinguish between transient retries and
+terminal failure:
+
+- **Provider outcomes**:
+  - `ok`: All curated items succeeded without any retries.
+  - `recovered`: Transient failures were encountered, but succeeded on a subsequent
+    retry attempt.
+  - `retries_exhausted`: One or more items exhausted their retry attempts on
+    transient errors (HTTP 429 or 503).
+  - `failed`: The provider failed with a non-retryable error (e.g. HTTP 400).
+- **Retry counters and diagnostics**:
+  - The job counters and batch report track `provider_retries` (the total count of
+    retry attempts made across all items in the batch).
+  - Structured `NewsCurationDiagnostics` report the provider identity, model,
+    total `provider_retries`, `transient_retries_recovered`, `exhausted_retries`,
+    `provider_outcome`, and the `last_status_code` seen on provider failure.
+- **Leak prevention**:
+  - Structured diagnostics and structured log entries strictly omit API keys,
+    secrets, full prompt texts, and raw model payloads.
+  - Failure summaries in reports and authoring copy remain bounded, high-level
+    reasons (e.g. `curation provider retries exhausted (HTTP 429)` or `curation provider failed (HTTP 400)`).
+- **Safe operator interpretation**:
+  - When `provider_retries > 0` with `provider_outcome: recovered`, transient
+    throttling or brief service interruptions were safely handled and the batch
+    completed; no manual intervention is needed.
+  - If `provider_outcome: retries_exhausted` (typically with HTTP 429), check
+    Gemini quota and rate limits before initiating another refresh.
+  - If `provider_outcome: failed` (with HTTP 400 or 401/403), check model
+    configuration (`FABLIT_AI_PROVIDER_MODEL`) or API key validity
+    (`FABLIT_AI_PROVIDER_API_KEY`).
+
 ## 7. Local development and tests
 
 The test suite and local development use the in-memory story and job

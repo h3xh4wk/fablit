@@ -65,6 +65,7 @@ class NewsCurationResult:
     relevance_score: float
     grounding_terms: tuple[str, ...]
     reflection_prompt: str | None = None
+    retry_count: int = 0
 
     def __post_init__(self) -> None:
         """Enforce the shape every provider result must satisfy."""
@@ -97,6 +98,11 @@ class NewsCurationResult:
             raise ValueError(
                 "news curation result relevance_score must be between 0 and 1"
             )
+        retries = self.retry_count
+        if isinstance(retries, bool) or not isinstance(retries, int) or retries < 0:
+            raise ValueError(
+                "news curation result retry_count must be a non-negative integer"
+            )
         object.__setattr__(self, "relevance_score", float(score))
 
 
@@ -113,6 +119,7 @@ def coerce_news_curation_result(value: object) -> NewsCurationResult:
     reflection = value.get("reflection_prompt")
     score = value.get("relevance_score")
     grounding = value.get("grounding_terms")
+    retries = value.get("retry_count", 0)
 
     try:
         return NewsCurationResult(
@@ -126,6 +133,7 @@ def coerce_news_curation_result(value: object) -> NewsCurationResult:
                 if reflection is not None and _text(reflection)
                 else None
             ),
+            retry_count=_retries(retries),
         )
     except (ValueError, TypeError) as exc:
         raise NewsCurationProviderError(
@@ -155,6 +163,20 @@ def _score(value: object) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float | str):
         raise ValueError("relevance_score must be a number")
     return float(value)
+
+
+def _retries(value: object) -> int:
+    if value is None:
+        return 0
+    if isinstance(value, bool) or not isinstance(value, int | str):
+        raise ValueError("retry_count must be a non-negative integer")
+    try:
+        val = int(value)
+    except ValueError:
+        raise ValueError("retry_count must be a non-negative integer") from None
+    if val < 0:
+        raise ValueError("retry_count must be a non-negative integer")
+    return val
 
 
 @runtime_checkable

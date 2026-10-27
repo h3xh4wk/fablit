@@ -22,7 +22,9 @@ from fablit.application.news import (
     NewsBatchProgress,
     NewsBatchStage,
     NewsCategory,
+    NewsCurationDiagnostics,
     NewsCurator,
+    NewsProviderOutcome,
     NewsStory,
 )
 from fablit.application.news_curation import (
@@ -682,4 +684,135 @@ def test_batch_progress_validates_its_stage_and_counters() -> None:
             published=0,
             rejected=0,
             failed=0,
+        )
+
+
+def test_batch_curation_records_recovered_retries_in_diagnostics() -> None:
+    result_with_retries = make_result(retry_count=2)
+    provider = FakeNewsCurationProvider(result_with_retries)
+    curator, _, _ = make_curator(provider=provider)
+
+    batch = curator.curate_batch()
+
+    assert batch.published == 1
+    assert batch.provider_retries == 2
+    assert batch.diagnostics is not None
+    assert batch.diagnostics.provider_retries == 2
+    assert batch.diagnostics.transient_retries_recovered == 2
+    assert batch.diagnostics.exhausted_retries == 0
+    assert batch.diagnostics.provider_outcome == NewsProviderOutcome.RECOVERED
+
+
+def test_batch_curation_records_exhausted_retries_in_diagnostics() -> None:
+    provider = FakeNewsCurationProvider(
+        error=NewsCurationProviderError(
+            "rate limit exceeded",
+            status_code=429,
+            retries=2,
+            exhausted=True,
+        )
+    )
+    curator, _, _ = make_curator(provider=provider)
+
+    batch = curator.curate_batch()
+
+    assert batch.failed == 1
+    assert batch.provider_retries == 2
+    assert batch.diagnostics is not None
+    assert batch.diagnostics.provider_retries == 2
+    assert batch.diagnostics.transient_retries_recovered == 0
+    assert batch.diagnostics.exhausted_retries == 1
+    assert batch.diagnostics.last_status_code == 429
+    assert batch.diagnostics.provider_outcome == NewsProviderOutcome.RETRIES_EXHAUSTED
+    assert (
+        batch.failures[0].reason == "curation provider retries exhausted (status 429)"
+    )
+
+
+def test_batch_curation_records_terminal_provider_failure_in_diagnostics() -> None:
+    provider = FakeNewsCurationProvider(
+        error=NewsCurationProviderError(
+            "forbidden",
+            status_code=403,
+            retries=0,
+            exhausted=False,
+        )
+    )
+    curator, _, _ = make_curator(provider=provider)
+
+    batch = curator.curate_batch()
+
+    assert batch.failed == 1
+    assert batch.provider_retries == 0
+    assert batch.diagnostics is not None
+    assert batch.diagnostics.provider_outcome == NewsProviderOutcome.FAILED
+    assert batch.diagnostics.last_status_code == 403
+    assert batch.failures[0].reason == "curation provider failed (status 403)"
+
+
+def test_batch_curation_aggregates_multiple_provider_outcomes() -> None:
+    class MultiItemProvider:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        @property
+        def provider_id(self) -> str:
+            return "multi-test"
+
+        @property
+        def model_id(self) -> str:
+            return "multi-model"
+
+        def curate(self, request: NewsCurationRequest) -> NewsCurationResult:
+            self.calls += 1
+            if self.calls == 1:
+                return make_result(retry_count=1)
+            raise NewsCurationProviderError(
+                "rate limited",
+                status_code=429,
+                retries=2,
+                exhausted=True,
+            )
+
+    items = (
+        make_item(url="https://news.example.com/story/1", title="Story 1"),
+        make_item(url="https://news.example.com/story/2", title="Story 2"),
+    )
+    provider = MultiItemProvider()
+    curator, _, _ = make_curator(
+        items=items,
+        provider=provider,  # type: ignore[arg-type]
+    )
+
+    batch = curator.curate_batch()
+
+    assert batch.published == 1
+    assert batch.failed == 1
+    assert batch.provider_retries == 3
+    assert batch.diagnostics is not None
+    assert batch.diagnostics.provider_retries == 3
+    assert batch.diagnostics.transient_retries_recovered == 1
+    assert batch.diagnostics.exhausted_retries == 1
+    assert batch.diagnostics.last_status_code == 429
+    assert batch.diagnostics.provider_outcome == NewsProviderOutcome.RETRIES_EXHAUSTED
+
+
+def test_news_curation_diagnostics_validates_invariants() -> None:
+    with pytest.raises(ValueError, match="provider_retries"):
+        NewsCurationDiagnostics(
+            provider_id="test",
+            model_id="test",
+            provider_retries=-1,
+        )
+    with pytest.raises(ValueError, match="news provider outcome"):
+        NewsCurationDiagnostics(
+            provider_id="test",
+            model_id="test",
+            provider_outcome="invalid",  # type: ignore[arg-type]
+        )
+    with pytest.raises(ValueError, match="last_status_code"):
+        NewsCurationDiagnostics(
+            provider_id="test",
+            model_id="test",
+            last_status_code=999,
         )

@@ -27,7 +27,9 @@ from uuid import UUID
 from fablit.application.errors import NewsCurationJobTransitionError
 from fablit.application.news import (
     NewsBatchResult,
+    NewsCurationDiagnostics,
     NewsItemOutcome,
+    NewsProviderOutcome,
     NewsSourceFailure,
 )
 from fablit.application.news_jobs import (
@@ -77,6 +79,7 @@ def serialize_news_job(job: NewsCurationJob) -> dict[str, Any]:
         "items_published": job.counters.items_published,
         "items_rejected": job.counters.items_rejected,
         "items_failed": job.counters.items_failed,
+        "provider_retries": job.counters.provider_retries,
     }
     optional: dict[str, Any] = {
         "started_at": job.started_at,
@@ -118,6 +121,7 @@ def deserialize_news_job(entity: Mapping[str, Any]) -> NewsCurationJob:
             items_published=int(entity.get("items_published", 0)),
             items_rejected=int(entity.get("items_rejected", 0)),
             items_failed=int(entity.get("items_failed", 0)),
+            provider_retries=int(entity.get("provider_retries", 0)),
         ),
         report=(
             _report_from_payload(json.loads(str(raw_report)))
@@ -150,6 +154,12 @@ def _report_payload(report: NewsBatchResult) -> dict[str, Any]:
         "published": report.published,
         "rejected": report.rejected,
         "failed": report.failed,
+        "provider_retries": report.provider_retries,
+        "diagnostics": (
+            _diagnostics_payload(report.diagnostics)
+            if report.diagnostics is not None
+            else None
+        ),
         "rejections": [_outcome_payload(item) for item in report.rejections],
         "failures": [_outcome_payload(item) for item in report.failures],
         "source_failures": [
@@ -157,6 +167,36 @@ def _report_payload(report: NewsBatchResult) -> dict[str, Any]:
             for failure in report.source_failures
         ],
     }
+
+
+def _diagnostics_payload(diagnostics: NewsCurationDiagnostics) -> dict[str, Any]:
+    return {
+        "provider_id": diagnostics.provider_id,
+        "model_id": diagnostics.model_id,
+        "provider_retries": diagnostics.provider_retries,
+        "transient_retries_recovered": diagnostics.transient_retries_recovered,
+        "exhausted_retries": diagnostics.exhausted_retries,
+        "provider_outcome": diagnostics.provider_outcome.value,
+        "last_status_code": diagnostics.last_status_code,
+    }
+
+
+def _diagnostics_from_payload(payload: Mapping[str, Any]) -> NewsCurationDiagnostics:
+    return NewsCurationDiagnostics(
+        provider_id=str(payload.get("provider_id", "")),
+        model_id=str(payload.get("model_id", "")),
+        provider_retries=int(payload.get("provider_retries", 0)),
+        transient_retries_recovered=int(payload.get("transient_retries_recovered", 0)),
+        exhausted_retries=int(payload.get("exhausted_retries", 0)),
+        provider_outcome=NewsProviderOutcome(
+            str(payload.get("provider_outcome", "ok"))
+        ),
+        last_status_code=(
+            int(payload["last_status_code"])
+            if payload.get("last_status_code") is not None
+            else None
+        ),
+    )
 
 
 def _outcome_payload(outcome: NewsItemOutcome) -> dict[str, str]:
@@ -179,6 +219,12 @@ def _report_from_payload(payload: Mapping[str, Any]) -> NewsBatchResult:
         published=int(payload.get("published", 0)),
         rejected=int(payload.get("rejected", 0)),
         failed=int(payload.get("failed", 0)),
+        provider_retries=int(payload.get("provider_retries", 0)),
+        diagnostics=(
+            _diagnostics_from_payload(payload["diagnostics"])
+            if payload.get("diagnostics") is not None
+            else None
+        ),
         rejections=tuple(
             _outcome_from_payload(item) for item in payload.get("rejections", ())
         ),

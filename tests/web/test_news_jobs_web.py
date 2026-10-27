@@ -548,3 +548,50 @@ def test_curation_status_script_is_served_and_wired_into_the_page() -> None:
     assert 'credentials: "same-origin"' in script.text
     assert "window.location.reload()" in script.text
     assert "setTimeout" in script.text
+    assert 'provider_retries: "curation-provider-retries"' in script.text
+
+
+def test_job_status_payload_includes_provider_retries_and_diagnostics() -> None:
+    from fablit.application.news_curation import NewsCurationResult
+
+    client, app = client_for()
+    result = NewsCurationResult(
+        summary="A collective is helping handloom weavers reach new buyers.",
+        categories=("textiles",),
+        educational_relevance="Notice how local craft meets contemporary design.",
+        reflection_prompt="Where do you see a material tradition nearby?",
+        relevance_score=0.8,
+        grounding_terms=("handloom", "weavers"),
+        retry_count=2,
+    )
+    provider = FakeNewsCurationProvider(result)
+    service = install_job_workflow(
+        app,
+        dispatcher=InlineNewsCurationTaskDispatcher(),
+        provider=provider,
+    )
+    job = service.start()
+
+    response = client.get(
+        f"/authoring/pulse/jobs/{job.job_id}",
+        headers=HEADERS,
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["counters"]["provider_retries"] == 2
+    assert payload["report"]["provider_retries"] == 2
+    assert payload["report"]["diagnostics"] is not None
+    assert payload["report"]["diagnostics"]["provider_retries"] == 2
+    assert payload["report"]["diagnostics"]["transient_retries_recovered"] == 2
+    assert payload["report"]["diagnostics"]["provider_outcome"] == "recovered"
+    assert payload["diagnostics"] == payload["report"]["diagnostics"]
+
+    # Also verify rendered HTML includes provider retries and diagnostics
+    html_page = client.get("/authoring/pulse", headers=HEADERS)
+    assert html_page.status_code == 200
+    assert 'id="curation-provider-retries">2</strong>' in html_page.text
+    assert 'id="report-provider-retries">2</dd>' in html_page.text
+    assert "Provider diagnostics" in html_page.text
+    assert 'id="diagnostics-provider-outcome">recovered</dd>' in html_page.text
+    assert 'id="diagnostics-provider-retries">2</dd>' in html_page.text
+    assert 'id="diagnostics-transient-recovered">2</dd>' in html_page.text
