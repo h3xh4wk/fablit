@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 
 import pytest
-from playwright.sync_api import expect, sync_playwright
+from playwright.sync_api import Route, expect, sync_playwright
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("RUN_BROWSER_TESTS") != "1",
@@ -64,7 +64,7 @@ def test_status_recovers_from_temporary_failure_and_reloads_final_report() -> No
             '</body></html>'
         )
 
-    def handle_page(route) -> None:
+    def handle_page(route: Route) -> None:
         nonlocal page_requests
         page_requests += 1
         route.fulfill(
@@ -73,7 +73,7 @@ def test_status_recovers_from_temporary_failure_and_reloads_final_report() -> No
             body=page_html(terminal=page_requests > 1),
         )
 
-    def handle_status(route) -> None:
+    def handle_status(route: Route) -> None:
         nonlocal status_requests
         status_requests += 1
         if status_requests == 1:
