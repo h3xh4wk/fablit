@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
-from threading import Barrier
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from threading import Barrier
 from uuid import UUID, uuid4
 
 import pytest
