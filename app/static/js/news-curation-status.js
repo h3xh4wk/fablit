@@ -59,9 +59,19 @@
 
     const counters = job.counters || {};
     Object.entries(COUNTERS).forEach(([key, id]) => {
-      if (Object.prototype.hasOwnProperty.call(counters, key)) {
-        setText(id, counters[key]);
+      if (!Object.prototype.hasOwnProperty.call(counters, key)) return;
+      // The job is created before a worker begins. Keep the configured-source
+      // total rendered by the page until the durable counter is populated.
+      const current = document.getElementById(id);
+      if (
+        key === "sources_configured" &&
+        Number(counters[key]) === 0 &&
+        current &&
+        Number(current.textContent) > 0
+      ) {
+        return;
       }
+      setText(id, counters[key]);
     });
 
     const error = job.error && job.error.message ? job.error.message : "";
