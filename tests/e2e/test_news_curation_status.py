@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
 import pytest
 from playwright.sync_api import Route, expect, sync_playwright
@@ -127,7 +128,7 @@ def test_status_recovers_from_temporary_failure_and_reloads_final_report() -> No
         route.fulfill(status=200, content_type="application/json", json=payload)
 
     with sync_playwright() as playwright:
-        launch_options = {"headless": True}
+        launch_options: dict[str, Any] = {"headless": True}
         if os.environ.get("PLAYWRIGHT_NO_SANDBOX") == "1":
             launch_options["args"] = ["--no-sandbox"]
         browser = playwright.chromium.launch(**launch_options)
