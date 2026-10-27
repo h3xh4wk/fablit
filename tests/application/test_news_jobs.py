@@ -8,6 +8,8 @@ No test fetches a live feed, calls Gemini, or needs cloud credentials.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
@@ -601,6 +603,62 @@ def test_a_second_start_is_refused_while_a_job_is_active() -> None:
 
     assert len(dispatcher.dispatched) == 1
     assert repository.find_active() == first
+
+
+def test_concurrent_start_requests_accept_only_one_active_job() -> None:
+    curator, _, _ = make_curator()
+    service, repository, dispatcher = make_service(curator=curator)
+    worker_count = 8
+    barrier = Barrier(worker_count)
+
+    def try_start(_: int) -> tuple[str, NewsCurationJob | None]:
+        barrier.wait()
+        try:
+            return ("started", service.start())
+        except NewsCurationInProgressError:
+            return ("already_active", None)
+
+    with ThreadPoolExecutor(max_workers=worker_count) as pool:
+        outcomes = list(pool.map(try_start, range(worker_count)))
+
+    accepted = [job for status, job in outcomes if status == "started"]
+    rejected = [status for status, _ in outcomes if status == "already_active"]
+    assert len(accepted) == 1
+    assert len(rejected) == worker_count - 1
+    assert len(dispatcher.dispatched) == 1
+    assert repository.find_active() == accepted[0]
+
+
+def test_a_stale_running_job_is_closed_before_a_new_start() -> None:
+    curator, _, _ = make_curator()
+    repository = InMemoryNewsCurationJobRepository()
+    stale_time = NOW - LEASE * 2
+    stale = make_job(created_at=stale_time)
+    assert repository.start(stale) is stale
+    claimed = repository.claim(
+        stale.job_id,
+        owner="interrupted-worker",
+        now=stale_time,
+        lease_until=stale_time + LEASE,
+    )
+    assert claimed is not None
+    assert claimed.status is NewsCurationJobStatus.RUNNING
+
+    service, _, dispatcher = make_service(
+        curator=curator,
+        repository=repository,
+        clock=lambda: NOW,
+    )
+    replacement = service.start()
+
+    recovered = repository.get(stale.job_id)
+    assert recovered is not None
+    assert recovered.status is NewsCurationJobStatus.FAILED
+    assert recovered.error_category is NewsCurationErrorCategory.INTERRUPTED
+    assert recovered.finished_at == NOW
+    assert replacement.job_id != stale.job_id
+    assert repository.find_active() == replacement
+    assert dispatcher.dispatched == [replacement.job_id]
 
 
 def test_a_stale_active_job_is_recovered_before_a_new_start() -> None:
