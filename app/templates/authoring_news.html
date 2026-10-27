@@ -109,6 +109,7 @@
       <div class="curation-progress__item"><span>Published</span><strong id="curation-items-published">{{ job.counters.items_published }}</strong></div>
       <div class="curation-progress__item"><span>Rejected</span><strong id="curation-items-rejected">{{ job.counters.items_rejected }}</strong></div>
       <div class="curation-progress__item"><span>Items failed</span><strong id="curation-items-failed">{{ job.counters.items_failed }}</strong></div>
+      <div class="curation-progress__item"><span>Provider retries</span><strong id="curation-provider-retries">{{ job.counters.provider_retries }}</strong></div>
     </div>
     <p id="curation-updated-note" class="form-hint">Counts update while the job runs. No estimated completion time is shown.</p>
   </section>
@@ -132,7 +133,21 @@
       <dt>Published</dt><dd>{{ batch.published }}</dd>
       <dt>Rejected</dt><dd>{{ batch.rejected }}</dd>
       <dt>Failed</dt><dd>{{ batch.failed }}</dd>
+      <dt>Provider retries</dt><dd id="report-provider-retries">{{ batch.provider_retries }}</dd>
     </dl>
+
+    {% if batch.diagnostics %}
+    <h3 class="subheading">Provider diagnostics</h3>
+    <dl class="definition-list">
+      <dt>Outcome</dt><dd id="diagnostics-provider-outcome">{{ batch.diagnostics.provider_outcome.value }}</dd>
+      <dt>Total retries</dt><dd id="diagnostics-provider-retries">{{ batch.diagnostics.provider_retries }}</dd>
+      <dt>Transient retries recovered</dt><dd id="diagnostics-transient-recovered">{{ batch.diagnostics.transient_retries_recovered }}</dd>
+      <dt>Exhausted retries</dt><dd id="diagnostics-exhausted-retries">{{ batch.diagnostics.exhausted_retries }}</dd>
+      {% if batch.diagnostics.last_status_code %}
+      <dt>Last HTTP status</dt><dd id="diagnostics-last-status">{{ batch.diagnostics.last_status_code }}</dd>
+      {% endif %}
+    </dl>
+    {% endif %}
 
     {% if batch.source_failures %}
     <h3 class="subheading">Sources that could not be read</h3>

@@ -1,9 +1,9 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 1.15.0
+**Version:** 1.15.1
 **Status:** Draft
-**Last Updated:** 2026-10-26
+**Last Updated:** 2026-10-27
 
 ---
 
@@ -1142,6 +1142,7 @@ Persisted feed → learner Pulse (no live AI or network)
 | NEWS-007 | News curation is separate from practice authoring: it has its own provider port, request/result types, persistence boundary, and publication decision. |
 | NEWS-008 | A failed, partial, or empty refresh never clears previously published stories. The learner feed reads persisted stories only and remains usable without live AI or network access. |
 | NEWS-009 | Learner-facing story copy stays qualitative and attributed; full articles, large source excerpts, and unlicensed imagery are not stored or rendered. |
+| NEWS-010 | News curation provider errors distinguish transient retries (HTTP 429/503) from terminal failure; retries are bounded and structured diagnostics never leak credentials or raw payloads. |
 
 ## Learner Practice Application Flow (SPEC-012)
 

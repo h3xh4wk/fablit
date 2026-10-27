@@ -42,7 +42,9 @@ from .news import (
     NewsBatchProgress,
     NewsBatchResult,
     NewsBatchStage,
+    NewsCurationDiagnostics,
     NewsCurator,
+    NewsProviderOutcome,
 )
 
 logger = logging.getLogger("fablit.application.news_jobs")
@@ -121,6 +123,7 @@ class NewsCurationCounters:
     items_published: int = 0
     items_rejected: int = 0
     items_failed: int = 0
+    provider_retries: int = 0
 
     def __post_init__(self) -> None:
         """Reject negative or non-integer counters."""
@@ -133,6 +136,7 @@ class NewsCurationCounters:
             "items_published",
             "items_rejected",
             "items_failed",
+            "provider_retries",
         ):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
@@ -274,6 +278,11 @@ class NewsCurationJob:
     def is_terminal(self) -> bool:
         """Whether this job reached a terminal outcome."""
         return self.status.is_terminal
+
+    @property
+    def diagnostics(self) -> NewsCurationDiagnostics | None:
+        """Safe structured diagnostics from the batch report, if present."""
+        return self.report.diagnostics if self.report is not None else None
 
     @property
     def is_active(self) -> bool:
@@ -609,6 +618,52 @@ class InlineNewsCurationTaskDispatcher:
         self._runner(job_id)
 
 
+def _merge_diagnostics(
+    previous: NewsCurationDiagnostics | None,
+    batch: NewsCurationDiagnostics | None,
+) -> NewsCurationDiagnostics | None:
+    if previous is None:
+        return batch
+    if batch is None:
+        return previous
+
+    total_retries = previous.provider_retries + batch.provider_retries
+    total_recovered = (
+        previous.transient_retries_recovered + batch.transient_retries_recovered
+    )
+    total_exhausted = previous.exhausted_retries + batch.exhausted_retries
+
+    if (
+        previous.provider_outcome == NewsProviderOutcome.FAILED
+        or batch.provider_outcome == NewsProviderOutcome.FAILED
+    ):
+        outcome = NewsProviderOutcome.FAILED
+    elif (
+        previous.provider_outcome == NewsProviderOutcome.RETRIES_EXHAUSTED
+        or batch.provider_outcome == NewsProviderOutcome.RETRIES_EXHAUSTED
+        or total_exhausted > 0
+    ):
+        outcome = NewsProviderOutcome.RETRIES_EXHAUSTED
+    elif (
+        previous.provider_outcome == NewsProviderOutcome.RECOVERED
+        or batch.provider_outcome == NewsProviderOutcome.RECOVERED
+        or total_recovered > 0
+    ):
+        outcome = NewsProviderOutcome.RECOVERED
+    else:
+        outcome = NewsProviderOutcome.OK
+
+    return NewsCurationDiagnostics(
+        provider_id=batch.provider_id or previous.provider_id,
+        model_id=batch.model_id or previous.model_id,
+        provider_retries=total_retries,
+        transient_retries_recovered=total_recovered,
+        exhausted_retries=total_exhausted,
+        provider_outcome=outcome,
+        last_status_code=batch.last_status_code or previous.last_status_code,
+    )
+
+
 def merge_reports(
     previous: NewsBatchResult | None,
     batch: NewsBatchResult,
@@ -618,7 +673,7 @@ def merge_reports(
 ) -> NewsBatchResult:
     """Add one completed unit's report to the job's accumulated report."""
     prior_counts = (
-        (0, 0, 0, 0, 0, 0)
+        (0, 0, 0, 0, 0, 0, 0)
         if previous is None
         else (
             previous.sources_processed,
@@ -627,6 +682,7 @@ def merge_reports(
             previous.published,
             previous.rejected,
             previous.failed,
+            previous.provider_retries,
         )
     )
     (
@@ -636,6 +692,7 @@ def merge_reports(
         prior_published,
         prior_rejected,
         prior_failed,
+        prior_retries,
     ) = prior_counts
     return NewsBatchResult(
         started_at=started_at,
@@ -647,6 +704,11 @@ def merge_reports(
         published=prior_published + batch.published,
         rejected=prior_rejected + batch.rejected,
         failed=prior_failed + batch.failed,
+        provider_retries=prior_retries + batch.provider_retries,
+        diagnostics=_merge_diagnostics(
+            previous.diagnostics if previous is not None else None,
+            batch.diagnostics,
+        ),
         rejections=(() if previous is None else previous.rejections) + batch.rejections,
         failures=(() if previous is None else previous.failures) + batch.failures,
         source_failures=(() if previous is None else previous.source_failures)
@@ -669,6 +731,7 @@ def counters_for(
         items_published=report.published,
         items_rejected=report.rejected,
         items_failed=report.failed,
+        provider_retries=report.provider_retries,
     )
 
 
@@ -822,6 +885,9 @@ class NewsCurationJobService:
                 items_published=base_counters.items_published + progress.published,
                 items_rejected=base_counters.items_rejected + progress.rejected,
                 items_failed=base_counters.items_failed + progress.failed,
+                provider_retries=(
+                    base_counters.provider_retries + progress.provider_retries
+                ),
             )
             current = self._repository.save(
                 current.record_progress(

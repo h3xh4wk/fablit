@@ -151,6 +151,19 @@ class NewsCurationProviderError(NewsFeedError):
     vendor SDK's exceptions. A failed candidate is never published.
     """
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        retries: int = 0,
+        exhausted: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.retries = max(0, retries)
+        self.exhausted = exhausted
+
 
 class NewsCurationInProgressError(NewsFeedError):
     """Raised when a second refresh starts while one is already active.

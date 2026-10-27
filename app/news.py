@@ -38,6 +38,7 @@ from fablit.application.news import (
     NEWS_CATEGORY_LABELS,
     NewsBatchResult,
     NewsCategory,
+    NewsCurationDiagnostics,
     NewsCurator,
     NewsRepository,
     NewsStory,
@@ -194,6 +195,22 @@ def _news_job_service(request: Request) -> NewsCurationJobService | None:
     return service if isinstance(service, NewsCurationJobService) else None
 
 
+def _diagnostics_payload(
+    diagnostics: NewsCurationDiagnostics | None,
+) -> dict[str, Any] | None:
+    if diagnostics is None:
+        return None
+    return {
+        "provider_id": diagnostics.provider_id,
+        "model_id": diagnostics.model_id,
+        "provider_retries": diagnostics.provider_retries,
+        "transient_retries_recovered": diagnostics.transient_retries_recovered,
+        "exhausted_retries": diagnostics.exhausted_retries,
+        "provider_outcome": diagnostics.provider_outcome.value,
+        "last_status_code": diagnostics.last_status_code,
+    }
+
+
 def _report_payload(report: NewsBatchResult) -> dict[str, Any]:
     """Shape a batch report for JSON without raw provider or source detail."""
     return {
@@ -206,6 +223,8 @@ def _report_payload(report: NewsBatchResult) -> dict[str, Any]:
         "published": report.published,
         "rejected": report.rejected,
         "failed": report.failed,
+        "provider_retries": report.provider_retries,
+        "diagnostics": _diagnostics_payload(report.diagnostics),
         "summary": report.summary_line,
         "rejections": [
             {
@@ -258,7 +277,9 @@ def _job_payload(job: NewsCurationJob) -> dict[str, Any]:
             "items_published": job.counters.items_published,
             "items_rejected": job.counters.items_rejected,
             "items_failed": job.counters.items_failed,
+            "provider_retries": job.counters.provider_retries,
         },
+        "diagnostics": _diagnostics_payload(job.diagnostics),
         "error": (
             {
                 "category": job.error_category.value,
@@ -291,6 +312,7 @@ def _job_view(job: NewsCurationJob) -> dict[str, Any]:
             "items_published": job.counters.items_published,
             "items_rejected": job.counters.items_rejected,
             "items_failed": job.counters.items_failed,
+            "provider_retries": job.counters.provider_retries,
         },
     }
 

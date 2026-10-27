@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import urllib.error
+from datetime import UTC, datetime
 from email.message import Message
 from typing import Any
 
@@ -12,6 +13,7 @@ import pytest
 from fablit.application.errors import NewsCurationProviderError
 from fablit.application.news_curation import NewsCurationRequest
 from fablit.platform.gemini_news_curation_provider import (
+    MAX_RETRY_DELAY_SECONDS,
     GeminiNewsCurationProvider,
 )
 
@@ -153,6 +155,168 @@ def test_transient_capacity_failure_is_retried() -> None:
 
     assert result.summary == RESULT_PAYLOAD["summary"]
     assert len(attempts) == 2
+    assert result.retry_count == 1
+
+
+def test_503_service_unavailable_is_retried_and_recovered() -> None:
+    attempts: list[int] = []
+
+    def fetch(url: str, body: bytes, headers: Any) -> str:
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise urllib.error.HTTPError(
+                url, 503, "service unavailable", Message(), None
+            )
+        return _gemini_response(RESULT_PAYLOAD)
+
+    provider = _provider(fetch, max_attempts=2)
+    result = provider.curate(REQUEST)
+
+    assert result.summary == RESULT_PAYLOAD["summary"]
+    assert len(attempts) == 2
+    assert result.retry_count == 1
+
+
+def test_retry_after_header_seconds_is_honored_and_bounded() -> None:
+    delays: list[float] = []
+
+    def fake_sleeper(seconds: float) -> None:
+        delays.append(seconds)
+
+    msg = Message()
+    msg["Retry-After"] = "5"
+
+    attempts = 0
+
+    def fetch(url: str, body: bytes, headers: Any) -> str:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise urllib.error.HTTPError(url, 429, "rate limited", msg, None)
+        return _gemini_response(RESULT_PAYLOAD)
+
+    provider = _provider(fetch, max_attempts=2, sleeper=fake_sleeper)
+    result = provider.curate(REQUEST)
+
+    assert result.retry_count == 1
+    assert delays == [5.0]
+
+    # Test that Retry-After exceeding MAX_RETRY_DELAY_SECONDS is capped
+    msg_large = Message()
+    msg_large["Retry-After"] = "999"
+    delays.clear()
+    attempts = 0
+
+    def fetch_large(url: str, body: bytes, headers: Any) -> str:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise urllib.error.HTTPError(url, 429, "rate limited", msg_large, None)
+        return _gemini_response(RESULT_PAYLOAD)
+
+    provider_large = _provider(fetch_large, max_attempts=2, sleeper=fake_sleeper)
+    result_large = provider_large.curate(REQUEST)
+    assert result_large.retry_count == 1
+    assert delays == [MAX_RETRY_DELAY_SECONDS]
+
+
+def test_retry_after_header_http_date_is_parsed_and_bounded() -> None:
+    delays: list[float] = []
+
+    def fake_sleeper(seconds: float) -> None:
+        delays.append(seconds)
+
+    fake_now = datetime(2026, 10, 20, 12, 0, 0, tzinfo=UTC)
+
+    msg = Message()
+    msg["Retry-After"] = "Tue, 20 Oct 2026 12:00:04 GMT"
+
+    attempts = 0
+
+    def fetch(url: str, body: bytes, headers: Any) -> str:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise urllib.error.HTTPError(url, 429, "rate limited", msg, None)
+        return _gemini_response(RESULT_PAYLOAD)
+
+    provider = _provider(
+        fetch,
+        max_attempts=2,
+        sleeper=fake_sleeper,
+        clock=lambda: fake_now,
+    )
+    result = provider.curate(REQUEST)
+
+    assert result.retry_count == 1
+    assert delays == [4.0]
+
+
+def test_exhausted_retries_raises_structured_error_and_logs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    attempts = 0
+
+    def fetch(url: str, body: bytes, headers: Any) -> str:
+        nonlocal attempts
+        attempts += 1
+        raise urllib.error.HTTPError(url, 429, "rate limited", Message(), None)
+
+    provider = _provider(fetch, max_attempts=3)
+
+    with (
+        caplog.at_level("WARNING"),
+        pytest.raises(NewsCurationProviderError, match="status 429") as excinfo,
+    ):
+        provider.curate(REQUEST)
+
+    error = excinfo.value
+    assert error.status_code == 429
+    assert error.retries == 2
+    assert error.exhausted is True
+    assert attempts == 3
+
+    # Check logs for exhaustion and structured fields
+    exhaustion_logs = [
+        record
+        for record in caplog.records
+        if "retry attempts exhausted" in record.getMessage()
+    ]
+    assert len(exhaustion_logs) == 1
+    assert exhaustion_logs[0].status_code == 429  # type: ignore[attr-defined]
+    assert exhaustion_logs[0].attempt == 3  # type: ignore[attr-defined]
+    assert exhaustion_logs[0].max_attempts == 3  # type: ignore[attr-defined]
+
+    # Verify no raw payload, prompt, or secret leaked in log messages
+    for record in caplog.records:
+        message = record.getMessage()
+        assert API_KEY not in message
+        assert INJECTED not in message
+
+
+@pytest.mark.parametrize("status_code", [400, 401, 403, 404, 500])
+def test_non_retryable_errors_fail_immediately_without_retry(
+    status_code: int,
+) -> None:
+    attempts = 0
+
+    def fetch(url: str, body: bytes, headers: Any) -> str:
+        nonlocal attempts
+        attempts += 1
+        raise urllib.error.HTTPError(url, status_code, "error", Message(), None)
+
+    provider = _provider(fetch, max_attempts=3)
+
+    with pytest.raises(
+        NewsCurationProviderError, match=f"status {status_code}"
+    ) as excinfo:
+        provider.curate(REQUEST)
+
+    error = excinfo.value
+    assert error.status_code == status_code
+    assert error.retries == 0
+    assert error.exhausted is False
+    assert attempts == 1
 
 
 def test_non_transient_failure_is_not_retried() -> None:

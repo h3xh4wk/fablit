@@ -15,7 +15,8 @@
     items_deduplicated: "curation-items-deduplicated",
     items_published: "curation-items-published",
     items_rejected: "curation-items-rejected",
-    items_failed: "curation-items-failed"
+    items_failed: "curation-items-failed",
+    provider_retries: "curation-provider-retries"
   };
   let activeJobId = null;
   let timerId = null;

@@ -14,7 +14,9 @@ import pytest
 from fablit.application.errors import NewsCurationJobTransitionError
 from fablit.application.news import (
     NewsBatchResult,
+    NewsCurationDiagnostics,
     NewsItemOutcome,
+    NewsProviderOutcome,
     NewsSourceFailure,
 )
 from fablit.application.news_jobs import (
@@ -342,3 +344,47 @@ def test_serialization_round_trip_matches_the_model() -> None:
     restored = deserialize_news_job(serialize_news_job(job))
 
     assert restored == job
+
+
+def test_completed_job_round_trips_with_retries_and_diagnostics() -> None:
+    client = FakeDatastoreClient()
+    repository = DatastoreNewsCurationJobRepository(client)
+    diag = NewsCurationDiagnostics(
+        provider_id="google-gemini",
+        model_id="gemini-2.5-flash",
+        provider_retries=3,
+        transient_retries_recovered=2,
+        exhausted_retries=1,
+        provider_outcome=NewsProviderOutcome.RETRIES_EXHAUSTED,
+        last_status_code=429,
+    )
+    report = make_report(
+        provider_retries=3,
+        diagnostics=diag,
+        failed=1,
+        failures=(
+            NewsItemOutcome(
+                "A", "Title", "https://a.com/1", "curation provider retries exhausted"
+            ),
+        ),
+    )
+    counters = NewsCurationCounters(
+        sources_configured=1,
+        sources_processed=1,
+        items_fetched=2,
+        items_published=1,
+        items_failed=1,
+        provider_retries=3,
+    )
+    job = running(make_job()).complete(
+        report=report, counters=counters, at=NOW + timedelta(minutes=2)
+    )
+
+    repository.start(make_job(job_id=job.job_id))
+    repository.save(job)
+
+    loaded = repository.get(job.job_id)
+    assert loaded is not None
+    assert loaded == job
+    assert loaded.counters.provider_retries == 3
+    assert loaded.diagnostics == diag
