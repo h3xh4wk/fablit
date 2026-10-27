@@ -156,7 +156,7 @@ All settings are managed via environment variables (`FABLIT_*`), configured in `
    ```
 2. Enable required Google Cloud APIs:
    ```bash
-   gcloud services enable appengine.googleapis.com datastore.googleapis.com storage.googleapis.com
+   gcloud services enable appengine.googleapis.com datastore.googleapis.com storage.googleapis.com cloudtasks.googleapis.com
    ```
 3. Initialize the App Engine application (if not already done):
    ```bash
