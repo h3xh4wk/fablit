@@ -416,10 +416,33 @@ App Engine instance. In production it is dispatched through Cloud Tasks:
   counters, and the final report are shared across instances and survive a
   restart.
 
-One-time setup and IAM (App Engine runtime account needs
-`roles/cloudtasks.enqueuer`; create a dedicated service account for signed task
-requests) is documented in
-[curated-news-feed.md §4](curated-news-feed.md#4-durable-curation-jobs).
+One-time setup and IAM:
+
+1. Enable the Cloud Tasks API and create the queue in the same project as the
+   application.
+2. Grant the App Engine runtime service account
+   `roles/cloudtasks.enqueuer` on the project so it can create tasks.
+3. Grant that runtime service account `roles/iam.serviceAccountUser` on the
+   dedicated task-signing service account so it can attach the account to
+   Cloud Tasks OIDC requests. Keep this permission scoped to that service
+   account rather than granting it broadly at project level.
+4. Ensure the Cloud Tasks service agent retains its Google-managed
+   `roles/cloudtasks.serviceAgent` role, which it uses for task dispatch and
+   OIDC token creation. Do not create service-account keys or put tokens in
+   application configuration.
+5. Configure the queue resource, HTTPS handler URL, signing service account,
+   and matching audience. The task handler independently validates the Google
+   OIDC token's signature, issuer, audience, verified email, and expected
+   service-account identity; a caller-supplied task header is not trusted.
+
+The dedicated task service account is an identity for signed task requests,
+not an author account. Author-facing start/status routes remain protected by
+SEC-001, and the task handler requires its independent OIDC identity. The
+handler may be reachable at the HTTP layer, but it refuses unauthenticated or
+incorrectly authenticated execution before reading or running a job.
+
+See [curated-news-feed.md §4](curated-news-feed.md#4-durable-curation-jobs)
+for the complete queue setup, operation, recovery, and local test instructions.
 
 ### Operation
 
