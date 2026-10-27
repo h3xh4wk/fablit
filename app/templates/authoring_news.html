@@ -67,36 +67,55 @@
           hx-target="#main" hx-select="#main" hx-swap="outerHTML"
           hx-sync="this:drop" hx-disabled-elt="find button">
       <p class="form-actions">
-        <button type="submit" class="button"
-                {% if not has_sources or not provider_configured %}disabled{% endif %}>
-          <span class="authoring-generate__idle">Curate this week's news <span aria-hidden="true">→</span></span>
-          <span class="authoring-generate__progress">Curating the news…</span>
+        <button id="curate-submit" type="submit" class="button"
+                {% if not has_sources or not provider_configured or (job and not job.is_terminal) %}disabled{% endif %}>
+          <span class="authoring-generate__idle">{% if job and not job.is_terminal %}Curation already in progress{% else %}Curate this week's news{% endif %} <span aria-hidden="true">→</span></span>
+          <span class="authoring-generate__progress">Starting curation…</span>
         </button>
         <span class="htmx-indicator loading-indicator" role="status" aria-live="polite">
-          Fetching approved sources and curating eligible stories. This can take a moment.
+          Starting the curation job. You can leave this page while it runs.
         </span>
       </p>
     </form>
   </section>
 
   {% if job %}
-  <section class="authoring-section" aria-labelledby="job-heading">
+  <section id="curation-job-status"
+           class="authoring-section curation-job"
+           aria-labelledby="job-heading"
+           data-job-id="{{ job.job_id }}"
+           data-job-status="{{ job.status }}"
+           data-job-terminal="{{ 'true' if job.is_terminal else 'false' }}">
     <h2 id="job-heading" class="subheading authoring-section__heading">Curation job</h2>
-    <div class="authoring-outcome" role="status">
-      <p><strong>{{ job.status_label }}</strong> — {{ job.message }}</p>
+    <div class="authoring-outcome" role="status" aria-live="polite" aria-atomic="true">
+      <p><strong id="curation-status-label">{{ job.status_label }}</strong> — <span id="curation-status-message">{{ job.message }}</span></p>
       <p class="form-hint">
         Created {{ job.created_display }}. Accepted curation work runs on the
         server, so leaving or refreshing this page does not stop it.
       </p>
+      <p id="curation-poll-message" class="form-hint" hidden></p>
       {% if job.error_message %}
-      <p class="form-hint">{{ job.error_message }}</p>
+      <p id="curation-error-message" class="form-hint">{{ job.error_message }}</p>
+      {% else %}
+      <p id="curation-error-message" class="form-hint" hidden></p>
       {% endif %}
     </div>
+
+    <div class="curation-progress" aria-label="Curation progress counters">
+      <div class="curation-progress__item"><span>Sources processed</span><strong id="curation-sources-processed">{{ job.counters.sources_processed }}</strong><span class="curation-progress__total">of <span id="curation-sources-total">{{ job.counters.sources_configured or sources|length }}</span></span></div>
+      <div class="curation-progress__item"><span>Sources failed</span><strong id="curation-sources-failed">{{ job.counters.sources_failed }}</strong></div>
+      <div class="curation-progress__item"><span>Fetched</span><strong id="curation-items-fetched">{{ job.counters.items_fetched }}</strong></div>
+      <div class="curation-progress__item"><span>Already known</span><strong id="curation-items-deduplicated">{{ job.counters.items_deduplicated }}</strong></div>
+      <div class="curation-progress__item"><span>Published</span><strong id="curation-items-published">{{ job.counters.items_published }}</strong></div>
+      <div class="curation-progress__item"><span>Rejected</span><strong id="curation-items-rejected">{{ job.counters.items_rejected }}</strong></div>
+      <div class="curation-progress__item"><span>Items failed</span><strong id="curation-items-failed">{{ job.counters.items_failed }}</strong></div>
+    </div>
+    <p id="curation-updated-note" class="form-hint">Counts update while the job runs. No estimated completion time is shown.</p>
   </section>
   {% endif %}
 
   {% if batch %}
-  <section class="authoring-section" aria-labelledby="batch-heading">
+  <section id="curation-batch-report" class="authoring-section" aria-labelledby="batch-heading">
     <h2 id="batch-heading" class="subheading authoring-section__heading">Latest curation report</h2>
     <div class="authoring-outcome" role="status">
       <p>{{ batch.summary_line }}</p>
@@ -151,4 +170,8 @@
   </section>
   {% endif %}
 </article>
+{% endblock %}
+
+{% block page_scripts %}
+<script src="/static/js/news-curation-status.js" defer></script>
 {% endblock %}

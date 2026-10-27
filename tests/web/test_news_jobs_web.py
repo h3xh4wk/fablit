@@ -491,3 +491,60 @@ def test_learners_cannot_read_job_status(route: str) -> None:
     install_job_workflow(app)
 
     assert client.get(route).status_code == 401
+
+
+# --- Author progress UI (SPEC-042 / #166) -----------------------------------
+
+
+def test_author_page_renders_durable_progress_for_an_active_job() -> None:
+    client, app = client_for()
+    install_job_workflow(app, dispatcher=RecordingDispatcher())
+    accepted = client.post(
+        "/authoring/pulse/curate", headers={**HEADERS, "Accept": "text/html"}
+    )
+    assert accepted.status_code == 202
+    job_id = accepted.text.split('data-job-id="', 1)[1].split('"', 1)[0]
+
+    page = client.get("/authoring/pulse", headers=HEADERS)
+
+    assert page.status_code == 200
+    assert f'data-job-id="{job_id}"' in page.text
+    assert 'data-job-status="queued"' in page.text
+    assert 'data-job-terminal="false"' in page.text
+    assert 'id="curation-sources-processed">0</strong>' in page.text
+    assert 'id="curation-items-published">0</strong>' in page.text
+    assert 'id="curation-poll-message"' in page.text
+    assert 'id="curate-submit" type="submit" class="button"' in page.text
+    assert "Curation already in progress" in page.text
+    assert "leaving or refreshing this page does not stop it" in page.text
+    assert "100%" not in page.text
+
+
+def test_terminal_job_renders_final_report_and_reenables_curation() -> None:
+    client, app = client_for()
+    install_job_workflow(app, dispatcher=InlineNewsCurationTaskDispatcher())
+
+    accepted = client.post("/authoring/pulse/curate", headers=HEADERS)
+    page = client.get("/authoring/pulse", headers=HEADERS)
+
+    assert accepted.status_code == 202
+    assert 'data-job-status="succeeded"' in page.text
+    assert 'data-job-terminal="true"' in page.text
+    assert "Latest curation report" in page.text
+    assert "1 fetched, 0 duplicates, 1 published, 0 rejected, 0 failed" in page.text
+    assert "Curation already in progress" not in page.text
+
+
+def test_curation_status_script_is_served_and_wired_into_the_page() -> None:
+    client, _ = client_for()
+
+    page = client.get("/authoring/pulse", headers=HEADERS)
+    script = client.get("/static/js/news-curation-status.js")
+
+    assert page.status_code == 200
+    assert 'src="/static/js/news-curation-status.js" defer' in page.text
+    assert script.status_code == 200
+    assert "authoring/pulse/jobs/" in script.text
+    assert 'credentials: "same-origin"' in script.text
+    assert "window.location.reload()" in script.text
+    assert "setTimeout" in script.text

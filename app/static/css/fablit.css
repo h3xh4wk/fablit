@@ -1616,3 +1616,43 @@ ol {
   text-decoration-thickness: 2px;
   text-underline-offset: 0.3em;
 }
+
+
+/* Durable curation job status (SPEC-042 / #166). */
+.curation-progress {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: var(--space-3);
+  margin: var(--space-4) 0;
+}
+.curation-progress__item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+.curation-progress__item > span:first-child {
+  grid-column: 1 / -1;
+  color: var(--color-ink-muted);
+  font-size: var(--text-small);
+}
+.curation-progress__item strong {
+  font-size: var(--text-title);
+  line-height: var(--leading-tight);
+  font-variant-numeric: tabular-nums;
+}
+.curation-progress__total {
+  color: var(--color-ink-muted);
+  font-size: var(--text-small);
+}
+.curation-job[data-job-status="failed"] #curation-status-label,
+.curation-job[data-job-status="partially_succeeded"] #curation-status-label {
+  color: var(--color-caution);
+}
+.curation-job[data-job-status="succeeded"] #curation-status-label {
+  color: var(--color-established);
+}
