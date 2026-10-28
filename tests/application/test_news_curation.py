@@ -6,6 +6,7 @@ the fetcher and provider are in-process fakes, and the clock is fixed.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 from uuid import NAMESPACE_URL, uuid5
 
@@ -17,6 +18,7 @@ from fablit.application.errors import (
     NewsCurationProviderError,
     UnsafeNewsUrlError,
 )
+from fablit.application.image_search import ImageCandidate, ImageSearchError
 from fablit.application.news import (
     InMemoryNewsRepository,
     NewsBatchProgress,
@@ -32,6 +34,11 @@ from fablit.application.news_curation import (
     FakeNewsCurationProvider,
     NewsCurationRequest,
     NewsCurationResult,
+)
+from fablit.application.news_images import (
+    MAX_VISUAL_QUERY_CHARS,
+    NewsImageSelector,
+    StoryImage,
 )
 from fablit.application.news_sources import (
     FakeNewsSourceFetcher,
@@ -89,6 +96,50 @@ def make_result(**overrides: object) -> NewsCurationResult:
     return NewsCurationResult(**values)  # type: ignore[arg-type]
 
 
+def make_image_candidate(**overrides: object) -> ImageCandidate:
+    values: dict[str, object] = {
+        "photo_id": "photo-1",
+        "image_url": "https://images.example.com/handloom.jpg",
+        "thumbnail_url": "https://images.example.com/handloom-thumb.jpg",
+        "alt_text": "Handloom weaver at a wooden loom",
+        "description": "Weaver working with handloom textiles",
+        "photographer": "Asha Rao",
+        "photographer_url": "https://images.example.com/@asha",
+        "source": "unsplash",
+        "source_url": "https://images.example.com/photos/handloom",
+        "attribution": "Photo by Asha Rao on Unsplash",
+        "width": 1600,
+        "height": 900,
+        "orientation": "landscape",
+        "license_type": "unsplash",
+    }
+    values.update(overrides)
+    return ImageCandidate(**values)  # type: ignore[arg-type]
+
+
+class FakeStoryImageSearch:
+    """In-process image-search port used to exercise curation imagery."""
+
+    def __init__(
+        self,
+        candidates: tuple[ImageCandidate, ...] = (),
+        *,
+        error: Exception | None = None,
+    ) -> None:
+        self._candidates = candidates
+        self._error = error
+        self.provider_id = "fake-images"
+        self.queries: list[str] = []
+
+    def search(
+        self, query: str, *, limit: int | None = None
+    ) -> tuple[ImageCandidate, ...]:
+        self.queries.append(query)
+        if self._error is not None:
+            raise self._error
+        return self._candidates
+
+
 def make_curator(
     *,
     repository: InMemoryNewsRepository | None = None,
@@ -100,6 +151,7 @@ def make_curator(
     freshness_days: int = 14,
     max_summary_chars: int = 600,
     relevance_threshold: float = 0.5,
+    image_search: FakeStoryImageSearch | None = None,
 ) -> tuple[NewsCurator, InMemoryNewsRepository, FakeNewsCurationProvider]:
     repo = repository or InMemoryNewsRepository()
     fake_provider = provider or FakeNewsCurationProvider(make_result())
@@ -117,6 +169,9 @@ def make_curator(
             max_summary_chars=max_summary_chars,
             relevance_threshold=relevance_threshold,
             clock=lambda: NOW,
+            image_selector=(
+                NewsImageSelector(image_search) if image_search is not None else None
+            ),
         ),
         repo,
         fake_provider,
@@ -816,3 +871,82 @@ def test_news_curation_diagnostics_validates_invariants() -> None:
             model_id="test",
             last_status_code=999,
         )
+
+
+# --- Optional story imagery (SPEC-043) ---------------------------------------
+
+
+def test_story_is_published_with_a_selected_illustrative_image() -> None:
+    search = FakeStoryImageSearch((make_image_candidate(),))
+    curator, repository, _ = make_curator(image_search=search)
+
+    result = curator.curate_batch()
+
+    assert result.published == 1
+    story = repository.find_by_url(STORY_URL)
+    assert story is not None
+    assert isinstance(story.image, StoryImage)
+    assert story.image.provider == "fake-images"
+    assert story.image.alt_text.startswith("Illustrative stock image: ")
+    assert story.image.credit == "Photo by Asha Rao on Unsplash"
+    assert story.image.source_url == "https://images.example.com/photos/handloom"
+    assert search.queries
+    assert len(search.queries[0]) <= MAX_VISUAL_QUERY_CHARS
+
+
+def test_story_is_published_text_only_when_image_search_is_not_configured() -> None:
+    curator, repository, _ = make_curator()
+
+    result = curator.curate_batch()
+
+    assert result.published == 1
+    story = repository.find_by_url(STORY_URL)
+    assert story is not None
+    assert story.image is None
+
+
+@pytest.mark.parametrize(
+    "error",
+    [ImageSearchError("image provider unavailable"), RuntimeError("unexpected")],
+)
+def test_image_search_failure_never_blocks_publication(
+    error: Exception, caplog: pytest.LogCaptureFixture
+) -> None:
+    search = FakeStoryImageSearch(error=error)
+    curator, repository, _ = make_curator(image_search=search)
+
+    with caplog.at_level(logging.INFO, logger="fablit.application.news"):
+        result = curator.curate_batch()
+
+    assert result.published == 1
+    assert result.failed == 0
+    story = repository.find_by_url(STORY_URL)
+    assert story is not None
+    assert story.image is None
+    messages = [record.getMessage() for record in caplog.records]
+    assert "news story published without imagery" in messages
+    assert any(
+        getattr(record, "reason", "") == "image search failed"
+        for record in caplog.records
+    )
+
+
+def test_irrelevant_or_unsuitable_images_fall_back_to_text_only(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    search = FakeStoryImageSearch(
+        (make_image_candidate(description="A red sports car", alt_text="Sports car"),)
+    )
+    curator, repository, _ = make_curator(image_search=search)
+
+    with caplog.at_level(logging.INFO, logger="fablit.application.news"):
+        result = curator.curate_batch()
+
+    assert result.published == 1
+    story = repository.find_by_url(STORY_URL)
+    assert story is not None
+    assert story.image is None
+    assert any(
+        getattr(record, "reason", "") == "no returned image was suitable"
+        for record in caplog.records
+    )

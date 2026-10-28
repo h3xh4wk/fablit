@@ -1656,3 +1656,90 @@ ol {
 .curation-job[data-job-status="succeeded"] #curation-status-label {
   color: var(--color-established);
 }
+
+/* --------------------------------------------------------------------------
+   Fashion & Design Pulse editorial cards (SPEC-043)
+
+   Story imagery is illustrative stock photography credited separately from
+   the publisher attribution beneath it. A story without imagery keeps the
+   same balanced text-first card, so there is never an empty media region or
+   a broken-image placeholder.
+   -------------------------------------------------------------------------- */
+.card--with-image {
+  padding-top: 0;
+  overflow: hidden;
+}
+
+.card__media {
+  margin: 0 calc(-1 * var(--space-6)) var(--space-2);
+}
+
+.card__image {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  background: var(--color-accent-soft);
+}
+
+.card__credit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-2) var(--space-6) 0;
+  font-size: var(--text-small);
+  line-height: var(--leading-tight);
+  color: var(--color-ink-muted);
+  overflow-wrap: anywhere;
+}
+
+.card__credit a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--color-rule);
+}
+
+.card__credit a:hover {
+  color: var(--color-accent-hover);
+  text-decoration-color: currentColor;
+}
+
+.card__credit-label {
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.card__credit-source {
+  color: var(--color-ink-muted);
+}
+
+.card__kicker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+}
+
+.card__kicker .tag {
+  text-decoration: none;
+}
+
+.card__kicker .tag:hover {
+  color: var(--color-accent-hover);
+  border-color: var(--color-accent);
+}
+
+.card__source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  font-size: var(--text-small);
+  color: var(--color-ink-muted);
+}
+
+.card__source-name {
+  font-weight: 600;
+  color: var(--color-ink);
+}

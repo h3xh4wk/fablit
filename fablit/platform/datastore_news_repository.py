@@ -20,7 +20,13 @@ from typing import Any
 from uuid import UUID
 
 from fablit.application.news import NewsCategory, NewsRepository, NewsStory
+from fablit.application.news_images import (
+    story_image_from_mapping,
+    story_image_to_mapping,
+)
 from fablit.application.persistence import PersistenceError
+
+from .datastore_entities import embedded_entity
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +41,7 @@ _UNINDEXED_FIELDS = (
     "summary",
     "educational_relevance",
     "reflection_prompt",
+    "image",
 )
 
 
@@ -55,6 +62,9 @@ def serialize_news_story(story: NewsStory) -> dict[str, Any]:
         "provider": story.provider,
         "model": story.model,
         "validation_status": story.validation_status,
+        "image": (
+            story_image_to_mapping(story.image) if story.image is not None else None
+        ),
     }
 
 
@@ -84,6 +94,7 @@ def deserialize_news_story(entity: Mapping[str, Any]) -> NewsStory:
         provider=str(entity.get("provider", "")),
         model=str(entity.get("model", "")),
         validation_status=str(entity.get("validation_status", "published")),
+        image=story_image_from_mapping(entity.get("image")),
     )
 
 
@@ -116,8 +127,15 @@ class DatastoreNewsRepository(NewsRepository):
                 str(story.story_id),
                 namespace=self._namespace,
             )
+            properties = serialize_news_story(story)
+            image = properties.pop("image", None)
             entity = self._client.entity(key, exclude_from_indexes=_UNINDEXED_FIELDS)
-            entity.update(serialize_news_story(story))
+            entity.update(properties)
+            if image is not None:
+                # An exclusion on a bare dict does not propagate into it, so
+                # the image provenance is stored as a non-indexed embedded
+                # entity (googleapis/google-cloud-python#5111).
+                entity["image"] = embedded_entity(self._client, image)
             self._client.put(entity)
             return story
         except Exception as exc:

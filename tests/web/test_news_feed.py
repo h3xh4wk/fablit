@@ -17,6 +17,7 @@ from fablit.application.news import (
     NewsStory,
 )
 from fablit.application.news_curation import FakeNewsCurationProvider
+from fablit.application.news_images import StoryImage
 from fablit.application.news_jobs import (
     InlineNewsCurationTaskDispatcher,
     InMemoryNewsCurationJobRepository,
@@ -404,3 +405,116 @@ def test_authoring_page_lists_sources_and_configuration_warnings() -> None:
     assert SOURCE.name in page.text
     assert "AI curation is not configured" in page.text
     assert "Curate this week's news" in page.text
+
+
+# --- Optional story imagery (SPEC-043) ---------------------------------------
+
+
+def make_image(**overrides: object) -> StoryImage:
+    values: dict[str, object] = {
+        "asset_id": "photo-1",
+        "image_url": "https://images.example.com/handloom.jpg",
+        "thumbnail_url": "https://images.example.com/handloom-thumb.jpg",
+        "alt_text": "Illustrative stock image: Handloom weaver at a wooden loom",
+        "source_name": "unsplash",
+        "source_url": "https://images.example.com/photos/handloom",
+        "provider": "pexafy",
+        "width": 1600,
+        "height": 900,
+        "credit": "Photo by Asha Rao on Unsplash",
+        "creator": "Asha Rao",
+        "creator_url": "https://images.example.com/@asha",
+        "license_type": "unsplash",
+    }
+    values.update(overrides)
+    return StoryImage(**values)  # type: ignore[arg-type]
+
+
+def test_feed_renders_story_imagery_with_separate_credited_attribution() -> None:
+    client, app = _client()
+    story = make_story(image=make_image())
+    app.state.news_repository.save(story)
+
+    response = client.get("/pulse")
+    html = response.text
+
+    assert response.status_code == 200
+    assert 'class="card__media"' in html
+    assert 'src="https://images.example.com/handloom-thumb.jpg"' in html
+    assert 'alt="Illustrative stock image: Handloom weaver at a wooden loom"' in html
+    assert "Illustrative image" in html
+    assert "Photo by Asha Rao on Unsplash" in html
+    assert 'href="https://images.example.com/photos/handloom"' in html
+    assert 'rel="noopener noreferrer nofollow"' in html
+    # The image credit is distinct from the publisher attribution.
+    assert story.source_name in html
+    assert html.index("Illustrative image") < html.index(story.headline)
+
+
+def test_story_without_imagery_renders_a_text_first_card() -> None:
+    client, app = _client()
+    app.state.news_repository.save(make_story(headline="A text-only story"))
+
+    response = client.get("/pulse")
+    html = response.text
+
+    assert response.status_code == 200
+    assert "A text-only story" in html
+    assert "card__media" not in html
+    assert "card--with-image" not in html
+    assert "<img" not in html
+
+
+def test_an_unsafe_stored_image_url_is_never_rendered() -> None:
+    client, app = _client()
+    image = make_image()
+    object.__setattr__(image, "image_url", "javascript:alert(1)")
+    app.state.news_repository.save(make_story(image=image))
+
+    response = client.get("/pulse")
+    html = response.text
+
+    assert response.status_code == 200
+    assert "card__media" not in html
+    assert "javascript:" not in html
+
+
+def test_configured_image_search_is_wired_into_curation_imagery() -> None:
+    from fablit.config import load_config
+
+    app = create_app(
+        load_config(
+            overrides={
+                "environment": "testing",
+                "authoring_secret": SECRET,
+                "ai_provider_api_key": "test-ai-key",
+                "image_search_api_key": "test-image-key",
+                "news_repository": "memory",
+                "news_sources": SOURCES,
+            }
+        )
+    )
+
+    assert app.state.authoring_image_search is not None
+    assert isinstance(app.state.news_curator, NewsCurator)
+    assert app.state.news_curator.image_selector is not None
+
+
+def test_missing_image_search_keeps_curation_text_only() -> None:
+    from fablit.config import load_config
+
+    app = create_app(
+        load_config(
+            overrides={
+                "environment": "testing",
+                "authoring_secret": SECRET,
+                "ai_provider_api_key": "test-ai-key",
+                "image_search_api_key": None,
+                "news_repository": "memory",
+                "news_sources": SOURCES,
+            }
+        )
+    )
+
+    assert isinstance(app.state.news_curator, NewsCurator)
+    assert app.state.news_curator.image_selector is None

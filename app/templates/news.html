@@ -27,19 +27,44 @@
   </ul>
   {% endif %}
 
-  <ul class="card-grid">
+  <ul class="card-grid card-grid--stories">
     {% for story in view.stories %}
-    <li class="card">
-      <div class="card__heading">
-        <h2 class="card__title">{{ story.headline }}</h2>
-      </div>
-      <p class="card__invitation">{{ story.summary }}</p>
+    <li class="card{% if story.image %} card--with-image{% endif %}">
+      {% if story.image %}
+      <figure class="card__media">
+        <img class="card__image"
+             src="{{ story.image.thumbnail_url }}"
+             alt="{{ story.image.alt }}"
+             loading="lazy"
+             decoding="async"{% if story.image.width and story.image.height %}
+             width="{{ story.image.width }}" height="{{ story.image.height }}"{% endif %}>
+        <figcaption class="card__credit">
+          {% if story.image.is_illustrative %}
+          <span class="card__credit-label">Illustrative image</span>
+          {% endif %}
+          {% if story.image.credit_url %}
+          <a href="{{ story.image.credit_url }}" target="_blank"
+             rel="noopener noreferrer nofollow">{{ story.image.credit }}</a>
+          {% else %}
+          {{ story.image.credit }}
+          {% endif %}
+          {% if story.image.source_name|lower not in story.image.credit|lower %}
+          <span class="card__credit-source">{{ story.image.source_name }}</span>
+          {% endif %}
+        </figcaption>
+      </figure>
+      {% endif %}
 
-      <p class="card__skill">
+      <p class="card__kicker">
         {% for category in story.categories %}
         <a class="tag" href="{{ category.url }}">{{ category.label }}</a>
         {% endfor %}
       </p>
+
+      <div class="card__heading">
+        <h2 class="card__title">{{ story.headline }}</h2>
+      </div>
+      <p class="card__invitation">{{ story.summary }}</p>
 
       <div class="practice__intention">
         <p><strong>Why it matters for design learners:</strong> {{ story.educational_relevance }}</p>
@@ -52,8 +77,8 @@
       {% endif %}
 
       <div class="card__footer">
-        <p class="card__skill">
-          {{ story.source_name }}
+        <p class="card__source">
+          <span class="card__source-name">{{ story.source_name }}</span>
           <time datetime="{{ story.published_iso }}">{{ story.display_date }}</time>
         </p>
         {% if story.url %}

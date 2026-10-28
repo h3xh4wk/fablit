@@ -68,6 +68,11 @@ class PexafyImageSearch(ImageSearchProvider):
         self._limit = min(limit, MAX_RESULTS)
         self._fetch: PexafyTransport = fetch or self._default_fetch
 
+    @property
+    def provider_id(self) -> str:
+        """Stable provider identity recorded on selected stimuli and images."""
+        return PEXAFY_PROVIDER_ID
+
     def search(
         self, query: str, *, limit: int | None = None
     ) -> tuple[ImageCandidate, ...]:
