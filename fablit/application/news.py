@@ -41,6 +41,7 @@ from .news_curation import (
     NewsCurationResult,
     coerce_news_curation_result,
 )
+from .news_images import NewsImageSelector, StoryImage
 from .news_sources import (
     NewsSource,
     NewsSourceFetcher,
@@ -132,6 +133,7 @@ class NewsStory:
     provider: str = ""
     model: str = ""
     validation_status: str = "published"
+    image: StoryImage | None = None
 
     def __post_init__(self) -> None:
         """Enforce the persisted story invariants."""
@@ -195,6 +197,10 @@ class NewsStory:
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"news story {name} must be non-blank text")
+        if self.image is not None and not isinstance(self.image, StoryImage):
+            raise ValueError(
+                f"news story image must be a StoryImage, got {self.image!r}"
+            )
 
     @property
     def display_at(self) -> datetime:
@@ -452,6 +458,7 @@ class NewsCurator:
         max_summary_chars: int = DEFAULT_MAX_SUMMARY_CHARS,
         relevance_threshold: float = DEFAULT_RELEVANCE_THRESHOLD,
         clock: Callable[[], datetime] | None = None,
+        image_selector: NewsImageSelector | None = None,
     ) -> None:
         if not isinstance(repository, NewsRepository):
             raise ValueError("news curator requires a NewsRepository")
@@ -465,6 +472,10 @@ class NewsCurator:
             )
         if not 0 <= relevance_threshold <= 1:
             raise ValueError("relevance_threshold must be between 0 and 1")
+        if image_selector is not None and not isinstance(
+            image_selector, NewsImageSelector
+        ):
+            raise ValueError("image_selector must be a NewsImageSelector or None")
         self._repository = repository
         self._fetcher = fetcher
         self._provider = provider
@@ -474,12 +485,18 @@ class NewsCurator:
         self._max_summary_chars = max_summary_chars
         self._relevance_threshold = relevance_threshold
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._image_selector = image_selector
         self._lock = Lock()
 
     @property
     def sources(self) -> tuple[NewsSource, ...]:
         """The approved sources this workflow may fetch, in configured order."""
         return self._sources
+
+    @property
+    def image_selector(self) -> NewsImageSelector | None:
+        """The optional story-imagery selector, or ``None`` when disabled."""
+        return self._image_selector
 
     def curate_batch(
         self,
@@ -807,6 +824,12 @@ class NewsCurator:
 
         categories = _categories(result.categories)
         reflection = _optional_text(result.reflection_prompt)
+        image = self._select_story_image(
+            headline=title,
+            summary=result.summary,
+            categories=categories,
+            url=canonical_url,
+        )
         story = NewsStory(
             story_id=uuid5(NAMESPACE_URL, canonical_url),
             headline=title,
@@ -823,6 +846,7 @@ class NewsCurator:
             reflection_prompt=reflection,
             provider=_provider_identity(self._provider, "provider_id"),
             model=_provider_identity(self._provider, "model_id"),
+            image=image,
         )
         try:
             self._repository.save(story)
@@ -839,6 +863,42 @@ class NewsCurator:
                 stats,
             )
         return None, story, stats
+
+    def _select_story_image(
+        self,
+        *,
+        headline: str,
+        summary: str,
+        categories: tuple[NewsCategory, ...],
+        url: str,
+    ) -> StoryImage | None:
+        """Select optional story imagery without ever failing publication.
+
+        SPEC-043 §4.1: search and selection run only here, inside curation.
+        A failure, an empty result set, or an unsuitable candidate leaves the
+        story text-only and records a safe reason for the operator.
+        """
+        if self._image_selector is None:
+            return None
+        try:
+            selection = self._image_selector.select(
+                headline=headline,
+                summary=summary,
+                categories=tuple(category.value for category in categories),
+            )
+        except Exception as error:
+            logger.warning(
+                "news story image selection failed",
+                extra={"error_type": type(error).__name__},
+            )
+            return None
+        if selection.image is None:
+            logger.info(
+                "news story published without imagery",
+                extra={"url": url, "reason": selection.reason},
+            )
+            return None
+        return selection.image
 
     def _deterministic_rejection(
         self, item: NewsSourceItem, *, now: datetime

@@ -18,6 +18,7 @@ practice-publication lifecycle.
 | Application workflow | `fablit/application/news.py` | Allowlisting, normalization, deduplication, freshness, deterministic validation, publication decisions, batch reporting. |
 | Source and URL rules | `fablit/application/news_sources.py` | Approved-source representation, HTTP(S) URL safety, publisher-host matching, fetcher port. |
 | AI port | `fablit/application/news_curation.py` | Provider-neutral request/result types, controlled categories, deterministic fake provider. |
+| Story imagery (SPEC-043) | `fablit/application/news_images.py` | Derived visual query, bounded and conservative candidate selection, validated `StoryImage` provenance. |
 | Gemini adapter | `fablit/platform/gemini_news_curation_provider.py` | Server-side credentials, prompt construction, response parsing, provider failure translation. |
 | Source fetcher | `fablit/platform/news_source_fetcher.py` | Bounded RSS/Atom retrieval, DNS/redirect safety, response-size limits, markup stripping. |
 | Persistence port | `fablit/application/news.py` (`NewsRepository`) | News-specific storage contract with a deterministic in-memory implementation. |
@@ -38,6 +39,7 @@ ordinary practice or hide previously published stories.
 | --- | --- | --- |
 | `FABLIT_NEWS_REPOSITORY` | `memory` | `memory` for tests/local development, `datastore` for App Engine. |
 | `FABLIT_NEWS_SOURCES` | The Guardian Fashion and Art & Design RSS feeds | JSON list of approved sources: `[{"name": "...", "feed_url": "https://...", "site_url": "https://..."}]`. `site_url` names the publisher host that story links must belong to. |
+| `FABLIT_IMAGE_SEARCH_API_KEY` (or `PEXAFY_API_KEY`) | unset | Enables optional illustrative story imagery, reusing the practice-authoring Pexafy adapter and configuration. Unset publishes stories as text only. |
 | `FABLIT_NEWS_MAX_ITEMS_PER_SOURCE` | `6` | Maximum items considered from each source in one refresh (1–50). |
 | `FABLIT_NEWS_FRESHNESS_DAYS` | `14` | Oldest publication date eligible for publication. |
 | `FABLIT_NEWS_MAX_SUMMARY_CHARS` | `600` | Longest curated summary accepted. |
@@ -81,8 +83,17 @@ stories.
   categories, a short educational-relevance note, and an optional reflection
   prompt.
 - Only the minimal data needed to curate, attribute, and link a story is
-  stored. Full article text, images, and large source excerpts are not
-  persisted or rendered.
+  stored. Full article text, publisher photographs, and large source excerpts
+  are not persisted or rendered.
+- An illustrative stock image is selected only during curation, from a
+  derived visual query, and only when the candidate has validated public
+  URLs, a usable size and aspect ratio, and relevance to the story. Unsafe,
+  incomplete, or uncertain candidates yield no image.
+- The selected image keeps its provider, source page, creator/attribution,
+  alt text, and asset id, and is always labelled as illustrative with a
+  credit separate from the publisher. Imagery never runs on a learner
+  request, and a search failure never blocks, removes, or un-attributes an
+  otherwise valid story.
 - Source content is untrusted. It is delimited in the provider prompt and the
   model is asked to ignore embedded instructions. Provider output is validated
   before publication.

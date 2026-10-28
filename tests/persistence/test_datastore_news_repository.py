@@ -8,6 +8,7 @@ from uuid import uuid4
 import pytest
 
 from fablit.application.news import NewsCategory, NewsStory
+from fablit.application.news_images import StoryImage
 from fablit.application.persistence import PersistenceError
 from fablit.platform.datastore_news_repository import (
     DEFAULT_NEWS_NAMESPACE,
@@ -218,3 +219,96 @@ def test_saving_the_same_story_again_replaces_it_in_place() -> None:
 
     assert repository.get(story.story_id) == edited
     assert len(repository.list_stories()) == 1
+
+
+# --- Optional story imagery (SPEC-043) ---------------------------------------
+
+
+def make_image(**overrides: object) -> StoryImage:
+    values: dict[str, object] = {
+        "asset_id": "photo-1",
+        "image_url": "https://images.example.com/handloom.jpg",
+        "thumbnail_url": "https://images.example.com/handloom-thumb.jpg",
+        "alt_text": "Illustrative stock image: Handloom weaver at a wooden loom",
+        "source_name": "unsplash",
+        "source_url": "https://images.example.com/photos/handloom",
+        "provider": "pexafy",
+        "width": 1600,
+        "height": 900,
+        "credit": "Photo by Asha Rao on Unsplash",
+        "creator": "Asha Rao",
+        "creator_url": "https://images.example.com/@asha",
+        "license_type": "unsplash",
+    }
+    values.update(overrides)
+    return StoryImage(**values)  # type: ignore[arg-type]
+
+
+def test_story_image_provenance_round_trips_without_indexing() -> None:
+    client = FakeDatastoreClient()
+    repository = DatastoreNewsRepository(client)
+    image = make_image(alt_text="Illustrative stock image: " + "A" * 1600)
+    story = make_story(image=image)
+
+    repository.save(story)
+
+    loaded = repository.get(story.story_id)
+    assert loaded == story
+    assert loaded is not None
+    assert loaded.image == image
+    entity = client.get(
+        client.key(
+            NEWS_STORY_KIND,
+            str(story.story_id),
+            namespace=DEFAULT_NEWS_NAMESPACE,
+        )
+    )
+    assert entity is not None
+    assert entity["image"].exclude_from_indexes
+
+
+def test_stories_without_imagery_keep_a_stable_contract() -> None:
+    client = FakeDatastoreClient()
+    repository = DatastoreNewsRepository(client)
+    story = make_story()
+
+    repository.save(story)
+
+    loaded = repository.get(story.story_id)
+    assert loaded is not None
+    assert loaded.image is None
+    entity = client.get(
+        client.key(
+            NEWS_STORY_KIND,
+            str(story.story_id),
+            namespace=DEFAULT_NEWS_NAMESPACE,
+        )
+    )
+    assert entity is not None
+    assert "image" not in entity
+
+
+def test_a_malformed_stored_image_is_ignored_rather_than_failing_the_feed() -> None:
+    story = make_story()
+    entity = {
+        "story_id": str(story.story_id),
+        "headline": story.headline,
+        "canonical_url": story.canonical_url,
+        "source_name": story.source_name,
+        "summary": story.summary,
+        "categories": ["textiles"],
+        "educational_relevance": story.educational_relevance,
+        "retrieved_at": NOW,
+        "curated_at": NOW,
+        "published_at": None,
+        "reflection_prompt": None,
+        "provider": "google-gemini",
+        "model": "gemini-2.5-flash",
+        "validation_status": "published",
+        "image": {"image_url": "javascript:alert(1)", "thumbnail_url": ""},
+    }
+
+    loaded = deserialize_news_story(entity)
+
+    assert loaded.image is None
+    assert loaded.headline == story.headline

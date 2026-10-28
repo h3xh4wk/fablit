@@ -1,9 +1,9 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 1.15.1
+**Version:** 1.16.0
 **Status:** Draft
-**Last Updated:** 2026-10-27
+**Last Updated:** 2026-10-28
 
 ---
 
@@ -1115,6 +1115,12 @@ when the source supplies one, retrieval and curation timestamps, a concise
 summary, controlled categories, an educational-relevance note, an optional
 reflection prompt, and curation provider/model provenance.
 
+A story may also carry one optional **Story Image**: an illustrative stock
+photograph selected during curation, stored with its provider, source page,
+creator/attribution, alt text, and asset identifier. Imagery is illustrative
+only, always credited separately from the publisher, and never a substitute
+for a publisher photograph.
+
 ```
 Approved source (explicit allowlist)
         ↓ bounded fetch and normalization
@@ -1125,8 +1131,9 @@ Provider-neutral curation request
 Untrusted structured result
         ↓ schema · category · relevance · grounding · language checks
 Curated News Story
+        ├── optional illustrative Story Image (validated capture only)
         ↓ news-specific repository port
-Persisted feed → learner Pulse (no live AI or network)
+Persisted feed → learner Pulse (no live AI, image search, or network)
 ```
 
 ### Rules
@@ -1143,6 +1150,9 @@ Persisted feed → learner Pulse (no live AI or network)
 | NEWS-008 | A failed, partial, or empty refresh never clears previously published stories. The learner feed reads persisted stories only and remains usable without live AI or network access. |
 | NEWS-009 | Learner-facing story copy stays qualitative and attributed; full articles, large source excerpts, and unlicensed imagery are not stored or rendered. |
 | NEWS-010 | News curation provider errors distinguish transient retries (HTTP 429/503) from terminal failure; retries are bounded and structured diagnostics never leak credentials or raw payloads. |
+| NEWS-011 | Story imagery is optional and illustrative: it is selected only inside curation from the existing provider-neutral image-search port, stored with its provenance, and labelled as illustrative so a generic stock photograph is never presented as evidence of a specific designer, collection, product, event, or craft item. |
+| NEWS-012 | Image search never runs on a learner request; a story renders its persisted image or a clean text-first card, and a search or persistence failure never blocks, removes, or misattributes an otherwise valid story. |
+| NEWS-013 | Only a public HTTP(S) image URL with a usable size, a non-extreme aspect ratio, and relevance to the story's derived visual query is persisted; unsafe, incomplete, or uncertain candidates yield no image. |
 
 ## Learner Practice Application Flow (SPEC-012)
 

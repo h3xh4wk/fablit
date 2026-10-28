@@ -43,6 +43,7 @@ from fablit.application.news import (
     NewsRepository,
     NewsStory,
 )
+from fablit.application.news_images import StoryImage
 from fablit.application.news_jobs import (
     NewsCurationJob,
     NewsCurationJobService,
@@ -90,6 +91,32 @@ def _selected_category(raw: str | None) -> NewsCategory | None:
         return None
 
 
+def _story_image_view(image: object) -> dict[str, Any] | None:
+    """Shape one persisted story image for safe rendering, or ``None``.
+
+    SPEC-043 §4.1/§4.2: only a validated public image URL is rendered, so a
+    stored value can never become a broken image, an unsafe scheme, or a
+    silent server-side fetch on the learner page.
+    """
+    if not isinstance(image, StoryImage):
+        return None
+    if not is_safe_news_url(image.image_url):
+        return None
+    thumbnail_url = image.thumbnail_url if is_safe_news_url(image.thumbnail_url) else ""
+    credit_url = image.source_url if is_safe_news_url(image.source_url) else ""
+    return {
+        "url": image.image_url,
+        "thumbnail_url": thumbnail_url or image.image_url,
+        "alt": image.alt_text,
+        "credit": image.credit_line,
+        "credit_url": credit_url,
+        "source_name": image.source_name,
+        "is_illustrative": image.is_illustrative,
+        "width": image.width,
+        "height": image.height,
+    }
+
+
 def _story_view(story: NewsStory) -> dict[str, Any]:
     """Shape one persisted story for safe learner rendering."""
     return {
@@ -108,6 +135,7 @@ def _story_view(story: NewsStory) -> dict[str, Any]:
         ],
         "educational_relevance": story.educational_relevance,
         "reflection_prompt": story.reflection_prompt or "",
+        "image": _story_image_view(story.image),
     }
 
 

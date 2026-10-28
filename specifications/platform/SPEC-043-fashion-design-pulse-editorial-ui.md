@@ -1,8 +1,8 @@
 # SPEC-043: Fashion & Design Pulse Editorial UI and Source Attribution
 
-**Status:** Proposed  
-**Owner:** Fablit product  
-**Related architecture:** ARCH-001, SEC-001, SPEC-036, SPEC-041, SPEC-042  
+**Status:** Proposed
+**Owner:** Fablit product
+**Related architecture:** ARCH-001, SEC-001, SPEC-036, SPEC-041, SPEC-042
 **Tracking issue:** [#173 — SPEC-043: Fashion & Design Pulse Editorial UI and Source Attribution](https://github.com/h3xh4wk/fablit/issues/173)
 
 ## 1. Overview and goal

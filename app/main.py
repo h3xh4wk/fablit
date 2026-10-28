@@ -66,6 +66,7 @@ from fablit.application import (
     NewsCurationJobService,
     NewsCurationTaskDispatcher,
     NewsCurator,
+    NewsImageSelector,
     NewsRepository,
     PracticeApplication,
     PracticeMode,
@@ -447,6 +448,8 @@ def _build_news_job_service(
 def _build_news_curator(
     app_config: AppConfig,
     repository: NewsRepository,
+    *,
+    image_search: ImageSearchProvider | None = None,
 ) -> NewsCurator | None:
     """Build the on-demand curation workflow (SPEC-041 §6.1, §6.2).
 
@@ -454,6 +457,11 @@ def _build_news_curator(
     here at the composition root using the existing server-side credentials
     and model configuration. Without a key, curation is simply unavailable
     while the persisted learner feed keeps working.
+
+    SPEC-043 §4.1: story imagery reuses the same provider-neutral image-search
+    port and Pexafy configuration as practice authoring, so no second provider
+    stack exists. Without an image-search key, stories are published as text
+    only.
     """
     api_key = app_config.ai_provider_api_key
     if not api_key or not api_key.strip():
@@ -478,6 +486,7 @@ def _build_news_curator(
         extra={
             "model": app_config.ai_provider_model,
             "sources": len(app_config.news_sources),
+            "story_imagery": image_search is not None,
         },
     )
     return NewsCurator(
@@ -489,6 +498,11 @@ def _build_news_curator(
         freshness_days=app_config.news_freshness_days,
         max_summary_chars=app_config.news_max_summary_chars,
         relevance_threshold=app_config.news_relevance_threshold,
+        image_selector=(
+            NewsImageSelector(image_search, limit=app_config.image_search_limit)
+            if image_search is not None
+            else None
+        ),
     )
 
 
@@ -759,7 +773,11 @@ def create_app(config: AppConfig) -> FastAPI:
         app.state.authoring_candidate_store = _build_authoring_candidate_store(config)
         app.state.published_practice_store = _build_published_practice_store(config)
         app.state.news_repository = _build_news_repository(config)
-        app.state.news_curator = _build_news_curator(config, app.state.news_repository)
+        app.state.news_curator = _build_news_curator(
+            config,
+            app.state.news_repository,
+            image_search=app.state.authoring_image_search,
+        )
         app.state.news_job_repository = _build_news_job_repository(config)
         app.state.news_job_dispatcher = _build_news_task_dispatcher(config)
         app.state.news_job_service = _build_news_job_service(
@@ -807,7 +825,11 @@ def create_app(config: AppConfig) -> FastAPI:
     app.state.authoring_candidate_store = _build_authoring_candidate_store(config)
     app.state.published_practice_store = _build_published_practice_store(config)
     app.state.news_repository = _build_news_repository(config)
-    app.state.news_curator = _build_news_curator(config, app.state.news_repository)
+    app.state.news_curator = _build_news_curator(
+        config,
+        app.state.news_repository,
+        image_search=app.state.authoring_image_search,
+    )
     app.state.news_job_repository = _build_news_job_repository(config)
     app.state.news_job_dispatcher = _build_news_task_dispatcher(config)
     app.state.news_job_service = _build_news_job_service(

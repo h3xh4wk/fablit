@@ -1,9 +1,9 @@
 # Fablit Architecture Blueprint
 
 **Document ID:** AB-001
-**Version:** 0.20.0
+**Version:** 0.21.0
 **Status:** Draft
-**Last Updated:** 2026-10-26
+**Last Updated:** 2026-10-28
 
 ---
 
@@ -959,6 +959,7 @@ GET /pulse (persisted stories only; no live AI or network)
 - **Retry observability and diagnostics (`fablit/platform/gemini_news_curation_provider.py`, `fablit/application/news.py`, SPEC-042 Task 3):** transient Gemini rate-limiting and service availability errors (HTTP 429/503) are retried with bounded exponential backoff and `Retry-After` parsing (capped at 10s); non-retryable errors fail immediately. The batch report and job status distinguish transient recovery (`NewsProviderOutcome.RECOVERED`) from terminal exhaustion (`RETRIES_EXHAUSTED` / `FAILED`), record `provider_retries` counters, and expose structured `NewsCurationDiagnostics` without leaking secrets, credentials, prompts, or raw payloads.
 - **Dispatch and task security (`fablit/platform/cloud_tasks_dispatcher.py`, `fablit/platform/task_auth.py`, `POST /tasks/news-curation`):** the job is persisted before the task is enqueued, a dispatch failure is stored as a failed job and reported truthfully, and the handler accepts only a Google-signed OIDC token for the configured audience and service account — never an author cookie or session. The browser is not part of the durability guarantee.
 - **Bounded execution and recovery:** one task unit processes at most `FABLIT_NEWS_MAX_SOURCES_PER_TASK` approved sources; the rest is checkpointed (report, counters, next source index) and continued in a fresh unit. Duplicate delivery during a live lease is a no-op, a delivery after a terminal outcome returns the finished job, an expired lease can be taken over, and a stale active job is closed as `interrupted` by the next start rather than blocking curation forever.
+- **Editorial imagery and attribution (SPEC-043, `fablit/application/news_images.py`):** a curated story may carry one illustrative stock image. `derive_visual_query` turns the story's own headline, summary, and controlled category into a short subject query; `NewsImageSelector` runs the existing provider-neutral `ImageSearchProvider` port (the same Pexafy adapter and configuration as practice authoring) with a bounded result count; `select_story_image` keeps only candidates with validated public URLs, usable dimensions, a non-extreme aspect ratio, and a relevant description, and returns no image when the match is weak. Selection happens only inside `NewsCurator` — never on a learner request — and a failure, empty result set, or unsuitable candidate leaves the story text-only with a safe logged reason. `StoryImage` is persisted through `NewsRepository` as non-indexed provenance (provider, source page, creator/attribution, alt text, asset id), and `GET /pulse` renders it responsively with a separate illustrative-image credit; stories without imagery keep a balanced text-first card.
 
 ---
 
