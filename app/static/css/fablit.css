@@ -1743,3 +1743,64 @@ ol {
   font-weight: 600;
   color: var(--color-ink);
 }
+
+/* --- Pulse layout -------------------------------------------------------
+
+   The shared card grid fits as many 16rem columns as the container allows,
+   which gave the Pulse three narrow columns on desktop: headlines wrapped
+   every few words and the optional notes were squeezed into a column barely
+   wider than the story image. Stories now read as editorial cards in at most
+   two columns, with one centred column while the viewport is too narrow for
+   two comfortable ones. */
+.pulse .card-grid--stories {
+  grid-template-columns: minmax(0, 44rem);
+  justify-content: center;
+  gap: var(--space-6);
+}
+
+@media (min-width: 56rem) {
+  .pulse .card-grid--stories {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-content: stretch;
+  }
+}
+
+/* The empty state is one panel, not a card in the column flow. */
+.pulse .card-grid--stories > .history__empty {
+  grid-column: 1 / -1;
+}
+
+.pulse .filter-tabs {
+  margin-bottom: var(--space-6);
+}
+
+.pulse .card {
+  gap: var(--space-4);
+}
+
+.pulse .card__title {
+  text-wrap: balance;
+}
+
+/* `practice__intention` and `reflection__prompt` are practice-workspace
+   treatments. Reused as-is in a story card, the display-serif prompt made an
+   optional note louder than the story itself, so they read as quiet margin
+   notes here instead. */
+.pulse .card .practice__intention,
+.pulse .card .reflection__prompt {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-body);
+  font-size: var(--text-small);
+  font-weight: 400;
+  line-height: var(--leading-body);
+  color: var(--color-ink-muted);
+  background: var(--color-bg);
+  border-left: 2px solid var(--color-accent-soft);
+  border-radius: var(--radius-sm);
+}
+
+.pulse .card__footer {
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+}
