@@ -88,6 +88,8 @@ class CloudTasksNewsCurationDispatcher:
         if not isinstance(job_id, UUID):
             raise NewsCurationDispatchError("a curation task requires a job identity")
         body = json.dumps({"job_id": str(job_id)}).encode("utf-8")
+        # ``dispatch_deadline`` belongs to the task, not to the HTTP request:
+        # Cloud Tasks rejects it inside ``http_request`` with a 400.
         payload = {
             "task": {
                 "http_request": {
@@ -99,8 +101,8 @@ class CloudTasksNewsCurationDispatcher:
                         "service_account_email": self._service_account_email,
                         "audience": self._audience,
                     },
-                    "dispatch_deadline": self._dispatch_deadline,
-                }
+                },
+                "dispatch_deadline": self._dispatch_deadline,
             }
         }
         url = f"{CLOUD_TASKS_API_BASE}/{self._queue_path}/tasks"
@@ -129,7 +131,11 @@ class CloudTasksNewsCurationDispatcher:
         if not 200 <= status < 300:
             logger.error(
                 "news curation task dispatch was refused",
-                extra={"job_id": str(job_id), "status": status},
+                extra={
+                    "job_id": str(job_id),
+                    "status": status,
+                    "response": response_body[:2000].decode("utf-8", "replace"),
+                },
             )
             raise NewsCurationDispatchError(f"task dispatch failed (status {status})")
         logger.info(
