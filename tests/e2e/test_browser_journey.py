@@ -249,7 +249,8 @@ def test_keyboard_navigation_reaches_core_actions() -> None:
     brand → Practice → Stories → Your practice → page content.
 
     SPEC-022 adds the dashboard's quiet practice-mode invitation as the
-    first content link, before the activity cards.
+    first content link, before the activity cards. SPEC-044 adds the
+    "Request a practice" link right after it, still ahead of the cards.
     """
     with _running_server() as base_url, sync_playwright() as playwright:
         browser: Browser = playwright.chromium.launch(**_launch_options())
@@ -285,6 +286,11 @@ def test_keyboard_navigation_reaches_core_actions() -> None:
             expect(
                 page.get_by_role("link", name="Choose how you'd like to practise")
             ).to_be_focused()
+
+            # SPEC-044: requesting a personalised practice sits in the same
+            # invitation line, before the activity cards.
+            page.keyboard.press("Tab")
+            expect(page.get_by_role("link", name="Request a practice")).to_be_focused()
 
             page.keyboard.press("Tab")
             expect(page.get_by_role("link", name="Explore").first).to_be_focused()
