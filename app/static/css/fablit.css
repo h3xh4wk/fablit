@@ -1804,3 +1804,133 @@ ol {
   flex-wrap: wrap;
   gap: var(--space-2) var(--space-4);
 }
+
+/* Story-linked responses (SPEC-044). The composer stays quiet until the
+   learner chooses "Try this", so the story remains the focus of the card. */
+.story-response {
+  border-top: 1px solid var(--color-rule);
+  padding-top: var(--space-3);
+}
+
+.story-response__summary {
+  cursor: pointer;
+  display: inline-block;
+  font-size: var(--text-small);
+  font-weight: 600;
+  color: var(--color-accent);
+}
+
+.story-response__summary:hover {
+  color: var(--color-accent-hover);
+}
+
+.story-response__summary:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.story-response__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.story-response__label {
+  font-size: var(--text-small);
+  font-weight: 600;
+}
+
+.story-response__input {
+  width: 100%;
+  padding: var(--space-3);
+  font: inherit;
+  color: var(--color-ink);
+  background: var(--color-surface);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-sm);
+  resize: vertical;
+}
+
+.story-response__input:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.story-response__hint {
+  margin: 0;
+  font-size: var(--text-small);
+  color: var(--color-ink-muted);
+}
+
+.story-response__practice {
+  margin: var(--space-3) 0 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-rule);
+  font-size: var(--text-small);
+  color: var(--color-ink-muted);
+}
+
+/* Learner-requested private practices (SPEC-044). The composer is a short
+   intent plus a few optional controls, not an authoring brief. */
+.request-practice__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: var(--container-narrow);
+  margin-top: var(--space-6);
+  padding: var(--space-5);
+  background: var(--color-surface);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.request-practice__row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--space-4);
+}
+
+.request-practice__row .form-field {
+  margin-bottom: 0;
+}
+
+.request-practice__history {
+  margin: var(--space-2) 0 0;
+}
+
+.request-practice__history .form-hint {
+  display: block;
+  font-weight: 400;
+  margin-top: var(--space-1);
+}
+
+.request-practice__empty {
+  max-width: var(--container-narrow);
+  margin-top: var(--space-6);
+  color: var(--color-ink-muted);
+}
+
+.requested-practices {
+  max-width: var(--container-narrow);
+  margin-top: var(--space-8);
+}
+
+.requested-practices > p {
+  color: var(--color-ink-muted);
+}
+
+.requested-practice__meta {
+  margin: var(--space-5) 0;
+  color: var(--color-ink-muted);
+  font-size: var(--text-small);
+}
+
+.history__stories {
+  margin-top: var(--space-8);
+}
+
+.history__stories > p:first-of-type {
+  color: var(--color-ink-muted);
+}

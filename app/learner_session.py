@@ -39,6 +39,8 @@ from fastapi import Request, Response
 from fablit.application import (
     ArtifactStorage,
     DemoEvaluator,
+    GeneratedPracticeRecord,
+    GeneratedPracticeRepository,
     LearnerJourneyStore,
     PracticeApplication,
     PublishedPractice,
@@ -49,7 +51,7 @@ from fablit.application import (
     build_demo_skills,
     build_stimulus_provider,
 )
-from fablit.application.persistence import PracticeHistoryRepository
+from fablit.application.persistence import PersistenceError, PracticeHistoryRepository
 from fablit.application.store import DemoActivity
 from fablit.config import AppConfig
 from fablit.domain import Skill
@@ -130,11 +132,15 @@ class LearnerApplicationRegistry:
         artifact_storage: ArtifactStorage | None = None,
         store: PublishedPracticeStore | None = None,
         publications: tuple[PublishedPractice, ...] = (),
+        generated_practice_repository: GeneratedPracticeRepository | None = None,
         refresh_interval_seconds: float = 5.0,
     ) -> None:
         self._content = content
         self._history_repository = history_repository
         self._artifact_storage = artifact_storage
+        # SPEC-044: private requested practices are loaded per learner and
+        # never shared through the content registry.
+        self._generated_practice_repository = generated_practice_repository
         # SPEC-035 §6/§9: publications are owned by this registry and
         # refreshed from the store on each new learner's first request.
         self._store: PublishedPracticeStore | None = store
@@ -256,8 +262,24 @@ class LearnerApplicationRegistry:
             )
             return max(positions, default=-1) + 1
 
+    def _load_generated_practices(
+        self, learner_id: UUID
+    ) -> tuple[GeneratedPracticeRecord, ...] | None:
+        """Read the learner's private requested practices, or ``None`` on failure."""
+        if self._generated_practice_repository is None:
+            return ()
+        try:
+            return self._generated_practice_repository.list_for_learner(learner_id)
+        except PersistenceError:
+            logger.exception(
+                "failed to load private requested practices; keeping the "
+                "practices already available"
+            )
+            return None
+
     def application_for(self, learner_id: UUID) -> PracticeApplication:
         """Return the learner-scoped application, building it on first use."""
+        generated = self._load_generated_practices(learner_id)
         with self._lock:
             application = self._applications.get(learner_id)
         if application is None:
@@ -274,7 +296,9 @@ class LearnerApplicationRegistry:
         with self._lock:
             application = self._applications.get(learner_id)
             if application is None:
-                application = self._build_application(learner_id)
+                application = self._build_application(
+                    learner_id, generated_practices=generated or ()
+                )
                 self._applications[learner_id] = application
                 logger.info(
                     "learner application created",
@@ -285,9 +309,18 @@ class LearnerApplicationRegistry:
                 # this learner's application was built. Reconciliation is a
                 # no-op while the published set is unchanged.
                 application.apply_publications(self._publication_tuple())
+                # SPEC-044: new private requested practices become available
+                # and removed ones remain resolvable for in-flight practice.
+                if generated is not None:
+                    application.apply_generated_practices(generated)
             return application
 
-    def _build_application(self, learner_id: UUID) -> PracticeApplication:
+    def _build_application(
+        self,
+        learner_id: UUID,
+        *,
+        generated_practices: tuple[GeneratedPracticeRecord, ...] = (),
+    ) -> PracticeApplication:
         content = self._content
         return PracticeApplication(
             store=LearnerJourneyStore(
@@ -300,6 +333,7 @@ class LearnerApplicationRegistry:
             history_repository=self._history_repository,
             artifact_storage=self._artifact_storage,
             publications=self._publication_tuple(),
+            generated_practices=generated_practices,
         )
 
 

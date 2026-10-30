@@ -14,6 +14,15 @@
   </div>
   {% endif %}
 
+  {% if view.saved_story_headline %}
+  <div class="validation-panel validation-panel--ok" role="status">
+    <p>
+      Saved. Your response to “{{ view.saved_story_headline }}” is in
+      <a href="/history">your private history</a>.
+    </p>
+  </div>
+  {% endif %}
+
   {% if view.has_any_stories %}
   <ul class="filter-tabs" aria-label="Filter stories by category">
     {% for filter in view.filters %}
@@ -29,7 +38,8 @@
 
   <ul class="card-grid card-grid--stories">
     {% for story in view.stories %}
-    <li class="card{% if story.image %} card--with-image{% endif %}">
+    <li class="card{% if story.image %} card--with-image{% endif %}"
+        id="story-{{ story.story_id }}">
       {% if story.image %}
       <figure class="card__media">
         <img class="card__image"
@@ -74,6 +84,44 @@
       <div class="reflection__prompt">
         <p><strong>Something to try:</strong> {{ story.reflection_prompt }}</p>
       </div>
+      {% endif %}
+
+      {% if story.can_respond %}
+      <details class="story-response"{% if story.has_response_error %} open{% endif %}>
+        <summary class="story-response__summary">Try this</summary>
+        <form class="story-response__form" method="post"
+              action="/pulse/stories/{{ story.story_id }}/responses">
+          {% if story.has_response_error %}
+          <p class="validation-panel validation-panel--error" role="alert">
+            {{ view.response_error }}
+          </p>
+          {% endif %}
+          <label class="story-response__label"
+                 for="story-response-{{ story.story_id }}">Your response</label>
+          <textarea class="story-response__input"
+                    id="story-response-{{ story.story_id }}"
+                    name="response_text" rows="4"
+                    maxlength="{{ view.max_response_chars }}"
+                    required>{{ story.draft_text }}</textarea>
+          <p class="story-response__hint">
+            Saved privately to your history. This is a note, not a completed
+            practice.
+          </p>
+          <input type="hidden" name="request_id"
+                 value="{{ story.response_request_id }}">
+          <input type="hidden" name="category" value="{{ view.selected }}">
+          <button class="button button--secondary" type="submit">
+            Save response
+          </button>
+        </form>
+      </details>
+
+      <p class="story-response__practice">
+        Want something more structured?
+        <a class="card__action" href="{{ story.make_practice_url }}">
+          Make this a practice <span aria-hidden="true">→</span>
+        </a>
+      </p>
       {% endif %}
 
       <div class="card__footer">

@@ -464,6 +464,66 @@ def test_unsupported_news_repository_raises() -> None:
         AppConfig.model_validate({"news_repository": "sqlite"})
 
 
+# --- Private story responses (SPEC-044) --------------------------------------
+
+
+def test_story_response_repository_defaults_to_memory() -> None:
+    config = AppConfig.model_validate({})
+
+    assert config.story_response_repository == "memory"
+
+
+def test_story_response_repository_accepts_datastore() -> None:
+    config = AppConfig.model_validate({"story_response_repository": "  DATASTORE "})
+
+    assert config.story_response_repository == "datastore"
+
+
+def test_story_response_repository_reads_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FABLIT_STORY_RESPONSE_REPOSITORY", "datastore")
+
+    config = load_config()
+
+    assert config.story_response_repository == "datastore"
+
+
+def test_unsupported_story_response_repository_raises() -> None:
+    with pytest.raises(ValidationError, match="Unsupported story response"):
+        AppConfig.model_validate({"story_response_repository": "sqlite"})
+
+
+# --- Private requested practices (SPEC-044) ----------------------------------
+
+
+def test_generated_practice_repository_defaults_to_memory() -> None:
+    config = AppConfig.model_validate({})
+
+    assert config.generated_practice_repository == "memory"
+
+
+def test_generated_practice_repository_accepts_datastore() -> None:
+    config = AppConfig.model_validate({"generated_practice_repository": "  DATASTORE "})
+
+    assert config.generated_practice_repository == "datastore"
+
+
+def test_generated_practice_repository_reads_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FABLIT_GENERATED_PRACTICE_REPOSITORY", "datastore")
+
+    config = load_config()
+
+    assert config.generated_practice_repository == "datastore"
+
+
+def test_unsupported_generated_practice_repository_raises() -> None:
+    with pytest.raises(ValidationError, match="Unsupported generated practice"):
+        AppConfig.model_validate({"generated_practice_repository": "sqlite"})
+
+
 def test_news_sources_parse_from_json_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

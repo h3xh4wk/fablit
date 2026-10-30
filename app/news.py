@@ -20,17 +20,19 @@ import asyncio
 import logging
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Request, Response, status
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import APIRouter, Form, HTTPException, Request, Response, status
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.authoring import require_author_access
+from app.learner_session import learner_id_for_request
 from app.request_format import wants_html
 from app.task_text import split_task_text
 from fablit.application.errors import (
+    InvalidStoryResponseInputError,
     NewsCurationDispatchError,
     NewsCurationInProgressError,
 )
@@ -51,6 +53,15 @@ from fablit.application.news_jobs import (
 )
 from fablit.application.news_sources import NewsSource, is_safe_news_url
 from fablit.application.persistence import PersistenceError
+from fablit.application.story_responses import (
+    NO_PROMPT_MESSAGE,
+    StoryResponseRepository,
+    get_story_response,
+    new_story_response_request_id,
+    save_story_response,
+)
+from fablit.domain import InvalidStoryResponseError
+from fablit.domain.story_response import MAX_STORY_RESPONSE_CHARS
 from fablit.platform.task_auth import (
     OidcVerifier,
     TaskAuthenticationError,
@@ -80,6 +91,11 @@ def _news_repository(request: Request) -> NewsRepository | None:
 def _news_curator(request: Request) -> NewsCurator | None:
     curator: object = getattr(request.app.state, "news_curator", None)
     return curator if isinstance(curator, NewsCurator) else None
+
+
+def _story_response_repository(request: Request) -> StoryResponseRepository | None:
+    repository: object = getattr(request.app.state, "story_response_repository", None)
+    return repository if isinstance(repository, StoryResponseRepository) else None
 
 
 def _selected_category(raw: str | None) -> NewsCategory | None:
@@ -117,9 +133,32 @@ def _story_image_view(image: object) -> dict[str, Any] | None:
     }
 
 
-def _story_view(story: NewsStory) -> dict[str, Any]:
-    """Shape one persisted story for safe learner rendering."""
+def _story_view(
+    story: NewsStory,
+    *,
+    response_request_id: str,
+    draft_text: str = "",
+    has_response_error: bool = False,
+) -> dict[str, Any]:
+    """Shape one persisted story for safe learner rendering.
+
+    The story identity is exposed only so the inline "Try this" form can post
+    back to its own story. The learner's response text is echoed only for the
+    story whose save failed, so an error never loses the learner's words.
+    """
     return {
+        "story_id": str(story.story_id),
+        "can_respond": bool(story.reflection_prompt),
+        # SPEC-044 §6.1: a learner who wants structured practice can carry the
+        # story and its "What to try" prompt into the request composer.
+        "make_practice_url": (
+            f"/practice/request?story={story.story_id}"
+            if story.reflection_prompt
+            else ""
+        ),
+        "response_request_id": response_request_id,
+        "draft_text": draft_text,
+        "has_response_error": has_response_error,
         "headline": story.headline,
         "summary": story.summary,
         "source_name": story.source_name,
@@ -144,6 +183,11 @@ def _feed_view(
     *,
     selected: NewsCategory | None,
     unavailable: bool,
+    response_draft_story_id: UUID | None = None,
+    response_draft_text: str = "",
+    response_request_id: str | None = None,
+    response_error: str | None = None,
+    saved_story_headline: str | None = None,
 ) -> dict[str, Any]:
     """Build the feed, its category filter, and the graceful empty state."""
     counts = {
@@ -175,35 +219,248 @@ def _feed_view(
             }
         )
     return {
-        "stories": [_story_view(story) for story in visible],
+        "stories": [
+            _story_view(
+                story,
+                response_request_id=(
+                    response_request_id
+                    if response_request_id is not None
+                    and response_draft_story_id == story.story_id
+                    else str(new_story_response_request_id())
+                ),
+                draft_text=(
+                    response_draft_text
+                    if response_draft_story_id == story.story_id
+                    else ""
+                ),
+                has_response_error=(
+                    response_error is not None
+                    and response_draft_story_id == story.story_id
+                ),
+            )
+            for story in visible
+        ],
         "filters": filters,
         "selected": selected.value if selected is not None else "",
         "is_unavailable": unavailable,
         "has_any_stories": bool(stories),
+        "max_response_chars": MAX_STORY_RESPONSE_CHARS,
+        "response_error": response_error or "",
+        "saved_story_headline": saved_story_headline or "",
     }
 
 
-@router.get("/pulse", response_class=HTMLResponse)
-async def news_feed(request: Request, category: str | None = None) -> Response:
-    """Render the learner-facing curated feed from persisted stories only."""
-    unavailable = False
-    stories: tuple[NewsStory, ...] = ()
+def _load_stories(request: Request) -> tuple[tuple[NewsStory, ...], bool]:
+    """Read the published feed, degrading to an empty feed when unavailable."""
     repository = _news_repository(request)
     if repository is None:
-        unavailable = True
-    else:
-        try:
-            stories = repository.list_stories()
-        except PersistenceError:
-            logger.exception("news repository unavailable; rendering empty feed")
-            unavailable = True
+        return (), True
+    try:
+        return repository.list_stories(), False
+    except PersistenceError:
+        logger.exception("news repository unavailable; rendering empty feed")
+        return (), True
 
+
+def _saved_story_headline(request: Request, saved: str | None) -> str | None:
+    """Confirm a saved response only when it belongs to this learner.
+
+    The redirect carries the opaque response identity, not learner identity or
+    response content. The confirmation is derived by looking the record up
+    under the current learner, so a forged query parameter can never claim that
+    someone else's response was saved.
+    """
+    if not saved:
+        return None
+    try:
+        response_id = UUID(saved)
+    except ValueError:
+        return None
+    repository = _story_response_repository(request)
+    if repository is None:
+        return None
+    try:
+        response = get_story_response(
+            repository,
+            learner_id=learner_id_for_request(request),
+            response_id=response_id,
+        )
+    except PersistenceError:
+        return None
+    return response.story_headline if response is not None else None
+
+
+def _render_feed(
+    request: Request,
+    *,
+    category: str | None = None,
+    status_code: int = 200,
+    response_draft_story_id: UUID | None = None,
+    response_draft_text: str = "",
+    response_request_id: str | None = None,
+    response_error: str | None = None,
+) -> Response:
+    """Render the Pulse feed with an optional inline response status."""
+    stories, unavailable = _load_stories(request)
     view = _feed_view(
         stories,
         selected=_selected_category(category),
         unavailable=unavailable,
+        response_draft_story_id=response_draft_story_id,
+        response_draft_text=response_draft_text,
+        response_request_id=response_request_id,
+        response_error=response_error,
+    )
+    return templates.TemplateResponse(
+        request,
+        "news.html",
+        {"view": view},
+        status_code=status_code,
+    )
+
+
+def _story_error_response(
+    request: Request,
+    message: str,
+    *,
+    status_code: int = 404,
+    description: str | None = None,
+) -> Response:
+    """Render the calm learner-facing error page (SPEC-014 §20)."""
+    return templates.TemplateResponse(
+        request,
+        "error.html",
+        {"message": message, "description": description},
+        status_code=status_code,
+    )
+
+
+@router.get("/pulse", response_class=HTMLResponse)
+async def news_feed(
+    request: Request,
+    category: str | None = None,
+    saved: str | None = None,
+) -> Response:
+    """Render the learner-facing curated feed from persisted stories only."""
+    stories, unavailable = _load_stories(request)
+    view = _feed_view(
+        stories,
+        selected=_selected_category(category),
+        unavailable=unavailable,
+        saved_story_headline=_saved_story_headline(request, saved),
     )
     return templates.TemplateResponse(request, "news.html", {"view": view})
+
+
+@router.post("/pulse/stories/{story_id}/responses", response_class=HTMLResponse)
+async def submit_story_response(
+    request: Request,
+    story_id: str,
+    response_text: Annotated[str, Form()] = "",
+    request_id: Annotated[str, Form()] = "",
+    category: Annotated[str, Form()] = "",
+) -> Response:
+    """Save a private response to a story's "What to try" prompt (SPEC-044).
+
+    Saving is an explicit learner action and never evaluates the response or
+    creates a practice completion. On validation or persistence failure the
+    composer is re-rendered in place with the learner's words preserved, so the
+    page never implies a save that did not happen.
+    """
+    try:
+        story_uuid = UUID(story_id)
+    except ValueError:
+        return _story_error_response(request, "Story not found.")
+
+    story_response_repository = _story_response_repository(request)
+    news_repository = _news_repository(request)
+    if story_response_repository is None or news_repository is None:
+        return _story_error_response(
+            request,
+            "We couldn't save your response.",
+            status_code=503,
+            description="Saving is temporarily unavailable. Your practice is "
+            "unaffected — please try again shortly.",
+        )
+
+    try:
+        story = news_repository.get(story_uuid)
+    except PersistenceError:
+        logger.exception("news repository unavailable while saving a response")
+        return _story_error_response(
+            request,
+            "We couldn't load this story.",
+            status_code=503,
+            description="Your practice is unaffected — please try again shortly.",
+        )
+    if story is None:
+        return _story_error_response(request, "Story not found.")
+    if not story.reflection_prompt:
+        return _story_error_response(
+            request,
+            NO_PROMPT_MESSAGE,
+            status_code=400,
+        )
+
+    try:
+        token = UUID(request_id)
+    except (ValueError, AttributeError):
+        token = new_story_response_request_id()
+
+    try:
+        response = save_story_response(
+            story_response_repository,
+            learner_id=learner_id_for_request(request),
+            story=story,
+            response_text=response_text,
+            request_id=token,
+        )
+    except InvalidStoryResponseInputError as exc:
+        return _render_feed(
+            request,
+            category=category,
+            status_code=400,
+            response_draft_story_id=story_uuid,
+            response_draft_text=response_text,
+            response_request_id=str(token),
+            response_error=str(exc),
+        )
+    except InvalidStoryResponseError:
+        # The story's own provenance cannot form a valid private record. This
+        # is a content fault, not a learner mistake, so keep the draft and the
+        # page usable rather than surfacing a technical error.
+        logger.exception("story response provenance rejected")
+        return _render_feed(
+            request,
+            category=category,
+            status_code=400,
+            response_draft_story_id=story_uuid,
+            response_draft_text=response_text,
+            response_request_id=str(token),
+            response_error=(
+                "We couldn't save your response. Your words are still here — "
+                "please try again."
+            ),
+        )
+    except PersistenceError:
+        logger.exception("story response save failed")
+        return _render_feed(
+            request,
+            category=category,
+            status_code=503,
+            response_draft_story_id=story_uuid,
+            response_draft_text=response_text,
+            response_request_id=str(token),
+            response_error=(
+                "We couldn't save your response. Your words are still here — "
+                "please try again."
+            ),
+        )
+
+    return RedirectResponse(
+        f"{_PULSE_URL}?saved={response.id}#story-{story.story_id}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
 
 
 #: Operator-facing labels for the durable job lifecycle (SPEC-042 §8).

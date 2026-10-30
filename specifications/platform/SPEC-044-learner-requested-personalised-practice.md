@@ -1,8 +1,8 @@
 # SPEC-044: Learner-Requested Personalised Practice
 
-**Status:** Proposed  
-**Owner:** Fablit product  
-**Related architecture:** ARCH-001, SEC-001, SPEC-021, SPEC-024, SPEC-029, SPEC-030, SPEC-032, SPEC-034, SPEC-035  
+**Status:** Proposed
+**Owner:** Fablit product
+**Related architecture:** ARCH-001, SEC-001, SPEC-021, SPEC-024, SPEC-029, SPEC-030, SPEC-032, SPEC-034, SPEC-035
 **Related roadmap:** Stage 3 — Reader-requested personalised practices
 
 ## 1. Overview and goal

@@ -12,6 +12,7 @@ from .feedback import Feedback
 from .reflection import Reflection
 from .skill import Skill
 from .stimulus import ActivityStimulusContext, StimulusInstance
+from .story_response import StoryResponse
 from .submission import Submission
 from .types import (
     ActivityStatus,
@@ -28,6 +29,7 @@ from .types import (
     InvalidSkillError,
     InvalidStimulusContextError,
     InvalidStimulusError,
+    InvalidStoryResponseError,
     InvalidSubmissionError,
     InvalidSubmissionTransitionError,
     SubmissionStatus,
@@ -53,12 +55,14 @@ __all__ = [
     "InvalidReflectionError",
     "InvalidSkillError",
     "InvalidStimulusContextError",
+    "InvalidStoryResponseError",
     "InvalidStimulusError",
     "InvalidSubmissionError",
     "InvalidSubmissionTransitionError",
     "Reflection",
     "Skill",
     "StimulusInstance",
+    "StoryResponse",
     "Submission",
     "SubmissionStatus",
 ]
