@@ -7,7 +7,7 @@
 
 ## 1. Overview and goal
 
-Allow a learner to request a practice activity based on a learning need, topic, difficulty preference, or area they want to explore. Fablit should use the learner's own practice history as optional context to make the request more relevant, while keeping the learner in control of what is shared and what is generated.
+Allow a learner to request a practice activity based on a learning need, topic, difficulty preference, or area they want to explore. Also let learners act on the "What to try" prompt attached to a Fashion & Design Pulse story and submit a response without losing the story context. Fablit should use the learner's own practice history as optional context to make a request more relevant, while keeping the learner in control of what is shared and what is generated.
 
 This is a distinct learner-facing capability from SPEC-032. SPEC-032 uses AI as an internal authoring assistant and requires human review before content enters the shared curated library. SPEC-044 introduces a bounded, learner-requested, private practice journey. A generated practice is private to the requesting learner; it is not automatically approved or published to the shared library.
 
@@ -48,14 +48,34 @@ The experience must remain anonymous-first. It must use the existing learner ide
 - Allowing arbitrary uploaded personal data to be sent to an AI provider.
 - Replacing the existing practice submission, evaluation, feedback, reflection, completion, or history model.
 
-## 5. Learner journey
+## 5. Learner journeys
 
-The intended high-level flow is:
+SPEC-044 supports two connected entry points. Both preserve the originating context and save learner work privately.
+
+### 5.1 Direct response from a Pulse story
 
 ```
-Learner opens "Request a practice"
+Learner reads a Pulse story
         ↓
-Learner describes what they want to practise
+Learner chooses "Try this" beside its What to try prompt
+        ↓
+A short response composer opens with the story and prompt in context
+        ↓
+Learner writes or submits an attempt
+        ↓
+Response is saved privately and linked to the story
+        ↓
+Learner can revisit the response from their own history
+```
+
+This is a lightweight, story-linked response, not automatically a full AI-generated practice. Many editorial prompts invite observation, reflection, or exploration and should not be forced into a scored or formally evaluated activity. Do not invoke an LLM merely to save a response. Where a prompt is explicitly structured as a supported practice and the learner chooses it, the existing practice evaluation journey may be used.
+
+### 5.2 Request a personalised practice
+
+```
+Learner opens "Request a practice" or chooses "Make this a practice" from a story
+        ↓
+Learner describes what they want to practise (story context may prefill the request)
         ↓
 Learner optionally chooses an area / format / challenge preference
         ↓
@@ -78,7 +98,20 @@ Learner can return to the generated practice or request another
 
 Generation and validation must complete before a practice is offered. A failed or invalid candidate must not appear as a usable practice.
 
-## 6. Request contract
+## 6. Story-linked response and request contract
+
+### 6.1 Story-linked response
+
+- Every story that exposes a "What to try" prompt should provide a clear action to respond to it, such as "Try this".
+- Preserve the story identifier, canonical story URL, prompt text, and relevant story metadata with the response so the learner can understand its context later.
+- The response composer should be lightweight and appropriate to the prompt (for example, a short text observation, a design idea, or a reflection). Do not require the learner to complete a long practice brief.
+- Saving a response must be an explicit learner action. Preserve drafts only if the existing application has a safe, clear draft lifecycle; do not imply a response was saved when persistence failed.
+- Save responses under the current anonymous learner identity and make them visible only to that learner.
+- Do not automatically evaluate, score, or send every story response to an AI provider. The default is private capture/reflection.
+- Offer a separate "Make this a practice" action when the learner wants a more structured or challenging activity. Carry the originating story and its "What to try" prompt into the request as context, while allowing the learner to edit or add their own intent.
+- A story-linked response must not be mistaken for completion of a formal practice unless it actually follows the supported practice journey.
+
+### 6.2 Personalised practice request
 
 The request should be short and learner-friendly. It may include:
 
@@ -159,6 +192,8 @@ Invalid output must be rejected safely. Do not silently repair materially invali
 ## 10. Learner experience
 
 - Add a clear entry point from the existing learner experience without obscuring the curated practice library.
+- Add a contextual "Try this" response action to stories with a "What to try" prompt, and a distinct "Make this a practice" path for learners who want structured AI-generated practice.
+- Keep story-linked responses connected to their originating story when displayed in the learner's private history.
 - Keep the request flow short and mobile-friendly.
 - Explain that generation may take a short time and provide a useful retry path when it fails.
 - Show the generated practice brief before the learner starts; generation must not automatically begin a timed or active practice.
@@ -203,4 +238,4 @@ Invalid output must be rejected safely. Do not silently repair materially invali
 
 Begin with a focused architecture review of the current practice content contract, learner-session registry, history repository, published-practice catalogue, AI provider port, and learner routes. Decide whether generated private practices can be represented as a distinct source in the existing learner catalogue or require a narrow learner-private repository. Keep shared publication and private learner generation explicitly separate.
 
-Implement in vertical slices: request UX and validation; context selection; generation and validation; private persistence and retrieval; integration with the existing practice journey; operational safeguards and end-to-end tests. Do not expand into cross-device identity, general chat, broad learner analytics, or a new content-management system within this specification.
+Implement in vertical slices: story-linked response capture and private persistence; request UX and validation; context selection; generation and validation; private persistence and retrieval; integration with the existing practice journey; operational safeguards and end-to-end tests. Keep story response capture distinct from generated-practice completion unless a prompt is deliberately modelled as a supported formal practice. Do not expand into cross-device identity, general chat, broad learner analytics, or a new content-management system within this specification.
