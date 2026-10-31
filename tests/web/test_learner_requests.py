@@ -460,6 +460,49 @@ def test_generation_failure_is_reported_honestly() -> None:
     assert _requested_hrefs(refreshed.text) == []
 
 
+def test_oversized_gemini_response_fails_safely_without_persisting_or_leaking_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fablit.platform.gemini_learner_practice_provider import (
+        GeminiLearnerPracticeProvider,
+    )
+
+    raw_payload = '{"secret_raw_output": "' + ("x" * 2048) + '"}'
+    provider = GeminiLearnerPracticeProvider(
+        api_key="server-secret-api-key",
+        fetch=lambda _url, _body, _headers: raw_payload,
+        max_response_bytes=512,
+        retry_backoff_seconds=0.0,
+    )
+    app = _app()
+    app.state.learner_practice_generator = provider
+    saved_records: list[Any] = []
+    real_save = app.state.generated_practice_repository.save
+
+    def tracking_save(record: Any) -> Any:
+        saved_records.append(record)
+        return real_save(record)
+
+    monkeypatch.setattr(
+        app.state.generated_practice_repository,
+        "save",
+        tracking_save,
+    )
+    client = TestClient(app)
+    page = client.get("/practice/request")
+
+    failed = _submit(client, page.text)
+    refreshed = client.get("/practice/request")
+
+    assert failed.status_code == 503
+    assert "the practice generator is unavailable (response too large)" in failed.text
+    assert "secret_raw_output" not in failed.text
+    assert "server-secret-api-key" not in failed.text
+    assert REQUEST_TEXT in failed.text
+    assert _requested_hrefs(refreshed.text) == []
+    assert saved_records == []
+
+
 def test_a_persistence_failure_is_not_reported_as_generated(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

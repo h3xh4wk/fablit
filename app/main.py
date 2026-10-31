@@ -407,6 +407,8 @@ def _build_learner_practice_generator(
         return GeminiLearnerPracticeProvider(
             api_key=app_config.ai_provider_api_key,
             model=app_config.ai_provider_model,
+            max_output_tokens=app_config.learner_practice_max_output_tokens,
+            max_response_bytes=app_config.learner_practice_max_response_bytes,
         )
     except Exception:
         logger.exception("failed to initialize learner practice generator")

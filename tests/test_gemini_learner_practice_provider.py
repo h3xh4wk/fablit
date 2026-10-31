@@ -32,6 +32,8 @@ from fablit.config import AppConfig
 from fablit.platform.gemini_learner_practice_provider import (
     DEFAULT_GEMINI_ENDPOINT,
     DEFAULT_GEMINI_MODEL,
+    DEFAULT_MAX_OUTPUT_TOKENS,
+    DEFAULT_MAX_RESPONSE_BYTES,
     GEMINI_LEARNER_PROVIDER_ID,
     GeminiLearnerPracticeProvider,
     GeminiTransport,
@@ -113,6 +115,8 @@ def test_adapter_satisfies_the_generation_port() -> None:
     assert isinstance(provider, LearnerPracticeGenerator)
     assert provider.provider_id == GEMINI_LEARNER_PROVIDER_ID
     assert provider.model_id == DEFAULT_GEMINI_MODEL
+    assert provider.max_output_tokens == DEFAULT_MAX_OUTPUT_TOKENS
+    assert provider.max_response_bytes == DEFAULT_MAX_RESPONSE_BYTES
 
 
 def test_generate_returns_structured_output_with_safe_provenance() -> None:
@@ -143,6 +147,21 @@ def test_request_targets_the_model_and_json_response_mode() -> None:
         == f"{DEFAULT_GEMINI_ENDPOINT}/models/{DEFAULT_GEMINI_MODEL}:generateContent"
     )
     assert payload["generationConfig"]["responseMimeType"] == "application/json"
+    assert payload["generationConfig"]["maxOutputTokens"] == DEFAULT_MAX_OUTPUT_TOKENS
+
+
+def test_request_includes_custom_max_output_tokens() -> None:
+    captured: list[dict[str, Any]] = []
+
+    def fetch(_url: str, body: bytes, _headers: Mapping[str, str]) -> str:
+        captured.append(json.loads(body))
+        return _gemini_response(_candidate_json())
+
+    provider = _provider(fetch, max_output_tokens=768)
+    provider.generate(_generation_request())
+
+    assert provider.max_output_tokens == 768
+    assert captured[0]["generationConfig"]["maxOutputTokens"] == 768
 
 
 def test_api_key_is_a_header_and_never_part_of_the_url() -> None:
@@ -255,7 +274,27 @@ def test_invalid_retry_settings_are_configuration_errors() -> None:
         GeminiLearnerPracticeProvider(api_key=API_KEY, max_attempts=0)
 
     with pytest.raises(AuthoringProviderConfigurationError):
+        GeminiLearnerPracticeProvider(api_key=API_KEY, max_attempts=False)
+
+    with pytest.raises(AuthoringProviderConfigurationError):
         GeminiLearnerPracticeProvider(api_key=API_KEY, retry_backoff_seconds=-1)
+
+
+@pytest.mark.parametrize("bad_value", [0, -1, True, False, "1024"])
+def test_invalid_output_token_and_response_byte_limits_are_configuration_errors(
+    bad_value: Any,
+) -> None:
+    with pytest.raises(AuthoringProviderConfigurationError):
+        GeminiLearnerPracticeProvider(
+            api_key=API_KEY,
+            max_output_tokens=bad_value,
+        )
+
+    with pytest.raises(AuthoringProviderConfigurationError):
+        GeminiLearnerPracticeProvider(
+            api_key=API_KEY,
+            max_response_bytes=bad_value,
+        )
 
 
 def test_a_network_failure_becomes_a_generation_error() -> None:
@@ -351,9 +390,11 @@ def test_default_transport_posts_with_the_key_header(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: list[Any] = []
+    read_limits: list[int | None] = []
 
     class _Response:
-        def read(self) -> bytes:
+        def read(self, size: int | None = None) -> bytes:
+            read_limits.append(size)
             return _gemini_response(_candidate_json()).encode("utf-8")
 
         def __enter__(self) -> _Response:
@@ -370,9 +411,136 @@ def test_default_transport_posts_with_the_key_header(
     result = _provider().generate(_generation_request())
 
     assert result.candidate_data["title"]
+    assert read_limits == [DEFAULT_MAX_RESPONSE_BYTES + 1]
     sent = captured[0]
     lowered = {key.lower(): value for key, value in sent.headers.items()}
     assert lowered["x-goog-api-key"] == API_KEY
+
+
+def test_default_transport_enforces_exact_response_byte_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    valid_bytes = _gemini_response(_candidate_json()).encode("utf-8")
+    exact_limit = len(valid_bytes)
+    read_sizes: list[int | None] = []
+    current_payload = valid_bytes
+
+    class _Response:
+        def read(self, size: int | None = None) -> bytes:
+            read_sizes.append(size)
+            if size is None:
+                return current_payload
+            return current_payload[:size]
+
+        def __enter__(self) -> _Response:
+            return self
+
+        def __exit__(self, *_exc: object) -> None:
+            return None
+
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda _request, timeout=None: _Response(),
+    )
+
+    at_boundary = _provider(max_response_bytes=exact_limit).generate(
+        _generation_request()
+    )
+    assert at_boundary.candidate_data["title"]
+    assert read_sizes == [exact_limit + 1]
+
+    def fail_if_json_loads_called(_payload: str) -> Any:
+        raise AssertionError("json.loads must not be called for oversized response")
+
+    monkeypatch.setattr(
+        "fablit.platform.gemini_learner_practice_provider.json.loads",
+        fail_if_json_loads_called,
+    )
+    with pytest.raises(LearnerPracticeGenerationError) as caught:
+        _provider(max_response_bytes=exact_limit - 1).generate(_generation_request())
+
+    assert str(caught.value) == (
+        "the practice generator is unavailable (response too large)"
+    )
+
+
+def test_default_transport_translates_invalid_utf8_into_safe_generation_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Response:
+        def read(self, size: int | None = None) -> bytes:
+            return b"\xff\xfe\xfd"
+
+        def __enter__(self) -> _Response:
+            return self
+
+        def __exit__(self, *_exc: object) -> None:
+            return None
+
+    monkeypatch.setattr(
+        "urllib.request.urlopen",
+        lambda _request, timeout=None: _Response(),
+    )
+
+    with pytest.raises(LearnerPracticeGenerationError) as caught:
+        _provider().generate(_generation_request())
+
+    assert str(caught.value) == (
+        "the practice generator is unavailable (unreadable response)"
+    )
+
+
+def test_injected_transport_oversized_response_is_rejected_before_json_parsing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    valid_payload = _gemini_response(_candidate_json())
+    exact_limit = len(valid_payload.encode("utf-8"))
+
+    at_limit = _provider(
+        lambda _url, _body, _headers: valid_payload,
+        max_response_bytes=exact_limit,
+    ).generate(_generation_request())
+    assert at_limit.candidate_data["title"]
+
+    real_json_loads = json.loads
+    parsed_inputs: list[str] = []
+
+    def tracking_json_loads(s: str, *args: Any, **kwargs: Any) -> Any:
+        parsed_inputs.append(s)
+        return real_json_loads(s, *args, **kwargs)
+
+    monkeypatch.setattr(
+        "fablit.platform.gemini_learner_practice_provider.json.loads",
+        tracking_json_loads,
+    )
+    sensitive_marker = "RAW-PROVIDER-BODY-SECRET-DO-NOT-EXPOSE"
+    oversized_payload = valid_payload + sensitive_marker
+
+    with pytest.raises(LearnerPracticeGenerationError) as caught:
+        _provider(
+            lambda _url, _body, _headers: oversized_payload,
+            max_response_bytes=exact_limit,
+        ).generate(_generation_request())
+
+    assert parsed_inputs == []
+    assert str(caught.value) == (
+        "the practice generator is unavailable (response too large)"
+    )
+    assert sensitive_marker not in str(caught.value)
+
+
+def test_truncated_practice_json_fails_safely_without_leaking_content() -> None:
+    raw_fragment = '{"title": "Sensitive internal fragment", "description": "Truncated'
+
+    with pytest.raises(LearnerPracticeGenerationError) as caught:
+        _provider(
+            lambda _url, _body, _headers: _gemini_response(raw_fragment)
+        ).generate(_generation_request())
+
+    assert str(caught.value) == (
+        "the practice generator is unavailable (unreadable practice)"
+    )
+    assert "Sensitive internal fragment" not in str(caught.value)
 
 
 # --- Composition root --------------------------------------------------------
@@ -384,12 +552,16 @@ def test_composition_root_builds_the_generator_when_a_key_is_configured() -> Non
             {
                 "ai_provider_api_key": API_KEY,
                 "ai_provider_model": "gemini-2.5-pro",
+                "learner_practice_max_output_tokens": 1536,
+                "learner_practice_max_response_bytes": 32_768,
             }
         )
     )
 
     assert isinstance(generator, GeminiLearnerPracticeProvider)
     assert generator.model_id == "gemini-2.5-pro"
+    assert generator.max_output_tokens == 1536
+    assert generator.max_response_bytes == 32_768
 
 
 def test_composition_root_offers_no_generator_without_a_key() -> None:
