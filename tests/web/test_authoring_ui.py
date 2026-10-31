@@ -11,7 +11,7 @@ no longer being scannable at scale — fails here rather than in review.
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -115,7 +115,7 @@ def _set_provider_result(
         },
         provider="test-provider",
         model="test-model",
-        generated_at=generated_at or datetime(2026, 10, 11, 9, tzinfo=UTC),
+        generated_at=generated_at or datetime.now(UTC),
     )
 
 
@@ -409,10 +409,11 @@ def test_queue_counts_and_filters_cover_every_candidate_exactly_once() -> None:
 
 def test_queue_lists_newest_first() -> None:
     client, _, provider = _client()
+    now = datetime.now(UTC)
     for title, generated_at in (
-        ("Oldest practice", datetime(2026, 10, 1, 9, tzinfo=UTC)),
-        ("Middle practice", datetime(2026, 10, 5, 9, tzinfo=UTC)),
-        ("Newest practice", datetime(2026, 10, 9, 9, tzinfo=UTC)),
+        ("Oldest practice", now - timedelta(days=9)),
+        ("Middle practice", now - timedelta(days=5)),
+        ("Newest practice", now - timedelta(days=1)),
     ):
         _set_provider_result(provider, title=title, generated_at=generated_at)
         response = client.post("/authoring/generate", headers=HEADERS, json=BRIEF)

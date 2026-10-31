@@ -240,6 +240,24 @@ class AppConfig(BaseSettings):
             "rate limit (SPEC-044)."
         ),
     )
+    learner_practice_max_output_tokens: int = Field(
+        1024,
+        ge=128,
+        le=8192,
+        description=(
+            "Maximum output tokens requested from the AI provider for one "
+            "learner-requested practice (SPEC-044)."
+        ),
+    )
+    learner_practice_max_response_bytes: int = Field(
+        65_536,
+        ge=1024,
+        le=1_048_576,
+        description=(
+            "Maximum response body size in bytes read from the AI provider "
+            "for one learner-requested practice before JSON parsing (SPEC-044)."
+        ),
+    )
     news_sources: tuple[NewsSource, ...] = Field(
         default_factory=lambda: DEFAULT_NEWS_SOURCES,
         description=(
@@ -648,6 +666,12 @@ def _resolve_environment_overrides() -> dict[str, Any]:
         "learner_practice_rate_limit": "FABLIT_LEARNER_PRACTICE_RATE_LIMIT",
         "learner_practice_rate_window_seconds": (
             "FABLIT_LEARNER_PRACTICE_RATE_WINDOW_SECONDS"
+        ),
+        "learner_practice_max_output_tokens": (
+            "FABLIT_LEARNER_PRACTICE_MAX_OUTPUT_TOKENS"
+        ),
+        "learner_practice_max_response_bytes": (
+            "FABLIT_LEARNER_PRACTICE_MAX_RESPONSE_BYTES"
         ),
         "news_sources": "FABLIT_NEWS_SOURCES",
         "news_max_items_per_source": "FABLIT_NEWS_MAX_ITEMS_PER_SOURCE",

@@ -54,6 +54,9 @@ env_variables:
   # Shared across App Engine instances in the learner-practices Datastore namespace.
   # FABLIT_LEARNER_PRACTICE_RATE_LIMIT: "5"
   # FABLIT_LEARNER_PRACTICE_RATE_WINDOW_SECONDS: "3600"
+  # Optional output-token and response-size bounds for practice generation (SPEC-044 / Issue #178).
+  # FABLIT_LEARNER_PRACTICE_MAX_OUTPUT_TOKENS: "1024"
+  # FABLIT_LEARNER_PRACTICE_MAX_RESPONSE_BYTES: "65536"
   # Approved news-source allowlist (SPEC-041). Defaults to The Guardian's
   # Fashion and Art & Design RSS feeds; override to pin reviewed publishers.
   # FABLIT_NEWS_SOURCES: '[{"name":"The Guardian — Fashion","feed_url":"https://www.theguardian.com/fashion/rss","site_url":"https://www.theguardian.com"}]'

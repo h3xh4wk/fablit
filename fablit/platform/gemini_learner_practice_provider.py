@@ -38,6 +38,8 @@ logger = logging.getLogger("fablit.learner.gemini")
 GEMINI_LEARNER_PROVIDER_ID: Final[str] = "google-gemini"
 DEFAULT_GEMINI_MODEL: Final[str] = "gemini-2.5-flash"
 DEFAULT_GEMINI_ENDPOINT: Final[str] = "https://generativelanguage.googleapis.com/v1beta"
+DEFAULT_MAX_OUTPUT_TOKENS: Final[int] = 1024
+DEFAULT_MAX_RESPONSE_BYTES: Final[int] = 65_536
 MAX_ATTEMPTS: Final[int] = 3
 RETRY_BACKOFF_SECONDS: Final[float] = 0.5
 _RETRYABLE_STATUS_CODES: Final[frozenset[int]] = frozenset({429, 503})
@@ -70,6 +72,8 @@ class GeminiLearnerPracticeProvider:
         fetch: GeminiTransport | None = None,
         max_attempts: int = MAX_ATTEMPTS,
         retry_backoff_seconds: float = RETRY_BACKOFF_SECONDS,
+        max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS,
+        max_response_bytes: int = DEFAULT_MAX_RESPONSE_BYTES,
     ) -> None:
         if not isinstance(api_key, str) or not api_key.strip():
             raise AuthoringProviderConfigurationError(
@@ -79,7 +83,11 @@ class GeminiLearnerPracticeProvider:
             raise AuthoringProviderConfigurationError(
                 "the Gemini learner practice provider requires a non-blank model"
             )
-        if not isinstance(max_attempts, int) or max_attempts < 1:
+        if (
+            isinstance(max_attempts, bool)
+            or not isinstance(max_attempts, int)
+            or max_attempts < 1
+        ):
             raise AuthoringProviderConfigurationError(
                 "the Gemini learner practice provider requires max_attempts >= 1"
             )
@@ -88,6 +96,22 @@ class GeminiLearnerPracticeProvider:
                 "the Gemini learner practice provider requires a non-negative "
                 "retry backoff"
             )
+        if (
+            isinstance(max_output_tokens, bool)
+            or not isinstance(max_output_tokens, int)
+            or max_output_tokens < 1
+        ):
+            raise AuthoringProviderConfigurationError(
+                "the Gemini learner practice provider requires max_output_tokens >= 1"
+            )
+        if (
+            isinstance(max_response_bytes, bool)
+            or not isinstance(max_response_bytes, int)
+            or max_response_bytes < 1
+        ):
+            raise AuthoringProviderConfigurationError(
+                "the Gemini learner practice provider requires max_response_bytes >= 1"
+            )
         self._api_key = api_key.strip()
         self._model = model.strip()
         self._endpoint = endpoint.rstrip("/")
@@ -95,6 +119,8 @@ class GeminiLearnerPracticeProvider:
         self._fetch: GeminiTransport = fetch or self._default_fetch
         self._max_attempts = max_attempts
         self._retry_backoff_seconds = retry_backoff_seconds
+        self._max_output_tokens = max_output_tokens
+        self._max_response_bytes = max_response_bytes
 
     @property
     def provider_id(self) -> str:
@@ -103,6 +129,14 @@ class GeminiLearnerPracticeProvider:
     @property
     def model_id(self) -> str:
         return self._model
+
+    @property
+    def max_output_tokens(self) -> int:
+        return self._max_output_tokens
+
+    @property
+    def max_response_bytes(self) -> int:
+        return self._max_response_bytes
 
     def generate(
         self, request: LearnerPracticeGenerationRequest
@@ -141,6 +175,7 @@ class GeminiLearnerPracticeProvider:
             "generationConfig": {
                 "responseMimeType": "application/json",
                 "temperature": 0.45,
+                "maxOutputTokens": self._max_output_tokens,
             },
         }
 
@@ -236,10 +271,27 @@ class GeminiLearnerPracticeProvider:
             method="POST",
         )
         with urllib.request.urlopen(request, timeout=self._timeout) as response:
-            payload: bytes = response.read()
-        return payload.decode("utf-8")
+            payload: bytes = response.read(self._max_response_bytes + 1)
+        if len(payload) > self._max_response_bytes:
+            raise LearnerPracticeGenerationError(
+                f"{_UNAVAILABLE_MESSAGE} (response too large)"
+            )
+        try:
+            return payload.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise LearnerPracticeGenerationError(
+                f"{_UNAVAILABLE_MESSAGE} (unreadable response)"
+            ) from exc
 
     def _parse_response(self, payload: str) -> Mapping[str, Any]:
+        if not isinstance(payload, str):
+            raise LearnerPracticeGenerationError(
+                f"{_UNAVAILABLE_MESSAGE} (unreadable response)"
+            )
+        if len(payload.encode("utf-8")) > self._max_response_bytes:
+            raise LearnerPracticeGenerationError(
+                f"{_UNAVAILABLE_MESSAGE} (response too large)"
+            )
         try:
             data = json.loads(payload)
         except (ValueError, TypeError) as exc:

@@ -1259,6 +1259,7 @@ never sent.
 | RP-009 | Requested Practices are always self-contained: the task must be doable in one focused response with no external material the learner does not have. |
 | RP-010 | Practising a Requested Practice follows the ordinary practice journey and produces ordinary practice history under the learner's own identity. |
 | RP-011 | Practice generation is bounded per learner within a rolling time window (default 5 requests per hour) and shared across instances; idempotent retries of an already persisted request return the existing practice without consuming a slot, and rate-limited requests return a calm learner-friendly message without invoking the AI provider. |
+| RP-012 | Provider generation requests enforce a conservative output-token ceiling (default 1,024 tokens) and reject oversized HTTP response bodies (default 64 KiB) before JSON parsing as safe, controlled generation failures without persisting partial output or exposing raw provider payloads. |
 
 ## Learner Practice Application Flow (SPEC-012)
 

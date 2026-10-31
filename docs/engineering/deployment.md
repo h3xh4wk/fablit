@@ -146,6 +146,8 @@ All settings are managed via environment variables (`FABLIT_*`), configured in `
 | `FABLIT_GENERATED_PRACTICE_REPOSITORY` | `datastore` | Private learner-requested practices (SPEC-044): `memory` locally, `datastore` on App Engine so requested practices are durable across instances. Requests also need `FABLIT_AI_PROVIDER_API_KEY`; without it the composer reports that requests are unavailable. |
 | `FABLIT_LEARNER_PRACTICE_RATE_LIMIT` | `5` | Maximum new personalised practice requests per learner within the rolling rate-limit window (SPEC-044 / Issue #177). |
 | `FABLIT_LEARNER_PRACTICE_RATE_WINDOW_SECONDS` | `3600` | Rolling rate-limit window in seconds (default 1 hour) for personalised practice requests (SPEC-044 / Issue #177). |
+| `FABLIT_LEARNER_PRACTICE_MAX_OUTPUT_TOKENS` | `1024` | Maximum output tokens (`maxOutputTokens`) requested from Gemini for one personalised practice generation (SPEC-044 / Issue #178). |
+| `FABLIT_LEARNER_PRACTICE_MAX_RESPONSE_BYTES` | `65536` | Maximum HTTP response body size in bytes read and accepted from Gemini before JSON parsing for one personalised practice generation (SPEC-044 / Issue #178). |
 | `FABLIT_SERVICE_NAME` | `fablit` | Service name tag in structured logs |
 
 ---
