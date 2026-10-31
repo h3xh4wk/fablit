@@ -74,7 +74,7 @@ def _create_paired_clients(
             },
             provider="test-gemini",
             model="gemini-2.5-flash",
-            generated_at=datetime(2026, 10, 11, 10, 0, tzinfo=UTC),
+            generated_at=datetime.now(UTC),
         )
         app.state.authoring_ai_provider = provider
         return TestClient(app)

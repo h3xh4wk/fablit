@@ -103,7 +103,7 @@ def _client(
         },
         provider="test-provider",
         model="test-model",
-        generated_at=datetime(2026, 10, 11, 9, tzinfo=UTC),
+        generated_at=datetime.now(UTC),
     )
     app.state.authoring_ai_provider = provider
     app.state.authoring_image_search = image_search

@@ -26,6 +26,9 @@ BRIEF = {
 }
 
 
+GENERATED_AT = datetime.now(UTC).replace(microsecond=0)
+
+
 def _client(*, configured_provider: bool = True) -> tuple[TestClient, Mock]:
     app = create_app(
         load_config(
@@ -44,7 +47,7 @@ def _client(*, configured_provider: bool = True) -> tuple[TestClient, Mock]:
         },
         provider="test-provider",
         model="test-model",
-        generated_at=datetime(2026, 10, 11, 9, tzinfo=UTC),
+        generated_at=GENERATED_AT,
     )
     if configured_provider:
         app.state.authoring_ai_provider = provider
@@ -138,7 +141,7 @@ def test_candidate_list_exposes_brief_and_safe_provenance() -> None:
     assert candidate["candidate_data"]["title"] == "Evidence-based observation"
     assert candidate["provider"] == "test-provider"
     assert candidate["model"] == "test-model"
-    assert candidate["generated_at"] == "2026-10-11T09:00:00+00:00"
+    assert candidate["generated_at"] == GENERATED_AT.isoformat()
     assert SECRET not in listed.text
     assert "api_key" not in listed.text
 
@@ -249,7 +252,7 @@ def test_candidate_detail_and_approval_workflow() -> None:
         },
         provider="test-provider",
         model="test-model",
-        generated_at=datetime(2026, 10, 11, 9, tzinfo=UTC),
+        generated_at=datetime.now(UTC),
     )
 
     gen_resp = client.post("/authoring/generate", headers=HEADERS, json=BRIEF)
@@ -304,7 +307,7 @@ def test_candidate_approval_gate_blocks_invalid_candidate() -> None:
         },
         provider="test-provider",
         model="test-model",
-        generated_at=datetime(2026, 10, 11, 9, tzinfo=UTC),
+        generated_at=datetime.now(UTC),
     )
 
     gen_resp = client.post("/authoring/generate", headers=HEADERS, json=BRIEF)
@@ -333,7 +336,7 @@ def test_candidate_edit_and_revalidation_flow() -> None:
         },
         provider="test-provider",
         model="test-model",
-        generated_at=datetime(2026, 10, 11, 9, tzinfo=UTC),
+        generated_at=datetime.now(UTC),
     )
 
     gen_resp = client.post("/authoring/generate", headers=HEADERS, json=BRIEF)
@@ -390,7 +393,7 @@ def test_authoring_candidates_are_isolated_from_learner_library() -> None:
         },
         provider="test-provider",
         model="test-model",
-        generated_at=datetime(2026, 10, 11, 9, tzinfo=UTC),
+        generated_at=datetime.now(UTC),
     )
 
     gen_resp = client.post("/authoring/generate", headers=HEADERS, json=BRIEF)
