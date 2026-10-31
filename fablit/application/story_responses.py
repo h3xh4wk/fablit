@@ -27,6 +27,7 @@ from fablit.domain.story_response import MAX_STORY_RESPONSE_CHARS
 
 from .errors import InvalidStoryResponseInputError
 from .news import NewsStory
+from .persistence import PersistenceError
 
 #: Learner-facing explanation when a response is empty or whitespace only.
 EMPTY_RESPONSE_MESSAGE = "Write a short response before saving it."
@@ -80,6 +81,10 @@ class InMemoryStoryResponseRepository(StoryResponseRepository):
         with self._lock:
             existing = self._responses.get(response.id)
             if existing is not None:
+                if existing.learner_id != response.learner_id:
+                    raise PersistenceError(
+                        f"Story response {response.id} belongs to another learner"
+                    )
                 # A retry of the same composer submission is the same save,
                 # even if the browser resent it after a slow response.
                 return existing

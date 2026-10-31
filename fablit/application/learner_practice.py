@@ -25,7 +25,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from threading import Lock
+from threading import Event, Lock
 from typing import Any, Protocol, runtime_checkable
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
@@ -47,6 +47,7 @@ from .errors import (
     LearnerPracticeGenerationError,
     LearnerPracticeRateLimitError,
 )
+from .persistence import PersistenceError
 from .practice_modes import PracticeMode
 from .store import DemoActivity, PracticeContentContract
 
@@ -62,6 +63,8 @@ MAX_HISTORY_ITEMS = 5
 #: Default per-learner generation rate limit and rolling window (SPEC-044).
 DEFAULT_LEARNER_PRACTICE_RATE_LIMIT = 5
 DEFAULT_LEARNER_PRACTICE_RATE_WINDOW_SECONDS = 3600
+DEFAULT_GENERATION_CLAIM_TTL_SECONDS = 60
+DEFAULT_GENERATION_WAIT_TIMEOUT_SECONDS = 60.0
 
 DEFAULT_RESPONSE_FORM = "A short written response"
 GENERATION_UNAVAILABLE_MESSAGE = (
@@ -522,6 +525,25 @@ class GeneratedPracticeRecord:
             )
 
 
+@dataclass(frozen=True)
+class GenerationClaimOutcome:
+    """Outcome of claiming a learner/request-token idempotency key."""
+
+    claimed: bool
+    existing: GeneratedPracticeRecord | None = None
+
+
+@dataclass
+class _InMemoryGenerationClaim:
+    """In-flight generation claim for coordinating concurrent duplicate requests."""
+
+    learner_id: UUID
+    expires_at: datetime
+    event: Event = field(default_factory=Event)
+    record: GeneratedPracticeRecord | None = None
+    error: Exception | None = None
+
+
 class GeneratedPracticeRepository(ABC):
     """Persistence port for private, learner-requested practices."""
 
@@ -538,6 +560,67 @@ class GeneratedPracticeRepository(ABC):
     @abstractmethod
     def list_for_learner(self, learner_id: UUID) -> tuple[GeneratedPracticeRecord, ...]:
         """Return the learner's records, newest first."""
+
+    def claim_generation(
+        self,
+        learner_id: UUID,
+        practice_id: UUID,
+        *,
+        now: datetime | None = None,
+        ttl_seconds: int = DEFAULT_GENERATION_CLAIM_TTL_SECONDS,
+    ) -> GenerationClaimOutcome:
+        """Atomically check for an existing practice or claim the generation key.
+
+        When the record already exists, returns ``GenerationClaimOutcome(claimed=False,
+        existing=record)``. When no active claim exists, claims the key and
+        returns ``GenerationClaimOutcome(claimed=True)``. When another request
+        already holds an active claim for the same key, returns
+        ``GenerationClaimOutcome(claimed=False, existing=None)`` so the duplicate
+        request can await the in-flight generation instead of calling the
+        provider a second time.
+        """
+        if not isinstance(learner_id, UUID) or not isinstance(practice_id, UUID):
+            raise ValueError(
+                "claim_generation requires UUID learner_id and practice_id"
+            )
+        _normalize_rate_limit_params(
+            now or datetime.now(UTC),
+            limit=1,
+            window_seconds=ttl_seconds,
+        )
+        existing = self.get(learner_id, practice_id)
+        if existing is not None:
+            return GenerationClaimOutcome(claimed=False, existing=existing)
+        return GenerationClaimOutcome(claimed=True)
+
+    def await_generation(
+        self,
+        learner_id: UUID,
+        practice_id: UUID,
+        *,
+        timeout_seconds: float = DEFAULT_GENERATION_WAIT_TIMEOUT_SECONDS,
+    ) -> GeneratedPracticeRecord:
+        """Wait for an in-flight generation claim to resolve to a record."""
+        if not isinstance(learner_id, UUID) or not isinstance(practice_id, UUID):
+            raise ValueError(
+                "await_generation requires UUID learner_id and practice_id"
+            )
+        _ = timeout_seconds
+        existing = self.get(learner_id, practice_id)
+        if existing is not None:
+            return existing
+        raise LearnerPracticeGenerationError(GENERATION_UNAVAILABLE_MESSAGE)
+
+    def release_generation_claim(
+        self,
+        learner_id: UUID,
+        practice_id: UUID,
+        *,
+        error: Exception | None = None,
+    ) -> None:
+        """Release an in-flight generation claim when generation does not save."""
+        _ = (learner_id, practice_id, error)
+        return None
 
     def reserve_generation_slot(
         self,
@@ -577,7 +660,111 @@ class InMemoryGeneratedPracticeRepository(GeneratedPracticeRepository):
         self._records: dict[UUID, GeneratedPracticeRecord] = {}
         self._learner_records: dict[UUID, list[UUID]] = {}
         self._rate_limit_attempts: dict[UUID, list[datetime]] = {}
+        self._claims: dict[UUID, _InMemoryGenerationClaim] = {}
         self._lock = Lock()
+
+    def claim_generation(
+        self,
+        learner_id: UUID,
+        practice_id: UUID,
+        *,
+        now: datetime | None = None,
+        ttl_seconds: int = DEFAULT_GENERATION_CLAIM_TTL_SECONDS,
+    ) -> GenerationClaimOutcome:
+        if not isinstance(learner_id, UUID) or not isinstance(practice_id, UUID):
+            raise ValueError(
+                "claim_generation requires UUID learner_id and practice_id"
+            )
+        current, _, ttl = _normalize_rate_limit_params(
+            now or datetime.now(UTC),
+            limit=1,
+            window_seconds=ttl_seconds,
+        )
+        with self._lock:
+            existing = self._records.get(practice_id)
+            if existing is not None:
+                if existing.learner_id != learner_id:
+                    raise PersistenceError(
+                        f"Generated practice {practice_id} belongs to another learner"
+                    )
+                return GenerationClaimOutcome(claimed=False, existing=existing)
+
+            active_claim = self._claims.get(practice_id)
+            if active_claim is not None:
+                if active_claim.learner_id != learner_id:
+                    raise PersistenceError(
+                        f"Generated practice claim {practice_id} "
+                        "belongs to another learner"
+                    )
+                if active_claim.expires_at > current:
+                    return GenerationClaimOutcome(claimed=False, existing=None)
+                active_claim.event.set()
+
+            self._claims[practice_id] = _InMemoryGenerationClaim(
+                learner_id=learner_id,
+                expires_at=current + timedelta(seconds=ttl),
+            )
+            return GenerationClaimOutcome(claimed=True, existing=None)
+
+    def await_generation(
+        self,
+        learner_id: UUID,
+        practice_id: UUID,
+        *,
+        timeout_seconds: float = DEFAULT_GENERATION_WAIT_TIMEOUT_SECONDS,
+    ) -> GeneratedPracticeRecord:
+        if not isinstance(learner_id, UUID) or not isinstance(practice_id, UUID):
+            raise ValueError(
+                "await_generation requires UUID learner_id and practice_id"
+            )
+        with self._lock:
+            existing = self._records.get(practice_id)
+            if existing is not None:
+                if existing.learner_id != learner_id:
+                    raise PersistenceError(
+                        f"Generated practice {practice_id} belongs to another learner"
+                    )
+                return existing
+            claim = self._claims.get(practice_id)
+            if claim is not None and claim.learner_id != learner_id:
+                raise PersistenceError(
+                    f"Generated practice claim {practice_id} belongs to another learner"
+                )
+
+        if claim is not None:
+            claim.event.wait(timeout=max(0.0, timeout_seconds))
+            if claim.record is not None:
+                if claim.record.learner_id != learner_id:
+                    raise PersistenceError(
+                        f"Generated practice {practice_id} belongs to another learner"
+                    )
+                return claim.record
+            persisted = self.get(learner_id, practice_id)
+            if persisted is not None:
+                return persisted
+            if claim.error is not None:
+                raise claim.error
+
+        persisted = self.get(learner_id, practice_id)
+        if persisted is not None:
+            return persisted
+        raise LearnerPracticeGenerationError(GENERATION_UNAVAILABLE_MESSAGE)
+
+    def release_generation_claim(
+        self,
+        learner_id: UUID,
+        practice_id: UUID,
+        *,
+        error: Exception | None = None,
+    ) -> None:
+        if not isinstance(learner_id, UUID) or not isinstance(practice_id, UUID):
+            return
+        with self._lock:
+            claim = self._claims.get(practice_id)
+            if claim is not None and claim.learner_id == learner_id:
+                self._claims.pop(practice_id, None)
+                claim.error = error
+                claim.event.set()
 
     def save(self, record: GeneratedPracticeRecord) -> GeneratedPracticeRecord:
         if not isinstance(record, GeneratedPracticeRecord):
@@ -587,12 +774,29 @@ class InMemoryGeneratedPracticeRepository(GeneratedPracticeRepository):
         with self._lock:
             existing = self._records.get(record.practice_id)
             if existing is not None:
-                return existing
-            self._records[record.practice_id] = record
-            self._learner_records.setdefault(record.learner_id, []).append(
-                record.practice_id
-            )
-            return record
+                if existing.learner_id != record.learner_id:
+                    raise PersistenceError(
+                        f"Generated practice {record.practice_id} "
+                        "belongs to another learner"
+                    )
+                persisted = existing
+            else:
+                claim = self._claims.get(record.practice_id)
+                if claim is not None and claim.learner_id != record.learner_id:
+                    raise PersistenceError(
+                        f"Generated practice claim {record.practice_id} "
+                        "belongs to another learner"
+                    )
+                self._records[record.practice_id] = record
+                self._learner_records.setdefault(record.learner_id, []).append(
+                    record.practice_id
+                )
+                persisted = record
+            completed_claim = self._claims.pop(record.practice_id, None)
+            if completed_claim is not None:
+                completed_claim.record = persisted
+                completed_claim.event.set()
+            return persisted
 
     def get(
         self, learner_id: UUID, practice_id: UUID
@@ -717,86 +921,110 @@ def generate_private_practice(
     provider output never reaches persistence or the learner.
     """
     practice_id = practice_id_for(request.learner_id, request.token)
-    existing = repository.get(request.learner_id, practice_id)
-    if existing is not None:
-        return existing
-
     created_at = now or datetime.now(UTC)
-    retry_after = repository.reserve_generation_slot(
+    claim = repository.claim_generation(
         request.learner_id,
+        practice_id,
         now=created_at,
-        limit=rate_limit,
-        window_seconds=rate_window_seconds,
     )
-    if retry_after is not None:
-        raise LearnerPracticeRateLimitError(
-            rate_limit_message(
-                limit=rate_limit,
-                window_seconds=rate_window_seconds,
-                retry_after_seconds=retry_after,
-            ),
-            retry_after_seconds=retry_after,
-        )
+    if claim.existing is not None:
+        return claim.existing
+    if not claim.claimed:
+        return repository.await_generation(request.learner_id, practice_id)
 
-    effective_history = history if request.include_history else HistoryContext()
-    brief = _brief_for(request, effective_history)
+    failure: Exception | None = None
+    persisted: GeneratedPracticeRecord | None = None
     try:
-        result = generator.generate(
-            LearnerPracticeGenerationRequest(request=request, history=effective_history)
+        retry_after = repository.reserve_generation_slot(
+            request.learner_id,
+            now=created_at,
+            limit=rate_limit,
+            window_seconds=rate_window_seconds,
         )
-    except LearnerPracticeGenerationError:
-        raise
+        if retry_after is not None:
+            raise LearnerPracticeRateLimitError(
+                rate_limit_message(
+                    limit=rate_limit,
+                    window_seconds=rate_window_seconds,
+                    retry_after_seconds=retry_after,
+                ),
+                retry_after_seconds=retry_after,
+            )
+
+        effective_history = history if request.include_history else HistoryContext()
+        brief = _brief_for(request, effective_history)
+        try:
+            result = generator.generate(
+                LearnerPracticeGenerationRequest(
+                    request=request, history=effective_history
+                )
+            )
+        except LearnerPracticeGenerationError:
+            raise
+        except Exception as exc:
+            logger.exception("learner practice generator failed")
+            raise LearnerPracticeGenerationError(
+                GENERATION_UNAVAILABLE_MESSAGE
+            ) from exc
+
+        candidate = candidate_from_provider_output(
+            result.candidate_data,
+            brief,
+            provider=result.provider,
+            model=result.model,
+            generated_at=result.generated_at,
+        )
+        validation = candidate.validation
+        contract = candidate.contract
+        if (
+            not validation.is_approvable
+            or contract is None
+            or not candidate.title.strip()
+            or not candidate.description.strip()
+        ):
+            logger.warning(
+                "generated practice failed validation",
+                extra={
+                    "structural_errors": list(validation.structural_errors),
+                    "feedback_errors": list(validation.feedback_errors),
+                },
+            )
+            raise GeneratedPracticeValidationError(VALIDATION_FAILURE_MESSAGE)
+
+        record = GeneratedPracticeRecord(
+            practice_id=practice_id,
+            learner_id=request.learner_id,
+            request_token=request.token,
+            title=candidate.title.strip(),
+            description=candidate.description.strip(),
+            contract=contract,
+            area=request.area,
+            challenge=request.challenge,
+            response_form=request.response_form.strip(),
+            primary_capability=brief.primary_capability,
+            used_history=not effective_history.is_empty,
+            provider=result.provider,
+            model=result.model,
+            generated_at=result.generated_at,
+            created_at=created_at,
+            examination_context=(
+                request.examination_context.strip()
+                if request.examination_context is not None
+                else None
+            ),
+        )
+        persisted = repository.save(record)
+        return persisted
     except Exception as exc:
-        logger.exception("learner practice generator failed")
-        raise LearnerPracticeGenerationError(GENERATION_UNAVAILABLE_MESSAGE) from exc
-
-    candidate = candidate_from_provider_output(
-        result.candidate_data,
-        brief,
-        provider=result.provider,
-        model=result.model,
-        generated_at=result.generated_at,
-    )
-    validation = candidate.validation
-    contract = candidate.contract
-    if (
-        not validation.is_approvable
-        or contract is None
-        or not candidate.title.strip()
-        or not candidate.description.strip()
-    ):
-        logger.warning(
-            "generated practice failed validation",
-            extra={
-                "structural_errors": list(validation.structural_errors),
-                "feedback_errors": list(validation.feedback_errors),
-            },
-        )
-        raise GeneratedPracticeValidationError(VALIDATION_FAILURE_MESSAGE)
-
-    record = GeneratedPracticeRecord(
-        practice_id=practice_id,
-        learner_id=request.learner_id,
-        request_token=request.token,
-        title=candidate.title.strip(),
-        description=candidate.description.strip(),
-        contract=contract,
-        area=request.area,
-        challenge=request.challenge,
-        response_form=request.response_form.strip(),
-        primary_capability=brief.primary_capability,
-        used_history=not effective_history.is_empty,
-        provider=result.provider,
-        model=result.model,
-        generated_at=result.generated_at,
-        created_at=created_at,
-        examination_context=(
-            request.examination_context.strip()
-            if request.examination_context is not None
-            else None
-        ),
-    )
-    return repository.save(record)
+        failure = exc
+        raise
+    finally:
+        if persisted is None:
+            repository.release_generation_claim(
+                request.learner_id,
+                practice_id,
+                error=failure,
+            )
 
 
 def build_generated_activity(record: GeneratedPracticeRecord) -> DemoActivity:

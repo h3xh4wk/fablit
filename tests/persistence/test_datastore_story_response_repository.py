@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -194,3 +195,57 @@ def test_deserialization_accepts_iso_strings_and_naive_datetimes() -> None:
 
     entity["created_at"] = datetime(2026, 10, 30, 12, 0)
     assert deserialize_story_response(entity).created_at == NOW
+
+
+def test_concurrent_duplicate_datastore_saves_persist_one_record() -> None:
+    client = FakeDatastoreClient()
+    instance_a = DatastoreStoryResponseRepository(client)
+    instance_b = DatastoreStoryResponseRepository(client)
+    learner_id = uuid4()
+    response_id = uuid4()
+    request_id = uuid4()
+    first = make_response(
+        learner_id=learner_id,
+        id=response_id,
+        request_id=request_id,
+        response_text="First submission.",
+    )
+    second = make_response(
+        learner_id=learner_id,
+        id=response_id,
+        request_id=request_id,
+        response_text="Concurrent duplicate submission.",
+    )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        future_a = pool.submit(instance_a.save, first)
+        future_b = pool.submit(instance_b.save, second)
+        result_a = future_a.result(timeout=2.0)
+        result_b = future_b.result(timeout=2.0)
+
+    assert result_a == result_b
+    assert instance_a.list_for_learner(learner_id) == (result_a,)
+
+
+def test_save_enforces_learner_ownership_and_type_and_non_transactional_fallback() -> (
+    None
+):
+    client = FakeDatastoreClient()
+    repository = DatastoreStoryResponseRepository(client)
+
+    with pytest.raises(ValueError, match="StoryResponse"):
+        repository.save("not-a-response")  # type: ignore[arg-type]
+
+    response = make_response()
+    repository.save(response)
+    colliding = make_response(id=response.id, learner_id=uuid4())
+    with pytest.raises(PersistenceError, match="belongs to another learner"):
+        repository.save(colliding)
+
+    class NonTransactionalClient(FakeDatastoreClient):
+        transaction = None  # type: ignore[assignment]
+
+    non_tx_repo = DatastoreStoryResponseRepository(NonTransactionalClient())
+    saved = non_tx_repo.save(response)
+    assert saved == response
+    assert non_tx_repo.save(response) == response

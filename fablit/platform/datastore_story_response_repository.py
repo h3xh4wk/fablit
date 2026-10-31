@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping
+from contextlib import nullcontext
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -99,16 +100,26 @@ class DatastoreStoryResponseRepository(StoryResponseRepository):
         self._namespace = namespace
 
     def save(self, response: StoryResponse) -> StoryResponse:
+        if not isinstance(response, StoryResponse):
+            raise ValueError("story response repository only accepts StoryResponse")
         try:
-            key = self._key(response.id)
-            existing = self._client.get(key)
-            if existing is not None:
-                # Retrying the same composer token is the same save.
-                return deserialize_story_response(existing)
-            entity = self._client.entity(key, exclude_from_indexes=_UNINDEXED_FIELDS)
-            entity.update(serialize_story_response(response))
-            self._client.put(entity)
-            return response
+            with self._transaction() as transaction:
+                key = self._key(response.id)
+                existing = self._read(transaction, key)
+                if existing is not None:
+                    # Retrying the same composer token is the same save.
+                    persisted = deserialize_story_response(existing)
+                    if persisted.learner_id != response.learner_id:
+                        raise ValueError(
+                            f"story response {response.id} belongs to another learner"
+                        )
+                    return persisted
+                entity = self._client.entity(
+                    key, exclude_from_indexes=_UNINDEXED_FIELDS
+                )
+                entity.update(serialize_story_response(response))
+                self._write(entity, transaction)
+                return response
         except Exception as exc:
             logger.exception(
                 "Failed to persist story response",
@@ -177,6 +188,23 @@ class DatastoreStoryResponseRepository(StoryResponseRepository):
                 reverse=True,
             )
         )
+
+    def _transaction(self) -> Any:
+        transaction = getattr(self._client, "transaction", None)
+        return transaction() if callable(transaction) else nullcontext(None)
+
+    def _read(self, transaction: Any, key: Any) -> Any:
+        getter = getattr(transaction, "get", None)
+        if callable(getter):
+            return getter(key)
+        return self._client.get(key)
+
+    def _write(self, entity: Any, transaction: Any) -> None:
+        putter = getattr(transaction, "put", None)
+        if callable(putter):
+            putter(entity)
+            return
+        self._client.put(entity)
 
     def _key(self, response_id: UUID) -> Any:
         return self._client.key(

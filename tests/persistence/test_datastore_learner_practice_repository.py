@@ -7,21 +7,31 @@ learner who requested the practice.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from threading import Event
 from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
 
+from fablit.application.errors import LearnerPracticeGenerationError
 from fablit.application.learner_practice import (
     ChallengePreference,
+    FakeLearnerPracticeGenerator,
     GeneratedPracticeRecord,
+    HistoryContext,
+    LearnerPracticeGenerationRequest,
     PracticeArea,
+    PracticeRequest,
+    generate_private_practice,
+    practice_id_for,
 )
 from fablit.application.persistence import PersistenceError
 from fablit.application.store import PracticeContentContract
 from fablit.platform.datastore_learner_practice_repository import (
     DEFAULT_GENERATED_PRACTICE_NAMESPACE,
+    GENERATED_PRACTICE_CLAIM_KIND,
     GENERATED_PRACTICE_KIND,
     GENERATED_PRACTICE_RATE_LIMIT_KIND,
     DatastoreGeneratedPracticeRepository,
@@ -375,3 +385,228 @@ def test_rate_limit_datastore_failure_raises_persistence_error() -> None:
 
     with pytest.raises(ValueError, match="learner_id"):
         repository.reserve_generation_slot("not-a-uuid", now=NOW)  # type: ignore[arg-type]
+
+
+def _make_request(*, learner_id: UUID = LEARNER, token: UUID) -> PracticeRequest:
+    return PracticeRequest(
+        learner_id=learner_id,
+        text="I want to practise noticing how colour and texture work together.",
+        area=PracticeArea.VISUAL_ANALYSIS,
+        response_form="A short written response",
+        challenge=ChallengePreference.FAMILIAR,
+        created_at=NOW,
+        token=token,
+    )
+
+
+def test_concurrent_duplicate_datastore_requests_call_provider_once() -> None:
+    client = FakeDatastoreClient()
+    instance_a = DatastoreGeneratedPracticeRepository(client)
+    instance_b = DatastoreGeneratedPracticeRepository(client)
+    entered_provider = Event()
+    release_provider = Event()
+
+    class CoordinatedGenerator(FakeLearnerPracticeGenerator):
+        def generate(self, request: LearnerPracticeGenerationRequest) -> Any:
+            entered_provider.set()
+            release_provider.wait(timeout=2.0)
+            return super().generate(request)
+
+    generator = CoordinatedGenerator()
+    token = uuid4()
+    request_a = _make_request(token=token)
+    request_b = _make_request(token=token)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first_future = pool.submit(
+            generate_private_practice,
+            instance_a,
+            generator,
+            request=request_a,
+            history=HistoryContext(),
+            now=NOW,
+            rate_limit=1,
+            rate_window_seconds=3600,
+        )
+        assert entered_provider.wait(timeout=2.0)
+        second_future = pool.submit(
+            generate_private_practice,
+            instance_b,
+            generator,
+            request=request_b,
+            history=HistoryContext(),
+            now=NOW + timedelta(seconds=1),
+            rate_limit=1,
+            rate_window_seconds=3600,
+        )
+        release_provider.wait(timeout=0.03)
+        release_provider.set()
+        first_record = first_future.result(timeout=2.0)
+        second_record = second_future.result(timeout=2.0)
+
+    assert first_record == second_record
+    assert len(generator.calls) == 1
+    assert instance_a.list_for_learner(LEARNER) == (first_record,)
+    assert instance_b.get(LEARNER, first_record.practice_id) == first_record
+    # The claim entity is cleaned up once the practice is persisted.
+    claim_key = client.key(
+        GENERATED_PRACTICE_CLAIM_KIND,
+        str(first_record.practice_id),
+        namespace=DEFAULT_GENERATED_PRACTICE_NAMESPACE,
+    )
+    assert client.get(claim_key) is None
+
+
+def test_concurrent_duplicate_datastore_failure_releases_claim() -> None:
+    client = FakeDatastoreClient()
+    instance_a = DatastoreGeneratedPracticeRepository(client)
+    instance_b = DatastoreGeneratedPracticeRepository(client)
+    entered_provider = Event()
+    release_provider = Event()
+
+    class FailingGenerator(FakeLearnerPracticeGenerator):
+        def generate(self, request: LearnerPracticeGenerationRequest) -> Any:
+            self.calls.append(request)
+            entered_provider.set()
+            release_provider.wait(timeout=2.0)
+            raise RuntimeError("provider outage")
+
+    generator = FailingGenerator()
+    token = uuid4()
+    request = _make_request(token=token)
+    practice_id = practice_id_for(LEARNER, token)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first_future = pool.submit(
+            generate_private_practice,
+            instance_a,
+            generator,
+            request=request,
+            history=HistoryContext(),
+            now=NOW,
+        )
+        assert entered_provider.wait(timeout=2.0)
+        second_future = pool.submit(
+            generate_private_practice,
+            instance_b,
+            generator,
+            request=request,
+            history=HistoryContext(),
+            now=NOW,
+        )
+        release_provider.wait(timeout=0.03)
+        release_provider.set()
+
+        with pytest.raises(LearnerPracticeGenerationError):
+            first_future.result(timeout=2.0)
+        with pytest.raises(LearnerPracticeGenerationError):
+            second_future.result(timeout=2.0)
+
+    assert len(generator.calls) == 1
+    assert (
+        client.get(
+            client.key(
+                GENERATED_PRACTICE_CLAIM_KIND,
+                str(practice_id),
+                namespace=DEFAULT_GENERATED_PRACTICE_NAMESPACE,
+            )
+        )
+        is None
+    )
+
+    # Subsequent retry succeeds now that the claim was released.
+    working_generator = FakeLearnerPracticeGenerator()
+    recovered = generate_private_practice(
+        instance_b,
+        working_generator,
+        request=request,
+        history=HistoryContext(),
+        now=NOW + timedelta(seconds=5),
+    )
+    assert len(working_generator.calls) == 1
+    assert instance_a.get(LEARNER, practice_id) == recovered
+
+
+def test_datastore_claim_expiry_and_learner_ownership_checks() -> None:
+    client = FakeDatastoreClient()
+    repository = DatastoreGeneratedPracticeRepository(client)
+    other_learner = uuid4()
+    record = make_record(learner_id=LEARNER)
+
+    with pytest.raises(ValueError, match="GeneratedPracticeRecord"):
+        repository.save("not-a-record")  # type: ignore[arg-type]
+
+    # Claim the practice key.
+    outcome = repository.claim_generation(
+        LEARNER, record.practice_id, now=NOW, ttl_seconds=30
+    )
+    assert outcome.claimed is True
+    assert outcome.existing is None
+
+    # Active claim blocks duplicate claim for same learner.
+    duplicate = repository.claim_generation(
+        LEARNER,
+        record.practice_id,
+        now=NOW + timedelta(seconds=10),
+        ttl_seconds=30,
+    )
+    assert duplicate.claimed is False
+    assert duplicate.existing is None
+
+    # Another learner cannot claim, save, or await a practice_id owned by LEARNER.
+    with pytest.raises(PersistenceError, match="belongs to another learner"):
+        repository.claim_generation(
+            other_learner,
+            record.practice_id,
+            now=NOW + timedelta(seconds=10),
+            ttl_seconds=30,
+        )
+    with pytest.raises(PersistenceError, match="belongs to another learner"):
+        repository.save(
+            make_record(learner_id=other_learner, practice_id=record.practice_id)
+        )
+    with pytest.raises(PersistenceError, match="belongs to another learner"):
+        repository.await_generation(
+            other_learner, record.practice_id, timeout_seconds=0.01
+        )
+
+    # After TTL expiry, the claim can be re-acquired.
+    reclaimed = repository.claim_generation(
+        LEARNER,
+        record.practice_id,
+        now=NOW + timedelta(seconds=31),
+        ttl_seconds=30,
+    )
+    assert reclaimed.claimed is True
+
+    # Saving persists the record, clears the claim, and blocks other learners.
+    repository.save(record)
+    already_saved = repository.claim_generation(
+        LEARNER,
+        record.practice_id,
+        now=NOW + timedelta(seconds=32),
+        ttl_seconds=30,
+    )
+    assert already_saved.claimed is False
+    assert already_saved.existing == record
+
+    with pytest.raises(PersistenceError, match="belongs to another learner"):
+        repository.claim_generation(other_learner, record.practice_id, now=NOW)
+    with pytest.raises(PersistenceError, match="belongs to another learner"):
+        repository.save(
+            make_record(learner_id=other_learner, practice_id=record.practice_id)
+        )
+
+
+def test_datastore_claim_and_save_work_without_client_transaction_method() -> None:
+    class NonTransactionalClient(FakeDatastoreClient):
+        transaction = None  # type: ignore[assignment]
+
+    repository = DatastoreGeneratedPracticeRepository(NonTransactionalClient())
+    record = make_record(learner_id=LEARNER)
+
+    outcome = repository.claim_generation(LEARNER, record.practice_id, now=NOW)
+    assert outcome.claimed is True
+    repository.release_generation_claim(LEARNER, record.practice_id)
+    assert repository.save(record) == record
+    assert repository.save(record) == record
