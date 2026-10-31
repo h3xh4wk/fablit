@@ -29,16 +29,19 @@ from fablit.application import (
     GeneratedPracticeRecord,
     GeneratedPracticeRepository,
     GeneratedPracticeValidationError,
+    GenerationClaimOutcome,
     HistoryContext,
     InMemoryGeneratedPracticeRepository,
     InvalidLearnerPracticeRequestError,
     LearnerJourneyStore,
     LearnerPracticeGenerationError,
     LearnerPracticeGenerationRequest,
+    LearnerPracticeGenerationResult,
     LearnerPracticeRateLimitError,
     PracticeApplication,
     PracticeArea,
     PracticeRequest,
+    StaleGenerationClaimError,
     build_demo_activities,
     build_demo_activity_map,
     build_demo_skills,
@@ -1061,6 +1064,8 @@ def test_in_memory_claim_expiry_and_ownership_checks() -> None:
         ttl_seconds=30,
     )
     assert reclaimed.claimed is True
+    assert isinstance(reclaimed.claim_token, UUID)
+    assert reclaimed.claim_token != outcome.claim_token
 
     own_record = GeneratedPracticeRecord(
         practice_id=practice_id,
@@ -1079,10 +1084,312 @@ def test_in_memory_claim_expiry_and_ownership_checks() -> None:
         generated_at=record.generated_at,
         created_at=record.created_at,
     )
-    repository.save(own_record)
+    # The expired claim token cannot release, renew, or overwrite the replacement.
+    assert (
+        repository.release_generation_claim(
+            DEMO_LEARNER_ID,
+            practice_id,
+            outcome.claim_token,
+        )
+        is False
+    )
+    assert (
+        repository.renew_generation_claim(
+            DEMO_LEARNER_ID,
+            practice_id,
+            outcome.claim_token,
+            now=NOW + timedelta(seconds=32),
+            ttl_seconds=30,
+        )
+        is False
+    )
+    with pytest.raises(StaleGenerationClaimError):
+        repository.save(own_record, claim_token=outcome.claim_token)
+    with pytest.raises(StaleGenerationClaimError):
+        repository.save(own_record)
+
+    repository.save(own_record, claim_token=reclaimed.claim_token)
     with pytest.raises(PersistenceError, match="belongs to another learner"):
         repository.save(colliding_record)
     with pytest.raises(PersistenceError, match="belongs to another learner"):
         repository.claim_generation(other_learner, practice_id, now=NOW)
     with pytest.raises(PersistenceError, match="belongs to another learner"):
         repository.await_generation(other_learner, practice_id, timeout_seconds=0.01)
+
+
+def test_expired_claim_owner_cannot_release_or_overwrite_replacement_claim() -> None:
+    repository = InMemoryGeneratedPracticeRepository()
+    request = _request(token=uuid4())
+    practice_id = practice_id_for(request.learner_id, request.token)
+
+    claim_a = repository.claim_generation(
+        DEMO_LEARNER_ID,
+        practice_id,
+        now=NOW,
+        ttl_seconds=30,
+    )
+    assert claim_a.claimed is True
+    assert isinstance(claim_a.claim_token, UUID)
+
+    # Request A's lease expires before it finishes; Request B acquires a replacement.
+    claim_b = repository.claim_generation(
+        DEMO_LEARNER_ID,
+        practice_id,
+        now=NOW + timedelta(seconds=31),
+        ttl_seconds=30,
+    )
+    assert claim_b.claimed is True
+    assert isinstance(claim_b.claim_token, UUID)
+    assert claim_b.claim_token != claim_a.claim_token
+
+    # Request A's stale release attempt is ignored and does not clear B's claim.
+    assert (
+        repository.release_generation_claim(
+            DEMO_LEARNER_ID,
+            practice_id,
+            claim_a.claim_token,
+            error=LearnerPracticeGenerationError("stale failure"),
+        )
+        is False
+    )
+    assert (
+        repository.release_generation_claim(
+            DEMO_LEARNER_ID,
+            practice_id,
+            None,
+        )
+        is False
+    )
+
+    # A third request C arriving while B's claim is still active sees claimed=False.
+    claim_c = repository.claim_generation(
+        DEMO_LEARNER_ID,
+        practice_id,
+        now=NOW + timedelta(seconds=35),
+        ttl_seconds=30,
+    )
+    assert claim_c.claimed is False
+    assert claim_c.existing is None
+
+
+def test_stale_failed_generation_preserves_replacement_claim() -> None:
+    repository = InMemoryGeneratedPracticeRepository()
+    request = _request(token=uuid4())
+    first_entered = Event()
+    release_first = Event()
+    second_entered = Event()
+    release_second = Event()
+
+    class StaleThenValidGenerator(FakeLearnerPracticeGenerator):
+        def generate(
+            self, generation_request: LearnerPracticeGenerationRequest
+        ) -> LearnerPracticeGenerationResult:
+            call_number = len(self.calls) + 1
+            result = super().generate(generation_request)
+            if call_number == 1:
+                first_entered.set()
+                release_first.wait(timeout=2.0)
+                raise RuntimeError("slow first attempt timed out after lease expiry")
+            second_entered.set()
+            release_second.wait(timeout=2.0)
+            return result
+
+    generator = StaleThenValidGenerator()
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        future_a = pool.submit(
+            generate_private_practice,
+            repository,
+            generator,
+            request=request,
+            history=HistoryContext(),
+            now=NOW,
+            claim_ttl_seconds=30,
+            claim_renewal_interval_seconds=0.0,
+        )
+        assert first_entered.wait(timeout=2.0)
+
+        # Request A's 30s lease has expired at NOW + 31s; Request B claims replacement.
+        future_b = pool.submit(
+            generate_private_practice,
+            repository,
+            generator,
+            request=request,
+            history=HistoryContext(),
+            now=NOW + timedelta(seconds=31),
+            claim_ttl_seconds=30,
+            claim_renewal_interval_seconds=0.0,
+        )
+        assert second_entered.wait(timeout=2.0)
+
+        # Request A now fails and runs its finally block (attempting to release claim).
+        release_first.set()
+        with pytest.raises(LearnerPracticeGenerationError):
+            future_a.result(timeout=2.0)
+
+        # Request C arrives at NOW + 35s while Request B's replacement claim is active.
+        # Because Request A could not release B's replacement claim, C awaits B.
+        future_c = pool.submit(
+            generate_private_practice,
+            repository,
+            generator,
+            request=request,
+            history=HistoryContext(),
+            now=NOW + timedelta(seconds=35),
+            claim_ttl_seconds=30,
+            claim_renewal_interval_seconds=0.0,
+        )
+        release_second.wait(timeout=0.02)
+        release_second.set()
+
+        record_b = future_b.result(timeout=2.0)
+        record_c = future_c.result(timeout=2.0)
+
+    assert len(generator.calls) == 2
+    assert record_b == record_c
+    assert repository.get(DEMO_LEARNER_ID, record_b.practice_id) == record_b
+
+
+def test_stale_completing_generation_resolves_to_replacement_claim_record() -> None:
+    repository = InMemoryGeneratedPracticeRepository()
+    request = _request(token=uuid4())
+    first_entered = Event()
+    release_first = Event()
+    second_entered = Event()
+    release_second = Event()
+
+    class TwoAttemptGenerator(FakeLearnerPracticeGenerator):
+        def generate(
+            self, generation_request: LearnerPracticeGenerationRequest
+        ) -> LearnerPracticeGenerationResult:
+            call_number = len(self.calls) + 1
+            result = super().generate(generation_request)
+            if call_number == 1:
+                first_entered.set()
+                release_first.wait(timeout=2.0)
+                return LearnerPracticeGenerationResult(
+                    candidate_data={
+                        **result.candidate_data,
+                        "title": "Stale first attempt title",
+                    },
+                    provider=result.provider,
+                    model=result.model,
+                    generated_at=result.generated_at,
+                )
+            second_entered.set()
+            release_second.wait(timeout=2.0)
+            return LearnerPracticeGenerationResult(
+                candidate_data={
+                    **result.candidate_data,
+                    "title": "Replacement second attempt title",
+                },
+                provider=result.provider,
+                model=result.model,
+                generated_at=result.generated_at,
+            )
+
+    generator = TwoAttemptGenerator()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        future_a = pool.submit(
+            generate_private_practice,
+            repository,
+            generator,
+            request=request,
+            history=HistoryContext(),
+            now=NOW,
+            claim_ttl_seconds=30,
+            claim_renewal_interval_seconds=0.0,
+        )
+        assert first_entered.wait(timeout=2.0)
+
+        future_b = pool.submit(
+            generate_private_practice,
+            repository,
+            generator,
+            request=request,
+            history=HistoryContext(),
+            now=NOW + timedelta(seconds=31),
+            claim_ttl_seconds=30,
+            claim_renewal_interval_seconds=0.0,
+        )
+        assert second_entered.wait(timeout=2.0)
+
+        # Let Request A finish first while Request B holds the replacement claim.
+        release_first.set()
+        release_second.wait(timeout=0.02)
+        release_second.set()
+
+        record_a = future_a.result(timeout=2.0)
+        record_b = future_b.result(timeout=2.0)
+
+    assert record_a == record_b
+    assert record_b.title == "Replacement second attempt title"
+    assert repository.get(DEMO_LEARNER_ID, record_b.practice_id) == record_b
+
+
+def test_active_generation_renews_lease_and_prevents_duplicate_provider_calls() -> None:
+    repository = InMemoryGeneratedPracticeRepository()
+    request = _request(token=uuid4())
+    entered_provider = Event()
+    release_provider = Event()
+
+    class SlowGenerator(FakeLearnerPracticeGenerator):
+        def generate(
+            self, generation_request: LearnerPracticeGenerationRequest
+        ) -> LearnerPracticeGenerationResult:
+            entered_provider.set()
+            release_provider.wait(timeout=2.0)
+            return super().generate(generation_request)
+
+    generator = SlowGenerator()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first_future = pool.submit(
+            generate_private_practice,
+            repository,
+            generator,
+            request=request,
+            history=HistoryContext(),
+            now=NOW,
+            claim_ttl_seconds=1,
+            claim_renewal_interval_seconds=0.02,
+        )
+        assert entered_provider.wait(timeout=2.0)
+        # Wait long enough for at least one lease renewal tick to extend the claim.
+        release_provider.wait(timeout=0.06)
+
+        # Even at NOW + 1s (initial lease expiry boundary), the renewed lease is active.
+        second_future = pool.submit(
+            generate_private_practice,
+            repository,
+            generator,
+            request=request,
+            history=HistoryContext(),
+            now=NOW + timedelta(seconds=1),
+            claim_ttl_seconds=1,
+        )
+        release_provider.wait(timeout=0.02)
+        release_provider.set()
+
+        first_record = first_future.result(timeout=2.0)
+        second_record = second_future.result(timeout=2.0)
+
+    assert first_record == second_record
+    assert len(generator.calls) == 1
+
+
+def test_generation_claim_outcome_and_repository_default_helpers() -> None:
+    with pytest.raises(ValueError, match="UUID claim_token"):
+        GenerationClaimOutcome(claimed=True, claim_token="bad")  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="must not carry a claim_token"):
+        GenerationClaimOutcome(claimed=False, claim_token=uuid4())
+
+    repository = InMemoryGeneratedPracticeRepository()
+    with pytest.raises(ValueError, match="UUID"):
+        repository.renew_generation_claim("bad", uuid4(), uuid4())  # type: ignore[arg-type]
+    assert repository.renew_generation_claim(DEMO_LEARNER_ID, uuid4(), None) is False
+    assert (
+        repository.release_generation_claim("bad", uuid4(), uuid4())  # type: ignore[arg-type]
+        is False
+    )

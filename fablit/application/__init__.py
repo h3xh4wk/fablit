@@ -118,6 +118,8 @@ from .errors import (
 from .image_search import ImageCandidate, ImageSearchError, ImageSearchProvider
 from .learner_practice import (
     CHALLENGE_LABELS,
+    DEFAULT_GENERATION_CLAIM_TTL_SECONDS,
+    DEFAULT_GENERATION_WAIT_TIMEOUT_SECONDS,
     DEFAULT_LEARNER_PRACTICE_RATE_LIMIT,
     DEFAULT_LEARNER_PRACTICE_RATE_WINDOW_SECONDS,
     DEFAULT_RESPONSE_FORM,
@@ -131,6 +133,7 @@ from .learner_practice import (
     GeneratedPracticePreview,
     GeneratedPracticeRecord,
     GeneratedPracticeRepository,
+    GenerationClaimOutcome,
     HistoryContext,
     InMemoryGeneratedPracticeRepository,
     LearnerPracticeGenerationRequest,
@@ -206,6 +209,7 @@ from .news_sources import (
     normalize_http_url,
     parse_news_sources,
 )
+from .persistence import PersistenceError, StaleGenerationClaimError
 from .practice_continuity import (
     CONTINUATION_ACTION_LABEL,
     CONTINUATION_HEADING,
@@ -465,6 +469,8 @@ __all__ = [
     "load_publications",
     "publish_candidate",
     "CHALLENGE_LABELS",
+    "DEFAULT_GENERATION_CLAIM_TTL_SECONDS",
+    "DEFAULT_GENERATION_WAIT_TIMEOUT_SECONDS",
     "DEFAULT_LEARNER_PRACTICE_RATE_LIMIT",
     "DEFAULT_LEARNER_PRACTICE_RATE_WINDOW_SECONDS",
     "DEFAULT_RESPONSE_FORM",
@@ -478,14 +484,17 @@ __all__ = [
     "GeneratedPracticePreview",
     "GeneratedPracticeRecord",
     "GeneratedPracticeRepository",
+    "GenerationClaimOutcome",
     "HistoryContext",
     "InMemoryGeneratedPracticeRepository",
     "LearnerPracticeGenerationRequest",
     "LearnerPracticeGenerationResult",
     "LearnerPracticeGenerator",
+    "PersistenceError",
     "PracticeArea",
     "PracticeRequest",
     "RequestedPracticeSummary",
+    "StaleGenerationClaimError",
     "build_generated_activity",
     "default_candidate_data",
     "generate_private_practice",

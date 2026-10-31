@@ -22,12 +22,13 @@ from fablit.application.learner_practice import (
     GeneratedPracticeRecord,
     HistoryContext,
     LearnerPracticeGenerationRequest,
+    LearnerPracticeGenerationResult,
     PracticeArea,
     PracticeRequest,
     generate_private_practice,
     practice_id_for,
 )
-from fablit.application.persistence import PersistenceError
+from fablit.application.persistence import PersistenceError, StaleGenerationClaimError
 from fablit.application.store import PracticeContentContract
 from fablit.platform.datastore_learner_practice_repository import (
     DEFAULT_GENERATED_PRACTICE_NAMESPACE,
@@ -578,9 +579,35 @@ def test_datastore_claim_expiry_and_learner_ownership_checks() -> None:
         ttl_seconds=30,
     )
     assert reclaimed.claimed is True
+    assert isinstance(reclaimed.claim_token, UUID)
+    assert reclaimed.claim_token != outcome.claim_token
 
-    # Saving persists the record, clears the claim, and blocks other learners.
-    repository.save(record)
+    # The expired claim owner cannot release, renew, or overwrite the replacement.
+    assert (
+        repository.release_generation_claim(
+            LEARNER,
+            record.practice_id,
+            outcome.claim_token,
+        )
+        is False
+    )
+    assert (
+        repository.renew_generation_claim(
+            LEARNER,
+            record.practice_id,
+            outcome.claim_token,
+            now=NOW + timedelta(seconds=32),
+            ttl_seconds=30,
+        )
+        is False
+    )
+    with pytest.raises(StaleGenerationClaimError):
+        repository.save(record, claim_token=outcome.claim_token)
+    with pytest.raises(StaleGenerationClaimError):
+        repository.save(record)
+
+    # Saving with the replacement token persists the record and clears the claim.
+    repository.save(record, claim_token=reclaimed.claim_token)
     already_saved = repository.claim_generation(
         LEARNER,
         record.practice_id,
@@ -607,6 +634,380 @@ def test_datastore_claim_and_save_work_without_client_transaction_method() -> No
 
     outcome = repository.claim_generation(LEARNER, record.practice_id, now=NOW)
     assert outcome.claimed is True
-    repository.release_generation_claim(LEARNER, record.practice_id)
+    assert (
+        repository.release_generation_claim(
+            LEARNER,
+            record.practice_id,
+            outcome.claim_token,
+        )
+        is True
+    )
     assert repository.save(record) == record
     assert repository.save(record) == record
+
+
+def test_datastore_expired_claim_owner_cannot_release_or_overwrite_replacement() -> (
+    None
+):
+    client = FakeDatastoreClient()
+    instance_a = DatastoreGeneratedPracticeRepository(client)
+    instance_b = DatastoreGeneratedPracticeRepository(client)
+    record_a = make_record(learner_id=LEARNER, title="Stale worker practice")
+    record_b = make_record(
+        learner_id=LEARNER,
+        practice_id=record_a.practice_id,
+        request_token=record_a.request_token,
+        title="Replacement worker practice",
+    )
+
+    claim_a = instance_a.claim_generation(
+        LEARNER,
+        record_a.practice_id,
+        now=NOW,
+        ttl_seconds=30,
+    )
+    assert claim_a.claimed is True
+    assert isinstance(claim_a.claim_token, UUID)
+
+    # Lease expires; instance_b acquires a replacement claim.
+    claim_b = instance_b.claim_generation(
+        LEARNER,
+        record_a.practice_id,
+        now=NOW + timedelta(seconds=31),
+        ttl_seconds=30,
+    )
+    assert claim_b.claimed is True
+    assert isinstance(claim_b.claim_token, UUID)
+    assert claim_b.claim_token != claim_a.claim_token
+
+    # instance_a cannot release, renew, or save using its stale claim_token.
+    assert (
+        instance_a.release_generation_claim(
+            LEARNER,
+            record_a.practice_id,
+            claim_a.claim_token,
+            error=LearnerPracticeGenerationError("stale failure"),
+        )
+        is False
+    )
+    assert (
+        instance_a.renew_generation_claim(
+            LEARNER,
+            record_a.practice_id,
+            claim_a.claim_token,
+            now=NOW + timedelta(seconds=32),
+            ttl_seconds=30,
+        )
+        is False
+    )
+    with pytest.raises(StaleGenerationClaimError):
+        instance_a.save(record_a, claim_token=claim_a.claim_token)
+
+    # Replacement claim in Datastore is still intact with claim_b's token.
+    claim_entity = client.get(
+        client.key(
+            GENERATED_PRACTICE_CLAIM_KIND,
+            str(record_a.practice_id),
+            namespace=DEFAULT_GENERATED_PRACTICE_NAMESPACE,
+        )
+    )
+    assert claim_entity is not None
+    assert claim_entity["claim_token"] == str(claim_b.claim_token)
+
+    # instance_b can renew and complete its replacement claim.
+    assert (
+        instance_b.renew_generation_claim(
+            LEARNER,
+            record_b.practice_id,
+            claim_b.claim_token,
+            now=NOW + timedelta(seconds=45),
+            ttl_seconds=30,
+        )
+        is True
+    )
+    saved = instance_b.save(record_b, claim_token=claim_b.claim_token)
+    assert saved == record_b
+
+    # If instance_a arrives late to save after B already persisted, B's record wins.
+    assert instance_a.save(record_a, claim_token=claim_a.claim_token) == record_b
+    assert instance_a.get(LEARNER, record_b.practice_id) == record_b
+
+
+def test_datastore_stale_failed_worker_does_not_delete_replacement_claim() -> None:
+    client = FakeDatastoreClient()
+    instance_a = DatastoreGeneratedPracticeRepository(client)
+    instance_b = DatastoreGeneratedPracticeRepository(client)
+    instance_c = DatastoreGeneratedPracticeRepository(client)
+    token = uuid4()
+    request = PracticeRequest(
+        learner_id=LEARNER,
+        text="I want to practise describing colour and texture in an outfit.",
+        area=PracticeArea.CREATIVE_ABILITY,
+        response_form="A short written response",
+        challenge=ChallengePreference.FAMILIAR,
+        include_history=False,
+        created_at=NOW,
+        token=token,
+    )
+    first_entered = Event()
+    release_first = Event()
+    second_entered = Event()
+    release_second = Event()
+
+    class StaleThenValidGenerator(FakeLearnerPracticeGenerator):
+        def generate(
+            self, generation_request: LearnerPracticeGenerationRequest
+        ) -> LearnerPracticeGenerationResult:
+            call_number = len(self.calls) + 1
+            result = super().generate(generation_request)
+            if call_number == 1:
+                first_entered.set()
+                release_first.wait(timeout=2.0)
+                raise RuntimeError("stale worker failed after lease expiry")
+            second_entered.set()
+            release_second.wait(timeout=2.0)
+            return result
+
+    generator = StaleThenValidGenerator()
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        future_a = pool.submit(
+            generate_private_practice,
+            instance_a,
+            generator,
+            request=request,
+            history=HistoryContext(),
+            now=NOW,
+            claim_ttl_seconds=30,
+            claim_renewal_interval_seconds=0.0,
+        )
+        assert first_entered.wait(timeout=2.0)
+
+        future_b = pool.submit(
+            generate_private_practice,
+            instance_b,
+            generator,
+            request=request,
+            history=HistoryContext(),
+            now=NOW + timedelta(seconds=31),
+            claim_ttl_seconds=30,
+            claim_renewal_interval_seconds=0.0,
+        )
+        assert second_entered.wait(timeout=2.0)
+
+        # Request A fails now and runs release_generation_claim with its stale token.
+        release_first.set()
+        with pytest.raises(LearnerPracticeGenerationError):
+            future_a.result(timeout=2.0)
+
+        # Request C arrives on a third instance; B's Datastore claim is still active.
+        future_c = pool.submit(
+            generate_private_practice,
+            instance_c,
+            generator,
+            request=request,
+            history=HistoryContext(),
+            now=NOW + timedelta(seconds=35),
+            claim_ttl_seconds=30,
+            claim_renewal_interval_seconds=0.0,
+        )
+        release_second.wait(timeout=0.03)
+        release_second.set()
+
+        record_b = future_b.result(timeout=2.0)
+        record_c = future_c.result(timeout=2.0)
+
+    assert len(generator.calls) == 2
+    assert record_b == record_c
+    assert instance_a.get(LEARNER, record_b.practice_id) == record_b
+
+
+def test_datastore_stale_completing_worker_resolves_to_replacement_record() -> None:
+    client = FakeDatastoreClient()
+    instance_a = DatastoreGeneratedPracticeRepository(client)
+    instance_b = DatastoreGeneratedPracticeRepository(client)
+    token = uuid4()
+    request = PracticeRequest(
+        learner_id=LEARNER,
+        text="I want to practise describing colour and texture in an outfit.",
+        area=PracticeArea.CREATIVE_ABILITY,
+        response_form="A short written response",
+        challenge=ChallengePreference.FAMILIAR,
+        include_history=False,
+        created_at=NOW,
+        token=token,
+    )
+    first_entered = Event()
+    release_first = Event()
+    second_entered = Event()
+    release_second = Event()
+
+    class TwoWorkerGenerator(FakeLearnerPracticeGenerator):
+        def generate(
+            self, generation_request: LearnerPracticeGenerationRequest
+        ) -> LearnerPracticeGenerationResult:
+            call_number = len(self.calls) + 1
+            result = super().generate(generation_request)
+            if call_number == 1:
+                first_entered.set()
+                release_first.wait(timeout=2.0)
+                return LearnerPracticeGenerationResult(
+                    candidate_data={
+                        **result.candidate_data,
+                        "title": "Stale worker title",
+                    },
+                    provider=result.provider,
+                    model=result.model,
+                    generated_at=result.generated_at,
+                )
+            second_entered.set()
+            release_second.wait(timeout=2.0)
+            return LearnerPracticeGenerationResult(
+                candidate_data={
+                    **result.candidate_data,
+                    "title": "Replacement worker title",
+                },
+                provider=result.provider,
+                model=result.model,
+                generated_at=result.generated_at,
+            )
+
+    generator = TwoWorkerGenerator()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        future_a = pool.submit(
+            generate_private_practice,
+            instance_a,
+            generator,
+            request=request,
+            history=HistoryContext(),
+            now=NOW,
+            claim_ttl_seconds=30,
+            claim_renewal_interval_seconds=0.0,
+        )
+        assert first_entered.wait(timeout=2.0)
+
+        future_b = pool.submit(
+            generate_private_practice,
+            instance_b,
+            generator,
+            request=request,
+            history=HistoryContext(),
+            now=NOW + timedelta(seconds=31),
+            claim_ttl_seconds=30,
+            claim_renewal_interval_seconds=0.0,
+        )
+        assert second_entered.wait(timeout=2.0)
+
+        # Worker A finishes first while Worker B owns the replacement claim.
+        release_first.set()
+        release_second.wait(timeout=0.03)
+        release_second.set()
+
+        record_a = future_a.result(timeout=2.0)
+        record_b = future_b.result(timeout=2.0)
+
+    assert record_a == record_b
+    assert record_b.title == "Replacement worker title"
+    assert instance_a.get(LEARNER, record_b.practice_id) == record_b
+
+
+def test_datastore_active_generation_renews_lease_across_instances() -> None:
+    client = FakeDatastoreClient()
+    instance_a = DatastoreGeneratedPracticeRepository(client)
+    instance_b = DatastoreGeneratedPracticeRepository(client)
+    token = uuid4()
+    request = PracticeRequest(
+        learner_id=LEARNER,
+        text="I want to practise describing colour and texture in an outfit.",
+        area=PracticeArea.CREATIVE_ABILITY,
+        response_form="A short written response",
+        challenge=ChallengePreference.FAMILIAR,
+        include_history=False,
+        created_at=NOW,
+        token=token,
+    )
+    entered_provider = Event()
+    release_provider = Event()
+
+    class SlowGenerator(FakeLearnerPracticeGenerator):
+        def generate(
+            self, generation_request: LearnerPracticeGenerationRequest
+        ) -> LearnerPracticeGenerationResult:
+            entered_provider.set()
+            release_provider.wait(timeout=2.0)
+            return super().generate(generation_request)
+
+    generator = SlowGenerator()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first_future = pool.submit(
+            generate_private_practice,
+            instance_a,
+            generator,
+            request=request,
+            history=HistoryContext(),
+            now=NOW,
+            claim_ttl_seconds=1,
+            claim_renewal_interval_seconds=0.02,
+        )
+        assert entered_provider.wait(timeout=2.0)
+        release_provider.wait(timeout=0.06)
+
+        second_future = pool.submit(
+            generate_private_practice,
+            instance_b,
+            generator,
+            request=request,
+            history=HistoryContext(),
+            now=NOW + timedelta(seconds=1),
+            claim_ttl_seconds=1,
+        )
+        release_provider.wait(timeout=0.03)
+        release_provider.set()
+
+        first_record = first_future.result(timeout=2.0)
+        second_record = second_future.result(timeout=2.0)
+
+    assert first_record == second_record
+    assert len(generator.calls) == 1
+
+
+def test_datastore_crashed_worker_recovery_after_lease_expires() -> None:
+    client = FakeDatastoreClient()
+    crashed_instance = DatastoreGeneratedPracticeRepository(client)
+    retry_instance = DatastoreGeneratedPracticeRepository(client)
+    token = uuid4()
+    request = PracticeRequest(
+        learner_id=LEARNER,
+        text="I want to practise describing colour and texture in an outfit.",
+        area=PracticeArea.CREATIVE_ABILITY,
+        response_form="A short written response",
+        challenge=ChallengePreference.FAMILIAR,
+        include_history=False,
+        created_at=NOW,
+        token=token,
+    )
+    practice_id = practice_id_for(LEARNER, token)
+
+    # Simulate a worker that claimed the key and crashed without releasing it.
+    abandoned = crashed_instance.claim_generation(
+        LEARNER,
+        practice_id,
+        now=NOW,
+        ttl_seconds=30,
+    )
+    assert abandoned.claimed is True
+
+    # Once the lease expires, a retry on another instance recovers and completes.
+    generator = FakeLearnerPracticeGenerator()
+    recovered = generate_private_practice(
+        retry_instance,
+        generator,
+        request=request,
+        history=HistoryContext(),
+        now=NOW + timedelta(seconds=31),
+        claim_ttl_seconds=30,
+    )
+    assert len(generator.calls) == 1
+    assert retry_instance.get(LEARNER, practice_id) == recovered

@@ -22,7 +22,7 @@ from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta
 from threading import Lock
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fablit.application.authoring import _CONTRACT_FIELDS
 from fablit.application.errors import LearnerPracticeGenerationError
@@ -40,7 +40,7 @@ from fablit.application.learner_practice import (
     _InMemoryGenerationClaim,
     _normalize_rate_limit_params,
 )
-from fablit.application.persistence import PersistenceError
+from fablit.application.persistence import PersistenceError, StaleGenerationClaimError
 from fablit.application.store import PracticeContentContract
 from fablit.platform.datastore_entities import unindexed_value
 
@@ -78,6 +78,7 @@ _UNINDEXED_FIELDS = (
 _CLAIM_UNINDEXED_FIELDS = (
     "practice_id",
     "learner_id",
+    "claim_token",
     "claimed_at",
     "expires_at",
 )
@@ -202,6 +203,7 @@ class DatastoreGeneratedPracticeRepository(GeneratedPracticeRepository):
             window_seconds=ttl_seconds,
         )
         expires_at = current + timedelta(seconds=ttl)
+        claim_token = uuid4()
         try:
             with self._transaction() as transaction:
                 key = self._key(practice_id)
@@ -234,6 +236,7 @@ class DatastoreGeneratedPracticeRepository(GeneratedPracticeRepository):
                     {
                         "practice_id": str(practice_id),
                         "learner_id": str(learner_id),
+                        "claim_token": str(claim_token),
                         "claimed_at": current,
                         "expires_at": expires_at,
                     }
@@ -255,8 +258,104 @@ class DatastoreGeneratedPracticeRepository(GeneratedPracticeRepository):
             self._in_flight[practice_id] = _InMemoryGenerationClaim(
                 learner_id=learner_id,
                 expires_at=expires_at,
+                claim_token=claim_token,
             )
-        return GenerationClaimOutcome(claimed=True, existing=None)
+        return GenerationClaimOutcome(
+            claimed=True,
+            existing=None,
+            claim_token=claim_token,
+        )
+
+    def renew_generation_claim(
+        self,
+        learner_id: UUID,
+        practice_id: UUID,
+        claim_token: UUID | None = None,
+        *,
+        now: datetime | None = None,
+        ttl_seconds: int = DEFAULT_GENERATION_CLAIM_TTL_SECONDS,
+    ) -> bool:
+        if not isinstance(learner_id, UUID) or not isinstance(practice_id, UUID):
+            raise ValueError(
+                "renew_generation_claim requires UUID learner_id and practice_id"
+            )
+        current, _, ttl = _normalize_rate_limit_params(
+            now or datetime.now(UTC),
+            limit=1,
+            window_seconds=ttl_seconds,
+        )
+        if not isinstance(claim_token, UUID):
+            return False
+        expires_at = current + timedelta(seconds=ttl)
+        try:
+            with self._transaction() as transaction:
+                key = self._key(practice_id)
+                existing = self._read(transaction, key)
+                if existing is not None:
+                    persisted = deserialize_generated_practice(existing)
+                    if persisted.learner_id != learner_id:
+                        raise ValueError(
+                            f"generated practice {practice_id} "
+                            "belongs to another learner"
+                        )
+                    return False
+
+                claim_key = self._claim_key(practice_id)
+                claim_entity = self._read(transaction, claim_key)
+                if claim_entity is None:
+                    return False
+                claim_owner = UUID(str(claim_entity["learner_id"]))
+                if claim_owner != learner_id:
+                    raise ValueError(
+                        f"generated practice claim {practice_id} "
+                        "belongs to another learner"
+                    )
+                if (
+                    str(claim_entity.get("claim_token")) != str(claim_token)
+                    or _as_utc(claim_entity["expires_at"]) <= current
+                ):
+                    return False
+
+                entity = self._client.entity(
+                    claim_key, exclude_from_indexes=_CLAIM_UNINDEXED_FIELDS
+                )
+                entity.update(
+                    {
+                        "practice_id": str(practice_id),
+                        "learner_id": str(learner_id),
+                        "claim_token": str(claim_token),
+                        "claimed_at": _as_utc(claim_entity["claimed_at"]),
+                        "expires_at": expires_at,
+                    }
+                )
+                self._write(entity, transaction)
+        except Exception as exc:
+            logger.exception(
+                "Failed to renew generated practice claim",
+                extra={"practice_id": str(practice_id), "learner_id": str(learner_id)},
+            )
+            raise PersistenceError(
+                f"Failed to renew generated practice claim {practice_id}: {exc}"
+            ) from exc
+
+        with self._lock:
+            in_flight = self._in_flight.get(practice_id)
+            if (
+                in_flight is not None
+                and in_flight.learner_id == learner_id
+                and in_flight.claim_token == claim_token
+            ):
+                in_flight.expires_at = expires_at
+        return True
+
+    def complete_generation_claim(
+        self,
+        record: GeneratedPracticeRecord,
+        claim_token: UUID | None = None,
+    ) -> GeneratedPracticeRecord:
+        if "save" in self.__dict__:
+            return self.save(record)
+        return self.save(record, claim_token=claim_token)
 
     def await_generation(
         self,
@@ -307,6 +406,15 @@ class DatastoreGeneratedPracticeRepository(GeneratedPracticeRepository):
             wait_step = min(_POLL_INTERVAL_SECONDS, remaining)
             if in_flight is not None:
                 in_flight.event.wait(timeout=wait_step)
+                if in_flight.record is not None:
+                    return in_flight.record
+                if in_flight.error is not None:
+                    with self._lock:
+                        current = self._in_flight.get(practice_id)
+                    if (
+                        current is None or current.claim_token == in_flight.claim_token
+                    ) and not self._is_claim_present(learner_id, practice_id):
+                        raise in_flight.error
             else:
                 time.sleep(wait_step)
 
@@ -319,20 +427,31 @@ class DatastoreGeneratedPracticeRepository(GeneratedPracticeRepository):
         self,
         learner_id: UUID,
         practice_id: UUID,
+        claim_token: UUID | None = None,
         *,
         error: Exception | None = None,
-    ) -> None:
-        if not isinstance(learner_id, UUID) or not isinstance(practice_id, UUID):
-            return
+    ) -> bool:
+        if (
+            not isinstance(learner_id, UUID)
+            or not isinstance(practice_id, UUID)
+            or not isinstance(claim_token, UUID)
+        ):
+            return False
+        released = False
+        release_failed = False
         try:
             with self._transaction() as transaction:
                 claim_key = self._claim_key(practice_id)
                 claim_entity = self._read(transaction, claim_key)
-                if claim_entity is not None and str(
-                    claim_entity.get("learner_id")
-                ) == str(learner_id):
+                if (
+                    claim_entity is not None
+                    and str(claim_entity.get("learner_id")) == str(learner_id)
+                    and str(claim_entity.get("claim_token")) == str(claim_token)
+                ):
                     self._delete(claim_key, transaction)
+                    released = True
         except Exception:
+            release_failed = True
             logger.warning(
                 "Failed to release generated practice claim",
                 extra={"practice_id": str(practice_id), "learner_id": str(learner_id)},
@@ -341,21 +460,35 @@ class DatastoreGeneratedPracticeRepository(GeneratedPracticeRepository):
         finally:
             with self._lock:
                 in_flight = self._in_flight.get(practice_id)
-                if in_flight is not None and in_flight.learner_id == learner_id:
-                    in_flight.error = error
+                if (
+                    in_flight is not None
+                    and in_flight.learner_id == learner_id
+                    and in_flight.claim_token == claim_token
+                ):
+                    if released or release_failed:
+                        in_flight.error = error
                     in_flight.event.set()
                     self._in_flight.pop(practice_id, None)
+        return released
 
-    def save(self, record: GeneratedPracticeRecord) -> GeneratedPracticeRecord:
+    def save(
+        self,
+        record: GeneratedPracticeRecord,
+        *,
+        claim_token: UUID | None = None,
+    ) -> GeneratedPracticeRecord:
         if not isinstance(record, GeneratedPracticeRecord):
             raise ValueError(
                 "generated practice repository only accepts GeneratedPracticeRecord"
             )
+        if claim_token is not None and not isinstance(claim_token, UUID):
+            raise ValueError("save claim_token must be a UUID when provided")
         try:
             with self._transaction() as transaction:
                 key = self._key(record.practice_id)
                 existing = self._read(transaction, key)
                 claim_key = self._claim_key(record.practice_id)
+                claim_entity = self._read(transaction, claim_key)
                 if existing is not None:
                     persisted = deserialize_generated_practice(existing)
                     if persisted.learner_id != record.learner_id:
@@ -363,23 +496,45 @@ class DatastoreGeneratedPracticeRepository(GeneratedPracticeRepository):
                             f"generated practice {record.practice_id} "
                             "belongs to another learner"
                         )
-                    self._delete(claim_key, transaction)
+                    if (
+                        claim_entity is not None
+                        and claim_token is not None
+                        and str(claim_entity.get("learner_id"))
+                        == str(record.learner_id)
+                        and str(claim_entity.get("claim_token")) == str(claim_token)
+                    ):
+                        self._delete(claim_key, transaction)
                 else:
-                    claim_entity = self._read(transaction, claim_key)
-                    if claim_entity is not None and str(
-                        claim_entity.get("learner_id")
-                    ) != str(record.learner_id):
-                        raise ValueError(
-                            f"generated practice claim {record.practice_id} "
-                            "belongs to another learner"
+                    if claim_entity is not None:
+                        if str(claim_entity.get("learner_id")) != str(
+                            record.learner_id
+                        ):
+                            raise ValueError(
+                                f"generated practice claim {record.practice_id} "
+                                "belongs to another learner"
+                            )
+                        if claim_token is None or str(
+                            claim_entity.get("claim_token")
+                        ) != str(claim_token):
+                            raise StaleGenerationClaimError(
+                                f"Generated practice claim {record.practice_id} "
+                                "is owned by another generation attempt"
+                            )
+                    elif claim_token is not None:
+                        raise StaleGenerationClaimError(
+                            f"Generated practice claim {record.practice_id} "
+                            "is no longer active"
                         )
                     entity = self._client.entity(
                         key, exclude_from_indexes=_UNINDEXED_FIELDS
                     )
                     entity.update(serialize_generated_practice(record, self._client))
                     self._write(entity, transaction)
-                    self._delete(claim_key, transaction)
+                    if claim_entity is not None:
+                        self._delete(claim_key, transaction)
                     persisted = record
+        except StaleGenerationClaimError:
+            raise
         except Exception as exc:
             logger.exception(
                 "Failed to persist generated practice",
@@ -390,8 +545,11 @@ class DatastoreGeneratedPracticeRepository(GeneratedPracticeRepository):
             ) from exc
 
         with self._lock:
-            in_flight = self._in_flight.pop(record.practice_id, None)
-            if in_flight is not None:
+            in_flight = self._in_flight.get(record.practice_id)
+            if in_flight is not None and (
+                claim_token is None or in_flight.claim_token == claim_token
+            ):
+                self._in_flight.pop(record.practice_id, None)
                 in_flight.record = persisted
                 in_flight.event.set()
         return persisted

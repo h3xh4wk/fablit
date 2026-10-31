@@ -200,3 +200,7 @@ class PersistenceError(Exception):
     application boundary. The application shall not silently discard data or
     report durable completion when the write failed.
     """
+
+
+class StaleGenerationClaimError(PersistenceError):
+    """Raised when completing a claim whose lease expired or changed owner."""

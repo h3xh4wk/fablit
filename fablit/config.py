@@ -240,6 +240,16 @@ class AppConfig(BaseSettings):
             "rate limit (SPEC-044)."
         ),
     )
+    learner_practice_claim_ttl_seconds: int = Field(
+        60,
+        ge=5,
+        le=600,
+        description=(
+            "Lease duration in seconds for an in-flight learner-requested "
+            "practice generation claim before another request may replace it "
+            "(SPEC-044)."
+        ),
+    )
     learner_practice_max_output_tokens: int = Field(
         4096,
         ge=128,
