@@ -191,21 +191,24 @@ def test_the_prompt_includes_only_the_supplied_history_context() -> None:
         captured.append(json.loads(body)["contents"][0]["parts"][0]["text"])
         return _gemini_response(_candidate_json())
 
+    history = HistoryContext(
+        recent_titles=("Reading Composition",),
+        recent_areas=("Observe",),
+    )
     provider = _provider(fetch)
     provider.generate(
         _generation_request(
-            history=HistoryContext(
-                recent_titles=("Reading Composition",),
-                recent_areas=("Observe",),
-            )
+            include_history=True,
+            history=history,
         )
     )
-    provider.generate(_generation_request())
+    provider.generate(_generation_request(history=history))
 
     with_history, without_history = captured
     assert "Reading Composition" in with_history
     assert "recent titles" in with_history
     assert "Reading Composition" not in without_history
+    assert "recent titles" not in without_history
 
 
 def test_no_learner_identity_is_sent_to_the_provider() -> None:

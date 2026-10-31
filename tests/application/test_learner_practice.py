@@ -103,6 +103,7 @@ def _candidate_data(**overrides: Any) -> dict[str, Any]:
         ({"created_at": "2026-10-30"}, "must record when it was made"),
         ({"token": "not-a-uuid"}, "practice request token must be a UUID"),
         ({"learner_id": "learner"}, "learner identity must be a UUID"),
+        ({"include_history": "yes"}, "include_history must be a boolean"),
     ],
 )
 def test_invalid_requests_are_refused_with_actionable_copy(
@@ -117,6 +118,18 @@ def test_invalid_requests_are_refused_with_actionable_copy(
 def test_request_timestamp_must_be_timezone_aware() -> None:
     with pytest.raises(InvalidLearnerPracticeRequestError):
         _request(created_at=datetime(2026, 10, 30, 12, 0))
+
+
+def test_practice_request_defaults_include_history_to_false() -> None:
+    request = PracticeRequest(
+        learner_id=DEMO_LEARNER_ID,
+        text="I want to practise noticing how colour and texture work together.",
+        area=PracticeArea.VISUAL_ANALYSIS,
+        response_form="A short written response",
+        challenge=ChallengePreference.FAMILIAR,
+    )
+
+    assert request.include_history is False
 
 
 def test_history_context_is_bounded() -> None:
@@ -287,7 +300,7 @@ def test_history_context_is_opt_in_and_never_carries_learner_identity() -> None:
     record = generate_private_practice(
         InMemoryGeneratedPracticeRepository(),
         generator,
-        request=_request(),
+        request=_request(include_history=True),
         history=history,
     )
 
@@ -303,15 +316,24 @@ def test_history_context_is_opt_in_and_never_carries_learner_identity() -> None:
 
 def test_history_context_is_absent_when_the_learner_opts_out() -> None:
     generator = FakeLearnerPracticeGenerator()
+    history = HistoryContext(
+        recent_titles=("Reading Composition",),
+        recent_areas=("Observe",),
+    )
 
     record = generate_private_practice(
         InMemoryGeneratedPracticeRepository(),
         generator,
         request=_request(include_history=False),
-        history=HistoryContext(),
+        history=history,
     )
 
-    assert generator.calls[0].history.is_empty
+    sent = generator.calls[0]
+    assert sent.history.is_empty
+    assert sent.as_payload()["history"] == {
+        "recent_titles": [],
+        "recent_areas": [],
+    }
     assert record.used_history is False
 
 

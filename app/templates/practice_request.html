@@ -91,13 +91,14 @@
     </div>
 
     <div class="form-check request-practice__history">
-      <input id="include-history" name="include_history" type="checkbox"
+      <input id="include-history" name="include_history" type="checkbox" value="1"
              {% if view.include_history %}checked{% endif %}>
       <label for="include-history">
-        Use my recent practice as context
+        Use my recent practice as context <span class="form-hint">(optional)</span>
         <span class="form-hint">
-          Only titles and areas from your own completed practice are used, to
-          avoid repeats. You can turn this off.
+          If selected, Fablit shares only the titles and areas of up to five of
+          your own recently completed practices to avoid repeats — never your
+          responses, reflections, or uploads.
         </span>
       </label>
     </div>

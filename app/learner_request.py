@@ -123,6 +123,11 @@ def _story_context(request: Request, story_id: str | None) -> dict[str, str] | N
     }
 
 
+def _include_history(value: str) -> bool:
+    """Return True only when the learner explicitly opted in to history context."""
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _request_view(
     practice: Any,
     *,
@@ -133,7 +138,7 @@ def _request_view(
     challenge: str = ChallengePreference.FAMILIAR.value,
     response_form: str = DEFAULT_RESPONSE_FORM,
     examination_context: str = "",
-    include_history: bool = True,
+    include_history: bool = False,
     error: str | None = None,
     is_available: bool = True,
     status_message: str | None = None,
@@ -179,7 +184,7 @@ def _render_request(
     challenge: str = ChallengePreference.FAMILIAR.value,
     response_form: str = DEFAULT_RESPONSE_FORM,
     examination_context: str = "",
-    include_history: bool = True,
+    include_history: bool = False,
     error: str | None = None,
     is_available: bool = True,
     status_message: str | None = None,
@@ -246,6 +251,7 @@ async def submit_practice_request(
     practice = practice_for_request(request)
     generator = _learner_practice_generator(request)
     repository = _generated_practice_repository(request)
+    opted_in = _include_history(include_history)
 
     error = _validate_choices(
         practice_area=practice_area,
@@ -263,7 +269,7 @@ async def submit_practice_request(
             challenge=challenge,
             response_form=response_form,
             examination_context=examination_context,
-            include_history=bool(include_history),
+            include_history=opted_in,
             error=error,
             is_available=generator is not None,
         )
@@ -279,7 +285,7 @@ async def submit_practice_request(
             challenge=challenge,
             response_form=response_form,
             examination_context=examination_context,
-            include_history=bool(include_history),
+            include_history=opted_in,
             error=GENERATION_UNAVAILABLE_MESSAGE,
             is_available=False,
         )
@@ -297,7 +303,7 @@ async def submit_practice_request(
             area=PracticeArea(practice_area),
             response_form=response_form.strip() or DEFAULT_RESPONSE_FORM,
             challenge=ChallengePreference(challenge),
-            include_history=bool(include_history),
+            include_history=opted_in,
             created_at=datetime.now(UTC),
             token=token,
             examination_context=examination_context.strip() or None,
@@ -313,7 +319,7 @@ async def submit_practice_request(
             challenge=challenge,
             response_form=response_form,
             examination_context=examination_context,
-            include_history=bool(include_history),
+            include_history=opted_in,
             error=str(exc),
             is_available=True,
         )
@@ -341,7 +347,7 @@ async def submit_practice_request(
             challenge=challenge,
             response_form=response_form,
             examination_context=examination_context,
-            include_history=bool(include_history),
+            include_history=opted_in,
             error=str(exc),
             is_available=True,
         )
@@ -356,7 +362,7 @@ async def submit_practice_request(
             challenge=challenge,
             response_form=response_form,
             examination_context=examination_context,
-            include_history=bool(include_history),
+            include_history=opted_in,
             error=str(exc),
             is_available=True,
         )
@@ -371,7 +377,7 @@ async def submit_practice_request(
             challenge=challenge,
             response_form=response_form,
             examination_context=examination_context,
-            include_history=bool(include_history),
+            include_history=opted_in,
             error=_persistence_failure_message(),
             is_available=True,
         )

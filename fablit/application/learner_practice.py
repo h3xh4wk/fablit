@@ -124,9 +124,9 @@ class PracticeRequest:
     area: PracticeArea
     response_form: str
     challenge: ChallengePreference
-    include_history: bool
-    created_at: datetime
-    token: UUID
+    include_history: bool = False
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    token: UUID = field(default_factory=uuid4)
     examination_context: str | None = None
 
     def __post_init__(self) -> None:
@@ -138,6 +138,11 @@ class PracticeRequest:
         if not isinstance(self.token, UUID):
             raise InvalidLearnerPracticeRequestError(
                 f"practice request token must be a UUID (got {self.token!r})"
+            )
+        if not isinstance(self.include_history, bool):
+            raise InvalidLearnerPracticeRequestError(
+                "practice request include_history must be a boolean "
+                f"(got {self.include_history!r})"
             )
         if not isinstance(self.text, str) or not self.text.strip():
             raise InvalidLearnerPracticeRequestError(
@@ -230,6 +235,7 @@ class LearnerPracticeGenerationRequest:
     history: HistoryContext
 
     def as_payload(self) -> dict[str, Any]:
+        history = self.history if self.request.include_history else HistoryContext()
         return {
             "request_text": self.request.text.strip(),
             "practice_area": self.request.area.value,
@@ -242,8 +248,8 @@ class LearnerPracticeGenerationRequest:
             "response_form": self.request.response_form.strip(),
             "challenge": self.request.challenge.value,
             "history": {
-                "recent_titles": list(self.history.recent_titles),
-                "recent_areas": list(self.history.recent_areas),
+                "recent_titles": list(history.recent_titles),
+                "recent_areas": list(history.recent_areas),
             },
         }
 
@@ -585,10 +591,11 @@ def generate_private_practice(
     if existing is not None:
         return existing
 
-    brief = _brief_for(request, history)
+    effective_history = history if request.include_history else HistoryContext()
+    brief = _brief_for(request, effective_history)
     try:
         result = generator.generate(
-            LearnerPracticeGenerationRequest(request=request, history=history)
+            LearnerPracticeGenerationRequest(request=request, history=effective_history)
         )
     except LearnerPracticeGenerationError:
         raise
@@ -632,7 +639,7 @@ def generate_private_practice(
         challenge=request.challenge,
         response_form=request.response_form.strip(),
         primary_capability=brief.primary_capability,
-        used_history=not history.is_empty,
+        used_history=not effective_history.is_empty,
         provider=result.provider,
         model=result.model,
         generated_at=result.generated_at,
