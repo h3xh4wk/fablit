@@ -37,6 +37,7 @@ def _app() -> FastAPI:
         load_config(
             overrides={
                 "environment": "testing",
+                "practice_history_repository": "memory",
                 "generated_practice_repository": "memory",
                 "story_response_repository": "memory",
             }
@@ -60,6 +61,12 @@ def _token(html: str) -> str:
     return match.group(1)
 
 
+def _history_checkbox_is_checked(html: str) -> bool:
+    match = re.search(r'<input[^>]*name="include_history"[^>]*>', html)
+    assert match is not None, "include_history checkbox not found"
+    return "checked" in match.group(0)
+
+
 def _form(page: str, **overrides: str) -> dict[str, str]:
     data = {
         "request_text": REQUEST_TEXT,
@@ -69,6 +76,8 @@ def _form(page: str, **overrides: str) -> dict[str, str]:
         "examination_context": "",
         "request_token": _token(page),
     }
+    if _history_checkbox_is_checked(page):
+        data["include_history"] = "1"
     data.update(overrides)
     return data
 
@@ -209,14 +218,85 @@ def test_retrying_the_same_token_makes_one_practice() -> None:
     assert len(_requested_hrefs(refreshed.text)) == 1
 
 
-def test_a_learner_can_turn_off_their_history_context() -> None:
+def _complete_first_curated_activity(client: TestClient) -> None:
+    """Complete one curated activity so the learner has real practice history."""
+    dashboard = client.get("/")
+    match = re.search(r'href="/activities/([0-9a-f-]{36})/intention"', dashboard.text)
+    assert match is not None, "curated activity link not found"
+    activity_id = match.group(1)
+    client.get(f"/activities/{activity_id}")
+    submitted = client.post(
+        f"/activities/{activity_id}/submit",
+        data={
+            "response": (
+                "Private learner response detail that must never be sent to Gemini."
+            )
+        },
+        follow_redirects=True,
+    )
+    assert submitted.status_code == 200
+    reflected = client.post(
+        "/reflect",
+        data={"content": "Private learner reflection note."},
+        follow_redirects=True,
+    )
+    assert reflected.status_code == 200
+
+
+def test_history_context_is_unchecked_by_default_and_excluded_when_unchanged() -> None:
     generator = FakeLearnerPracticeGenerator()
     client, _ = _client(generator=generator)
+    _complete_first_curated_activity(client)
     page = client.get("/practice/request")
 
-    _submit(client, page.text, include_history="on")
+    assert not _history_checkbox_is_checked(page.text)
+    assert "titles and areas of up to five" in page.text
+    assert "never your" in page.text
+    assert "responses, reflections, or uploads" in page.text
 
+    submitted = _submit(client, page.text)
+
+    assert submitted.status_code == 303
+    assert generator.calls[-1].request.include_history is False
     assert generator.calls[-1].history.is_empty
+    assert generator.calls[-1].as_payload()["history"] == {
+        "recent_titles": [],
+        "recent_areas": [],
+    }
+
+
+def test_explicitly_opting_in_includes_only_bounded_history_context() -> None:
+    generator = FakeLearnerPracticeGenerator()
+    client, _ = _client(generator=generator)
+    _complete_first_curated_activity(client)
+    page = client.get("/practice/request")
+
+    submitted = _submit(client, page.text, include_history="1")
+
+    assert submitted.status_code == 303
+    sent = generator.calls[-1]
+    payload = sent.as_payload()
+    assert sent.request.include_history is True
+    assert not sent.history.is_empty
+    assert len(payload["history"]["recent_titles"]) == 1
+    assert len(payload["history"]["recent_areas"]) == 1
+    assert "Private learner response detail" not in str(payload)
+    assert "Private learner reflection note" not in str(payload)
+
+
+def test_history_checkbox_state_is_preserved_when_request_is_refused() -> None:
+    client, _ = _client()
+    page = client.get("/practice/request")
+
+    refused_default = _submit(client, page.text, request_text="   ")
+    refused_opted_in = _submit(
+        client, page.text, request_text="   ", include_history="1"
+    )
+
+    assert refused_default.status_code == 400
+    assert not _history_checkbox_is_checked(refused_default.text)
+    assert refused_opted_in.status_code == 400
+    assert _history_checkbox_is_checked(refused_opted_in.text)
 
 
 def test_the_examination_context_is_shown_only_when_the_learner_states_it() -> None:

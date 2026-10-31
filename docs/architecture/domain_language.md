@@ -1238,10 +1238,11 @@ starter text, with a link back to the story. The prompt is a suggestion, not a
 constraint — the learner can rewrite it, and the story never narrows the area
 or challenge choice on their behalf.
 
-Generation receives only the learner's request, its preferences, and — when
-the learner leaves the option on — a minimal slice of that learner's own
-completed practice (titles and capability areas). Full responses, reflections,
-artifacts, other learners' records, and the learner's identity are never sent.
+Generation receives only the learner's request, its preferences, and — only when
+the learner explicitly opts in — a minimal slice of that learner's own
+completed practice (up to five titles and capability areas). Full responses,
+reflections, artifacts, other learners' records, and the learner's identity are
+never sent.
 
 ### Rules
 
