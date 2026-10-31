@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Request a practice{% endblock %}
+{% block content %}
+<section class="request-practice">
+  <h1 class="display">Request a practice</h1>
+  <p class="lede">
+    Describe what you would like to practise. Fablit will make one private
+    practice for you. You will see the brief before you decide to begin.
+  </p>
+
+  {% if view.status_message %}
+  <div class="validation-panel validation-panel--caution" role="status">
+    <p>{{ view.status_message }}</p>
+  </div>
+  {% endif %}
+
+  {% if view.error %}
+  <div class="validation-panel validation-panel--error" role="alert">
+    <p>{{ view.error }}</p>
+  </div>
+  {% endif %}
+
+  <form class="request-practice__form" method="post" action="/practice/request">
+    <input type="hidden" name="request_token" value="{{ view.token }}">
+
+    {% if view.story_context %}
+    <div class="validation-panel validation-panel--ok" role="status">
+      <p>
+        From
+        <a href="{{ view.story_context.anchor }}">{{ view.story_context.headline }}</a>
+        ({{ view.story_context.source_name }}). The story's prompt is filled in
+        below — edit it to make the practice yours.
+      </p>
+    </div>
+    {% endif %}
+
+    <div class="form-field">
+      <label for="request-text">What would you like to practise?</label>
+      <textarea class="form-control" id="request-text" name="request_text"
+                rows="4" maxlength="{{ view.max_request_chars }}"
+                required>{{ view.request_text }}</textarea>
+      <p class="form-hint">
+        A sentence or two is enough. For example: “I want to practise noticing
+        how colour and texture work together in an outfit.”
+      </p>
+    </div>
+
+    <div class="request-practice__row">
+      <div class="form-field">
+        <label for="practice-area">Area</label>
+        <select class="form-control" id="practice-area" name="practice_area">
+          {% for area in view.areas %}
+          <option value="{{ area.value }}"
+                  {% if area.value == view.selected_area %}selected{% endif %}>
+            {{ area.label }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label for="challenge">Challenge</label>
+        <select class="form-control" id="challenge" name="challenge">
+          {% for challenge in view.challenges %}
+          <option value="{{ challenge.value }}"
+                  {% if challenge.value == view.selected_challenge %}selected{% endif %}>
+            {{ challenge.label }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="form-field">
+      <label for="response-form">How would you like to respond?</label>
+      <select class="form-control" id="response-form" name="response_form">
+        {% for form in view.response_forms %}
+        <option value="{{ form }}"
+                {% if form == view.selected_response_form %}selected{% endif %}>
+          {{ form }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-field">
+      <label for="examination-context">Examination context <span class="form-hint">(optional)</span></label>
+      <input class="form-control" id="examination-context"
+             name="examination_context" type="text" maxlength="200"
+             value="{{ view.examination_context }}">
+    </div>
+
+    <div class="form-check request-practice__history">
+      <input id="include-history" name="include_history" type="checkbox"
+             {% if view.include_history %}checked{% endif %}>
+      <label for="include-history">
+        Use my recent practice as context
+        <span class="form-hint">
+          Only titles and areas from your own completed practice are used, to
+          avoid repeats. You can turn this off.
+        </span>
+      </label>
+    </div>
+
+    <p class="form-actions">
+      <button class="button" type="submit" {% if not view.is_available %}disabled{% endif %}>
+        Make this practice
+      </button>
+    </p>
+    <p class="form-hint">
+      Making a practice can take a short moment. It will not start until you
+      choose to begin.
+    </p>
+  </form>
+
+  {% if view.requested %}
+  <section class="requested-practices" aria-labelledby="requested-practices-heading">
+    <h2 id="requested-practices-heading">Practices you requested</h2>
+    <p>These are private to you. Open the brief to begin or practise again.</p>
+    <ul class="history__list">
+      {% for item in view.requested %}
+      <li class="history__item">
+        <a class="history__link" href="/practice/request/{{ item.practice_id }}">
+          <div class="history__heading">
+            <h3 class="history__title">{{ item.title }}</h3>
+            <time class="history__date" datetime="{{ item.created_at.isoformat() }}">
+              {{ item.created_at.strftime('%-d %B %Y at %H:%M UTC') }}
+            </time>
+          </div>
+          <p class="history__preview">{{ item.description }}</p>
+          <p class="history__action">
+            {{ item.area_label }}{% if item.is_completed %} · Practised{% endif %}
+            <span aria-hidden="true">→</span>
+          </p>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% else %}
+  <p class="request-practice__empty">
+    Practices you request will appear here so you can return to them later.
+  </p>
+  {% endif %}
+
+  <nav class="subnav" aria-label="Request practice navigation">
+    <a href="/">Back to explore</a>
+  </nav>
+</section>
+{% endblock %}

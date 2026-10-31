@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}{{ view.title }} — Fablit{% endblock %}
+{% block content %}
+<article class="requested-practice">
+  <p class="review__crumb">
+    <a href="/practice/request">Request a practice</a>
+    <span aria-hidden="true">→</span> Brief
+  </p>
+  <h1 class="display">{{ view.title }}</h1>
+  <p class="lede">{{ view.description }}</p>
+
+  <div class="validation-panel validation-panel--ok" role="status">
+    <p>
+      Generated for you and private to your browser. This practice is not part
+      of the shared library.
+    </p>
+  </div>
+
+  <section class="review__section">
+    <h2 class="practice__step">What you will do</h2>
+    <div class="review__evidence">{{ view.task }}</div>
+  </section>
+
+  <section class="review__section">
+    <h2 class="practice__step">Why this practice</h2>
+    <div class="review__evidence">{{ view.purpose }}</div>
+  </section>
+
+  <section class="review__section">
+    <h2 class="practice__step">What to think about</h2>
+    <div class="review__evidence">{{ view.expected_thinking }}</div>
+  </section>
+
+  <section class="review__section">
+    <h2 class="practice__step">How to respond</h2>
+    <div class="review__evidence">{{ view.response_contract }}</div>
+  </section>
+
+  <p class="requested-practice__meta">
+    {{ view.area_label }} · {{ view.challenge_label }} · {{ view.response_form }}
+    {% if view.examination_context %}
+    <br><span class="story-response__hint">Context: {{ view.examination_context }}</span>
+    {% endif %}
+  </p>
+
+  <nav class="review__nav" aria-label="Requested practice navigation">
+    <a class="button" href="/activities/{{ view.practice_id }}/intention">
+      {% if view.is_completed %}Practise again{% else %}Begin this practice{% endif %}
+      <span aria-hidden="true">→</span>
+    </a>
+    <a class="button button--secondary" href="/practice/request">
+      Request another
+    </a>
+  </nav>
+</article>
+{% endblock %}

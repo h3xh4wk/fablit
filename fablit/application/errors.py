@@ -27,6 +27,22 @@ class InvalidReflectionResponseError(ApplicationError):
     """Raised when a learner reflection cannot be saved."""
 
 
+class InvalidStoryResponseInputError(ApplicationError):
+    """Raised when a story-linked response cannot be accepted (SPEC-044)."""
+
+
+class InvalidLearnerPracticeRequestError(ApplicationError):
+    """Raised when a learner's practice request is invalid (SPEC-044)."""
+
+
+class LearnerPracticeGenerationError(ApplicationError):
+    """Raised when a learner-requested practice cannot be generated."""
+
+
+class GeneratedPracticeValidationError(ApplicationError):
+    """Raised when generated practice output fails the quality boundary."""
+
+
 class JourneyStateError(ApplicationError):
     """Raised when an internal journey record is missing (programming error)."""
 

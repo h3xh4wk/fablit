@@ -19,6 +19,7 @@ from fablit.domain import (
     Reflection,
     Skill,
     StimulusInstance,
+    StoryResponse,
     Submission,
     SubmissionStatus,
 )
@@ -113,6 +114,23 @@ def make_reflection(**overrides: Any) -> Reflection:
     }
     values.update(overrides)
     return Reflection(**values)
+
+
+def make_story_response(**overrides: Any) -> StoryResponse:
+    """Build a valid StoryResponse, overriding any field via kwargs."""
+    story_id = uuid4()
+    values: dict[str, Any] = {
+        "learner_id": uuid4(),
+        "story_id": story_id,
+        "story_headline": "Handloom revival connects weavers with new markets",
+        "story_source_name": "The Daily Weave",
+        "canonical_url": f"https://news.example.com/story/{story_id}",
+        "prompt": "Where do you see a material tradition nearby?",
+        "response_text": "A tailor near me repairs clothes instead of replacing them.",
+        "created_at": datetime.now(UTC),
+    }
+    values.update(overrides)
+    return StoryResponse(**values)
 
 
 def make_skill(**overrides: Any) -> Skill:

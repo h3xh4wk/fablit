@@ -26,7 +26,7 @@ from datetime import UTC, datetime
 from threading import Lock
 from uuid import UUID
 
-from fablit.application.persistence import PracticeHistoryRepository
+from fablit.application.persistence import PersistenceError, PracticeHistoryRepository
 from fablit.domain import (
     ActivityType,
     Evaluation,
@@ -53,12 +53,22 @@ from .demo_data import (
 )
 from .demo_evaluator import DemoEvaluator, Evaluator
 from .errors import (
+    ActivityNotFoundError,
     CompletionNotFoundError,
     EvaluationFailedError,
     InvalidPracticeResponseError,
     InvalidReflectionResponseError,
     SubmissionInProgressError,
     UnknownPracticeModeError,
+)
+from .learner_practice import (
+    CHALLENGE_LABELS,
+    PRACTICE_AREA_LABELS,
+    GeneratedPracticePreview,
+    GeneratedPracticeRecord,
+    HistoryContext,
+    RequestedPracticeSummary,
+    build_generated_activity,
 )
 from .practice_continuity import (
     CONTINUATION_ACTION_LABEL,
@@ -122,6 +132,7 @@ class PracticeApplication:
         artifact_storage: ArtifactStorage | None = None,
         clock: Callable[[], datetime] | None = None,
         publications: tuple[PublishedPractice, ...] = (),
+        generated_practices: tuple[GeneratedPracticeRecord, ...] = (),
     ) -> None:
         self._store = store
         self._evaluator = evaluator
@@ -152,7 +163,13 @@ class PracticeApplication:
         # reconciliation a cheap no-op on requests where nothing changed.
         self._publication_fingerprint: tuple[tuple[UUID, int, bool], ...] = ()
         self._published_activity_ids: set[UUID] = set()
+        # SPEC-044: privately generated practices live only in this learner's
+        # catalogue. They are registered as non-discoverable so they never
+        # enter the shared library, dashboard discovery, or practice modes.
+        self._generated_practice_records: dict[UUID, GeneratedPracticeRecord] = {}
+        self._generated_practice_fingerprint: tuple[tuple[UUID, datetime], ...] = ()
         self.apply_publications(publications)
+        self.apply_generated_practices(generated_practices)
 
     # SPEC-035 — published practice catalogue reconciliation
 
@@ -194,11 +211,128 @@ class PracticeApplication:
         self._practice_transitions = build_practice_transition_map(
             self._store.list_activities()
         )
+        self._rebuild_evaluator()
+        self._publication_fingerprint = fingerprint
+
+    # SPEC-044 — privately generated learner-requested practices
+
+    def apply_generated_practices(
+        self, records: tuple[GeneratedPracticeRecord, ...]
+    ) -> None:
+        """Register this learner's private requested practices.
+
+        Generated practices reuse the existing learner activity representation
+        and journey but stay non-discoverable, so they never appear in the
+        shared dashboard or practice-mode selections. Adding one is
+        idempotent; an unavailable private store simply leaves the practices
+        already loaded intact.
+        """
+        fingerprint = tuple(
+            sorted(
+                ((record.practice_id, record.created_at) for record in records),
+                key=lambda item: str(item[0]),
+            )
+        )
+        if fingerprint == self._generated_practice_fingerprint:
+            return
+        for record in records:
+            self._generated_practice_records[record.practice_id] = record
+            self._store.add_activity(
+                build_generated_activity(record), discoverable=False
+            )
+        self._rebuild_evaluator()
+        self._generated_practice_fingerprint = fingerprint
+
+    def register_generated_practice(self, record: GeneratedPracticeRecord) -> None:
+        """Make a just-generated practice immediately available to its learner."""
+        records = (*self._generated_practice_records.values(), record)
+        self._generated_practice_fingerprint = ()
+        self.apply_generated_practices(records)
+
+    def get_requested_practices(self) -> tuple[RequestedPracticeSummary, ...]:
+        """List this learner's private requested practices, newest first."""
+        records = sorted(
+            self._generated_practice_records.values(),
+            key=lambda record: (record.created_at, str(record.practice_id)),
+            reverse=True,
+        )
+        return tuple(
+            RequestedPracticeSummary(
+                practice_id=record.practice_id,
+                title=record.title,
+                description=record.description,
+                area_label=PRACTICE_AREA_LABELS[record.area],
+                created_at=record.created_at,
+                is_completed=self._has_completed_activity(record.practice_id),
+            )
+            for record in records
+        )
+
+    def get_generated_practice_preview(
+        self, practice_id: UUID
+    ) -> GeneratedPracticePreview | None:
+        """Return the brief for one private requested practice, if owned."""
+        record = self._generated_practice_records.get(practice_id)
+        if record is None:
+            return None
+        contract = record.contract
+        return GeneratedPracticePreview(
+            practice_id=record.practice_id,
+            title=record.title,
+            description=record.description,
+            task=contract.task,
+            purpose=contract.purpose,
+            expected_thinking=contract.expected_thinking,
+            response_contract=contract.response_contract,
+            area_label=PRACTICE_AREA_LABELS[record.area],
+            challenge_label=CHALLENGE_LABELS[record.challenge],
+            response_form=record.response_form,
+            examination_context=record.examination_context,
+            created_at=record.created_at,
+            is_completed=self._has_completed_activity(record.practice_id),
+        )
+
+    def get_history_context(self) -> HistoryContext:
+        """Select a minimal, relevant slice of this learner's own history.
+
+        Only recent completed practice titles and their internal capability
+        lenses are carried. Full submissions, reflections, artifacts, and any
+        other learner's records are never included. An unavailable history
+        store degrades to no context rather than blocking a request.
+        """
+        if self._history_repository is None:
+            return HistoryContext()
+        try:
+            summaries = self._history_repository.list_completions(
+                self._store.learner_id
+            )
+        except PersistenceError:
+            logger.exception(
+                "practice history unavailable for request context; continuing "
+                "without it"
+            )
+            return HistoryContext()
+        titles: list[str] = []
+        areas: list[str] = []
+        for summary in summaries[:5]:
+            titles.append(summary.activity_title)
+            try:
+                activity = self._store.get_activity(summary.activity_id)
+            except ActivityNotFoundError:
+                continue
+            if activity.primary_capability:
+                areas.append(activity.primary_capability)
+        return HistoryContext(
+            recent_titles=tuple(titles),
+            recent_areas=tuple(areas),
+        )
+
+    def _rebuild_evaluator(self) -> None:
+        """Keep the deterministic evaluator aware of every resolvable activity."""
         if isinstance(self._evaluator, DemoEvaluator):
             self._evaluator = DemoEvaluator(
                 build_demo_activity_map(self._store.all_activities())
             )
-        self._publication_fingerprint = fingerprint
 
     # SPEC-022 — Practice Mode Choice
 

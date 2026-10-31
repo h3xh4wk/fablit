@@ -37,6 +37,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.authoring import AuthoringCandidateStore
 from app.authoring import router as authoring_router
+from app.learner_request import router as learner_request_router
 from app.learner_session import (
     DemoContent,
     LearnerApplicationRegistry,
@@ -55,13 +56,17 @@ from fablit.application import (
     EvaluationFailedError,
     FeedbackNotFoundError,
     FileArtifactStorage,
+    GeneratedPracticeRepository,
     ImageSearchProvider,
     InlineNewsCurationTaskDispatcher,
+    InMemoryGeneratedPracticeRepository,
     InMemoryNewsCurationJobRepository,
     InMemoryNewsRepository,
     InMemoryPublishedPracticeStore,
+    InMemoryStoryResponseRepository,
     InvalidPracticeResponseError,
     InvalidReflectionResponseError,
+    LearnerPracticeGenerator,
     NewsCurationJobRepository,
     NewsCurationJobService,
     NewsCurationTaskDispatcher,
@@ -72,15 +77,22 @@ from fablit.application import (
     PracticeMode,
     PublishedPracticeStore,
     SketchbookArtifact,
+    StoryResponseRepository,
     SubmissionInProgressError,
     UnknownPracticeModeError,
     load_publications,
 )
+from fablit.application.news_sources import is_safe_news_url
 from fablit.application.persistence import (
     PersistenceError,
     PracticeHistoryRepository,
 )
+from fablit.application.story_responses import (
+    get_story_response,
+    list_story_responses,
+)
 from fablit.config import AppConfig, load_config
+from fablit.domain import StoryResponse
 from fablit.logging import init_logging, reset_request_context, set_request_context
 from fablit.platform.metrics import MetricsRegistry
 
@@ -97,6 +109,7 @@ metrics_registry = MetricsRegistry()
 def _build_learner_applications(
     app_config: AppConfig,
     published_store: PublishedPracticeStore,
+    generated_practice_repository: GeneratedPracticeRepository,
 ) -> tuple[DemoContent, LearnerApplicationRegistry]:
     """Assemble the shared demo content and the learner application registry.
 
@@ -122,6 +135,7 @@ def _build_learner_applications(
         artifact_storage,
         store=published_store,
         publications=load_publications(published_store),
+        generated_practice_repository=generated_practice_repository,
     )
 
 
@@ -338,6 +352,100 @@ def _build_news_repository(app_config: AppConfig) -> NewsRepository:
 
     logger.info("initialized in-memory news repository")
     return InMemoryNewsRepository()
+
+
+def _build_generated_practice_repository(
+    app_config: AppConfig,
+) -> GeneratedPracticeRepository:
+    """Build the private requested-practice repository (SPEC-044 §9)."""
+    if app_config.generated_practice_repository == "datastore":
+        try:
+            from google.cloud import datastore
+
+            from fablit.platform.datastore_learner_practice_repository import (
+                DatastoreGeneratedPracticeRepository,
+            )
+
+            client: datastore.Client = datastore.Client()
+            logger.info(
+                "initialized Datastore generated practice repository",
+                extra={"project_id": client.project},
+            )
+            return DatastoreGeneratedPracticeRepository(client)
+        except Exception as e:
+            logger.exception(
+                "failed to initialize datastore generated practice repository"
+            )
+            raise RuntimeError(
+                "Could not initialize Google Cloud Datastore for requested "
+                "practices. Check GCP configuration and credentials."
+            ) from e
+
+    logger.info("initialized in-memory generated practice repository")
+    return InMemoryGeneratedPracticeRepository()
+
+
+def _build_learner_practice_generator(
+    app_config: AppConfig,
+) -> LearnerPracticeGenerator | None:
+    """Build the learner-requested practice generator (SPEC-044 §8.1).
+
+    Without a server-side provider key the feature is unavailable rather than
+    silently falling back to fabricated content; the learner can still use the
+    curated library and any practice already generated for them.
+    """
+    if app_config.ai_provider_api_key is None:
+        logger.info(
+            "learner practice generator not configured; requests are unavailable"
+        )
+        return None
+    try:
+        from fablit.platform.gemini_learner_practice_provider import (
+            GeminiLearnerPracticeProvider,
+        )
+
+        return GeminiLearnerPracticeProvider(
+            api_key=app_config.ai_provider_api_key,
+            model=app_config.ai_provider_model,
+        )
+    except Exception:
+        logger.exception("failed to initialize learner practice generator")
+        return None
+
+
+def _build_story_response_repository(
+    app_config: AppConfig,
+) -> StoryResponseRepository:
+    """Build the private story-response repository (SPEC-044 §9).
+
+    Defaults to the in-memory store for local development and tests. In
+    production on App Engine, Google Cloud Datastore keeps learner-authored
+    responses durable and consistent across instances in their own namespace,
+    separate from curated news and practice history.
+    """
+    if app_config.story_response_repository == "datastore":
+        try:
+            from google.cloud import datastore
+
+            from fablit.platform.datastore_story_response_repository import (
+                DatastoreStoryResponseRepository,
+            )
+
+            client: datastore.Client = datastore.Client()
+            logger.info(
+                "initialized Datastore story response repository",
+                extra={"project_id": client.project},
+            )
+            return DatastoreStoryResponseRepository(client)
+        except Exception as e:
+            logger.exception("failed to initialize datastore story response repository")
+            raise RuntimeError(
+                "Could not initialize Google Cloud Datastore for story "
+                "responses. Check GCP configuration and credentials."
+            ) from e
+
+    logger.info("initialized in-memory story response repository")
+    return InMemoryStoryResponseRepository()
 
 
 def _build_news_job_repository(app_config: AppConfig) -> NewsCurationJobRepository:
@@ -754,6 +862,35 @@ def _export_record(view: object) -> dict[str, object]:
     return normalise(data)  # type: ignore[return-value]
 
 
+def _story_response_summary(response: StoryResponse) -> dict[str, object]:
+    """Shape one saved story response for the private history list."""
+    preview = response.response_text
+    if len(preview) > 140:
+        preview = preview[:140].rstrip() + "…"
+    return {
+        "response_id": str(response.id),
+        "story_headline": response.story_headline,
+        "source_name": response.story_source_name,
+        "prompt": response.prompt,
+        "response_preview": preview,
+        "saved_at": response.created_at,
+    }
+
+
+def _story_response_review_view(response: StoryResponse) -> dict[str, object]:
+    """Shape one story response for its full provenance review page."""
+    return {
+        "story_headline": response.story_headline,
+        "source_name": response.story_source_name,
+        "prompt": response.prompt,
+        "response_text": response.response_text,
+        "saved_at": response.created_at,
+        "canonical_url": (
+            response.canonical_url if is_safe_news_url(response.canonical_url) else ""
+        ),
+    }
+
+
 def create_app(config: AppConfig) -> FastAPI:
     """Assemble the Fablit FastAPI application for the given configuration.
 
@@ -773,6 +910,11 @@ def create_app(config: AppConfig) -> FastAPI:
         app.state.authoring_candidate_store = _build_authoring_candidate_store(config)
         app.state.published_practice_store = _build_published_practice_store(config)
         app.state.news_repository = _build_news_repository(config)
+        app.state.story_response_repository = _build_story_response_repository(config)
+        app.state.generated_practice_repository = _build_generated_practice_repository(
+            config
+        )
+        app.state.learner_practice_generator = _build_learner_practice_generator(config)
         app.state.news_curator = _build_news_curator(
             config,
             app.state.news_repository,
@@ -788,7 +930,11 @@ def create_app(config: AppConfig) -> FastAPI:
         )
         app.state.news_task_verifier = None
         app.state.demo_content, app.state.learner_applications = (
-            _build_learner_applications(config, app.state.published_practice_store)
+            _build_learner_applications(
+                config,
+                app.state.published_practice_store,
+                app.state.generated_practice_repository,
+            )
         )
         yield
         app.state.ready = False
@@ -797,6 +943,9 @@ def create_app(config: AppConfig) -> FastAPI:
         app.state.authoring_candidate_store = None
         app.state.published_practice_store = None
         app.state.news_repository = None
+        app.state.story_response_repository = None
+        app.state.generated_practice_repository = None
+        app.state.learner_practice_generator = None
         app.state.news_curator = None
         app.state.news_job_repository = None
         app.state.news_job_dispatcher = None
@@ -825,6 +974,11 @@ def create_app(config: AppConfig) -> FastAPI:
     app.state.authoring_candidate_store = _build_authoring_candidate_store(config)
     app.state.published_practice_store = _build_published_practice_store(config)
     app.state.news_repository = _build_news_repository(config)
+    app.state.story_response_repository = _build_story_response_repository(config)
+    app.state.generated_practice_repository = _build_generated_practice_repository(
+        config
+    )
+    app.state.learner_practice_generator = _build_learner_practice_generator(config)
     app.state.news_curator = _build_news_curator(
         config,
         app.state.news_repository,
@@ -840,7 +994,11 @@ def create_app(config: AppConfig) -> FastAPI:
     )
     app.state.news_task_verifier = None
     app.state.demo_content, app.state.learner_applications = (
-        _build_learner_applications(config, app.state.published_practice_store)
+        _build_learner_applications(
+            config,
+            app.state.published_practice_store,
+            app.state.generated_practice_repository,
+        )
     )
 
     app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
@@ -855,6 +1013,8 @@ def create_app(config: AppConfig) -> FastAPI:
     app.include_router(authoring_router)
     # SPEC-041: learner news feed and the protected on-demand curation action
     app.include_router(news_router)
+    # SPEC-044: learner-requested private practice generation
+    app.include_router(learner_request_router)
 
     @app.get("/", response_class=HTMLResponse)
     async def dashboard(request: Request) -> Response:
@@ -1153,10 +1313,88 @@ def create_app(config: AppConfig) -> FastAPI:
             except (CompletionNotFoundError, PersistenceError):
                 continue
             export_records.append(_export_record(review))
+
+        # SPEC-044 §6.1: story-linked responses are private learner history,
+        # deliberately separate from completed practices. A storage failure
+        # here must not take down the practice history that is still readable.
+        story_responses: list[dict[str, object]] = []
+        story_responses_unavailable = False
+        story_response_repository: object = getattr(
+            request.app.state, "story_response_repository", None
+        )
+        if isinstance(story_response_repository, StoryResponseRepository):
+            try:
+                records = list_story_responses(
+                    story_response_repository,
+                    learner_id=learner_id_for_request(request),
+                )
+            except PersistenceError:
+                logger.exception("story response history unavailable")
+                story_responses_unavailable = True
+            else:
+                story_responses = [
+                    _story_response_summary(record) for record in records
+                ]
+
         return templates.TemplateResponse(
             request,
             "history.html",
-            {"view": view, "export_records": export_records},
+            {
+                "view": view,
+                "export_records": export_records,
+                "story_responses": story_responses,
+                "story_responses_unavailable": story_responses_unavailable,
+            },
+        )
+
+    @app.get("/history/story-responses/{response_id}", response_class=HTMLResponse)
+    async def story_response_review(request: Request, response_id: str) -> Response:
+        """Revisit one private story response with its originating context.
+
+        SPEC-044 §6.1: the response keeps the story headline, canonical URL,
+        source, prompt, and saved time so it remains understandable later.
+        Ownership is enforced by the learner-scoped lookup; another learner's
+        response and an unknown response both return the same unlisted 404.
+        """
+        try:
+            rid = UUID(response_id)
+        except ValueError:
+            return _error_response(request, "Story response not found.")
+
+        story_response_repository: object = getattr(
+            request.app.state, "story_response_repository", None
+        )
+        if not isinstance(story_response_repository, StoryResponseRepository):
+            return _error_response(
+                request,
+                "Story responses are temporarily unavailable.",
+                status_code=503,
+            )
+
+        try:
+            response = get_story_response(
+                story_response_repository,
+                learner_id=learner_id_for_request(request),
+                response_id=rid,
+            )
+        except PersistenceError as exc:
+            return _error_response(
+                request,
+                "We couldn't load this story response.",
+                status_code=500,
+                description=str(exc),
+            )
+        if response is None:
+            return _error_response(
+                request,
+                "Story response not found.",
+                description="This response is no longer available.",
+            )
+
+        return templates.TemplateResponse(
+            request,
+            "story_response_review.html",
+            {"view": _story_response_review_view(response)},
         )
 
     @app.get("/history/{completion_id}", response_class=HTMLResponse)

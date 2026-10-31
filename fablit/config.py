@@ -33,6 +33,8 @@ SUPPORTED_AUTHORING_CANDIDATE_STORES = {"memory", "datastore"}
 SUPPORTED_PUBLISHED_PRACTICE_STORES = {"memory", "datastore"}
 SUPPORTED_NEWS_REPOSITORIES = {"memory", "datastore"}
 SUPPORTED_NEWS_TASK_DISPATCH = {"inline", "cloud_tasks"}
+SUPPORTED_STORY_RESPONSE_REPOSITORIES = {"memory", "datastore"}
+SUPPORTED_GENERATED_PRACTICE_REPOSITORIES = {"memory", "datastore"}
 
 
 class ConfigError(RuntimeError):
@@ -199,6 +201,25 @@ class AppConfig(BaseSettings):
             "for tests and local development) or 'datastore' (Google Cloud "
             "Datastore, for the deployed App Engine environment). Holds only "
             "the curated Fashion & Design Pulse stories."
+        ),
+    )
+    story_response_repository: str = Field(
+        "memory",
+        description=(
+            "Private story-response repository backend (SPEC-044): 'memory' "
+            "(in-memory, for tests and local development) or 'datastore' "
+            "(Google Cloud Datastore, for the deployed App Engine "
+            "environment). Holds learners' private responses to Pulse story "
+            "prompts."
+        ),
+    )
+    generated_practice_repository: str = Field(
+        "memory",
+        description=(
+            "Private learner-requested practice repository backend (SPEC-044): "
+            "'memory' (in-memory, for tests and local development) or "
+            "'datastore' (Google Cloud Datastore, for the deployed App Engine "
+            "environment). Holds practices generated for one learner."
         ),
     )
     news_sources: tuple[NewsSource, ...] = Field(
@@ -449,6 +470,42 @@ class AppConfig(BaseSettings):
             return normalized
         return str(value)
 
+    @field_validator("story_response_repository", mode="before")
+    def normalize_story_response_repository(cls, value: object) -> str:
+        """Normalize the story-response repository; defaults to 'memory'."""
+        if value is None:
+            return "memory"
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if not normalized:
+                return "memory"
+            if normalized not in SUPPORTED_STORY_RESPONSE_REPOSITORIES:
+                allowed = ", ".join(sorted(SUPPORTED_STORY_RESPONSE_REPOSITORIES))
+                raise ValueError(
+                    f"Unsupported story response repository '{value}'. "
+                    f"Must be one of: {allowed}."
+                )
+            return normalized
+        return str(value)
+
+    @field_validator("generated_practice_repository", mode="before")
+    def normalize_generated_practice_repository(cls, value: object) -> str:
+        """Normalize the generated practice repository; defaults to 'memory'."""
+        if value is None:
+            return "memory"
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if not normalized:
+                return "memory"
+            if normalized not in SUPPORTED_GENERATED_PRACTICE_REPOSITORIES:
+                allowed = ", ".join(sorted(SUPPORTED_GENERATED_PRACTICE_REPOSITORIES))
+                raise ValueError(
+                    f"Unsupported generated practice repository '{value}'. "
+                    f"Must be one of: {allowed}."
+                )
+            return normalized
+        return str(value)
+
     @field_validator("news_task_dispatch", mode="before")
     def normalize_news_task_dispatch(cls, value: object) -> str:
         """Normalize the durable dispatch backend; defaults to 'inline'."""
@@ -568,6 +625,8 @@ def _resolve_environment_overrides() -> dict[str, Any]:
         "authoring_candidate_store": "FABLIT_AUTHORING_CANDIDATE_STORE",
         "published_practice_store": "FABLIT_PUBLISHED_PRACTICE_STORE",
         "news_repository": "FABLIT_NEWS_REPOSITORY",
+        "story_response_repository": "FABLIT_STORY_RESPONSE_REPOSITORY",
+        "generated_practice_repository": "FABLIT_GENERATED_PRACTICE_REPOSITORY",
         "news_sources": "FABLIT_NEWS_SOURCES",
         "news_max_items_per_source": "FABLIT_NEWS_MAX_ITEMS_PER_SOURCE",
         "news_freshness_days": "FABLIT_NEWS_FRESHNESS_DAYS",

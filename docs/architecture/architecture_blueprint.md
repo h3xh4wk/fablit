@@ -961,6 +961,71 @@ GET /pulse (persisted stories only; no live AI or network)
 - **Bounded execution and recovery:** one task unit processes at most `FABLIT_NEWS_MAX_SOURCES_PER_TASK` approved sources; the rest is checkpointed (report, counters, next source index) and continued in a fresh unit. Duplicate delivery during a live lease is a no-op, a delivery after a terminal outcome returns the finished job, an expired lease can be taken over, and a stale active job is closed as `interrupted` by the next start rather than blocking curation forever.
 - **Editorial imagery and attribution (SPEC-043, `fablit/application/news_images.py`):** a curated story may carry one illustrative stock image. `derive_visual_query` turns the story's own headline, summary, and controlled category into a short subject query; `NewsImageSelector` runs the existing provider-neutral `ImageSearchProvider` port (the same Pexafy adapter and configuration as practice authoring) with a bounded result count; `select_story_image` keeps only candidates with validated public URLs, usable dimensions, a non-extreme aspect ratio, and a relevant description, and returns no image when the match is weak. Selection happens only inside `NewsCurator` — never on a learner request — and a failure, empty result set, or unsuitable candidate leaves the story text-only with a safe logged reason. `StoryImage` is persisted through `NewsRepository` as non-indexed provenance (provider, source page, creator/attribution, alt text, asset id), and `GET /pulse` renders it responsively with a separate illustrative-image credit; stories without imagery keep a balanced text-first card.
 
+## Private Story-Linked Responses (SPEC-044)
+
+SPEC-044 adds a lightweight, private response path for the "What to try"
+prompt on a Fashion & Design Pulse story. It is deliberately separate from
+formal practice: saving a response is private capture, never an evaluation,
+score, mastery signal, or practice completion.
+
+```text
+GET /pulse story card with a reflection prompt
+        ↓ explicit "Try this" action
+POST /pulse/stories/{story_id}/responses
+        ↓ require prompt · bound and normalize learner text
+StoryResponse (domain: learner · story · headline · source · URL · prompt · text)
+        ↓ StoryResponseRepository
+        ├── InMemoryStoryResponseRepository   [local / testing]
+        └── DatastoreStoryResponseRepository  [production: kind="StoryResponse",
+                                               namespace="story-responses"]
+        ↓
+GET /history (private list) → GET /history/story-responses/{response_id}
+```
+
+- **Application workflow (`fablit/application/story_responses.py`):** validates and bounds learner text, requires a story prompt, preserves headline/source/canonical URL/prompt provenance, and derives a stable response identity from the learner and the composer's idempotency token. It imports no provider SDK, Datastore SDK, or FastAPI object.
+- **Private persistence (`StoryResponseRepository`):** `InMemoryStoryResponseRepository` for tests/local development and `DatastoreStoryResponseRepository` in its own kind and namespace. Listing is scoped by the current opaque learner identity, retrieval checks ownership, and response text is stored unindexed so a long note cannot fail the write. A storage failure is raised as `PersistenceError` and never reported as a save.
+- **No AI on the capture path:** `POST /pulse/stories/{story_id}/responses` never calls the authoring or news-curation provider. A response is saved only on explicit learner action, and no completion, evaluation, feedback, or reflection record is created.
+- **Honest failure and retry safety:** invalid input re-renders the composer in place with actionable copy and the learner's words preserved; a persistence failure returns an honest error and also preserves the draft; the hidden idempotency token is retained across retries, so resubmitting the same form cannot create duplicates.
+- **Learner surfaces (`app/templates/news.html`, `app/templates/history.html`, `app/templates/story_response_review.html`):** a story with a prompt offers an inline, keyboard-accessible "Try this" composer; a saved response appears in the learner's private history with its story headline and prompt, and can be reopened with its source attribution and canonical story link. Story responses are visually distinct from completed practice and never counted as one.
+
+## Learner-Requested Private Practice (SPEC-044)
+
+SPEC-044 also lets a learner ask for practice directly: a short free-text
+intent, a few plain-language choices, and an explicit submit action. Generation
+runs behind a provider-neutral port, the untrusted output passes the existing
+SPEC-029/SPEC-030 validation boundary before the learner sees it, and the
+validated practice is persisted privately and revisited from the learner's own
+request list.
+
+```text
+GET /practice/request (composer + this learner's requested practices)
+        ↑ optional prefill: GET /practice/request?story={story_id}
+          carries a Pulse story's "What to try" prompt as editable starter
+          text, with a link back to the story (SPEC-044 §6.1)
+        ↓ explicit POST /practice/request (bounded request + idempotency token)
+PracticeRequest → PracticeArea · response form · challenge · optional exam context
+        ↓ optional: this learner's own recent titles/areas only
+LearnerPracticeGenerator (provider-neutral port)
+        ↓ untrusted candidate output
+candidate_from_provider_output + SPEC-029/SPEC-030 validation
+        ↓
+GeneratedPracticeRecord (validated contract · preferences · safe provenance)
+        ↓ GeneratedPracticeRepository
+        ├── InMemoryGeneratedPracticeRepository   [local / testing]
+        └── DatastoreGeneratedPracticeRepository  [production: kind="GeneratedPractice",
+                                                   namespace="learner-practices"]
+        ↓ 303 See Other
+GET /practice/request/{practice_id} (validated brief) → ordinary practice journey
+```
+
+- **Application workflow (`fablit/application/learner_practice.py`):** `PracticeRequest` and `HistoryContext` validate and bound learner input before any provider call; `generate_private_practice` derives a stable practice identity from the learner and the composer token, calls the generation port once, validates the result through `candidate_from_provider_output`, and only then persists. It imports no provider SDK, Datastore SDK, or FastAPI object.
+- **History context stays minimal:** `PracticeApplication.get_history_context` reads up to five of the learner's own completed practice summaries and resolves each activity's capability lens — titles and areas only. Responses, reflections, artifacts, and other learners' records are never read, and an unavailable history store degrades to no context instead of blocking the request.
+- **Provider adapter (`fablit/platform/gemini_learner_practice_provider.py`):** Gemini behind the same server-side key as authoring, with the learner request delimited as untrusted data, no learner identity in the payload, a JSON response mode, and a short bounded retry for transient 429/503 capacity errors. Failures translate to `LearnerPracticeGenerationError` without leaking credentials or raw payloads. Without a configured key the composition root offers no generator and the composer explains that requests are unavailable, rather than fabricating practice.
+- **Private persistence (`GeneratedPracticeRepository`):** `InMemoryGeneratedPracticeRepository` for tests/local development and `DatastoreGeneratedPracticeRepository` in its own kind and namespace. The whole practice payload is stored unindexed — the embedded contract entity included — so a long generated task cannot fail the write; listing is scoped and ordered by the current learner, and retrieval checks ownership. A storage failure surfaces as `PersistenceError` and is never reported as a generated practice.
+- **Reusing the learner journey (`PracticeApplication.apply_generated_practices`):** a requested practice is registered as a non-discoverable `DemoActivity`, so it never appears in the shared dashboard or practice-mode selections but runs the unchanged intention → practice → feedback → reflection → completion flow. The deterministic evaluator is rebuilt when the set changes, and re-applying the same set is a no-op.
+- **Learner surfaces (`app/templates/practice_request.html`, `app/templates/requested_practice.html`, `GET /practice/request/{practice_id}`):** the brief shows the task, purpose, expected thinking, response form, preferences, and any learner-stated examination context before the learner chooses to begin. The composer is reachable from the dashboard and the practice-mode choice, and lists the practices this learner has requested. A Pulse story with a "What to try" prompt offers "Make this a practice" (SPEC-044 §6.1), which resolves the story through the `NewsRepository` port and prefills only its prompt plus reader-facing provenance; a missing story, a story without a prompt, or an unavailable feed leaves the composer empty, and nothing about the story narrows the learner's area or challenge choice.
+- **Honest failure:** invalid requests and invalid generated content are refused with plain-language copy that keeps the learner's words; generation and persistence failures return an honest message and never leave a half-made practice in the request list.
+
 ---
 
 ## Progress

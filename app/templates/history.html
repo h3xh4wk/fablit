@@ -7,8 +7,13 @@
 
   {% if view.is_empty %}
   <div class="history__empty">
+    {% if story_responses %}
+    <h2 class="history__empty-title">No completed practice yet</h2>
+    <p class="history__empty-note">Your story responses are saved below. When you complete a practice, it will appear here too.</p>
+    {% else %}
     <h2 class="history__empty-title">Nothing here yet</h2>
     <p class="history__empty-note">When you complete a practice, it will appear here so you can return to it later.</p>
+    {% endif %}
     <p class="form-actions">
       <a class="button" href="/">Go to explore <span aria-hidden="true">→</span></a>
     </p>
@@ -30,6 +35,33 @@
     </li>
     {% endfor %}
   </ul>
+  {% endif %}
+
+  {% if story_responses %}
+  <section class="history__stories" aria-labelledby="history-stories-heading">
+    <h2 id="history-stories-heading">Story responses</h2>
+    <p>Notes you saved from Fashion &amp; Design Pulse. They are private to you and are not part of your completed practice.</p>
+    <ul class="history__list">
+      {% for entry in story_responses %}
+      <li class="history__item">
+        <a class="history__link" href="/history/story-responses/{{ entry.response_id }}">
+          <div class="history__heading">
+            <h3 class="history__title">{{ entry.story_headline }}</h3>
+            <time class="history__date" datetime="{{ entry.saved_at.isoformat() }}">
+              {{ entry.saved_at.strftime('%-d %B %Y at %H:%M UTC') }}
+            </time>
+          </div>
+          <p class="history__preview">{{ entry.response_preview }}</p>
+          <p class="history__action">Revisit this response <span aria-hidden="true">→</span></p>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% elif story_responses_unavailable %}
+  <p class="validation-panel validation-panel--caution" role="status">
+    We couldn't load your story responses right now. Your completed practice is unaffected.
+  </p>
   {% endif %}
 
   {% if not view.is_empty %}

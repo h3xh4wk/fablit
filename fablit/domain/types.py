@@ -101,6 +101,10 @@ class InvalidSkillError(DomainError):
     """Raised when a Skill violates a domain rule."""
 
 
+class InvalidStoryResponseError(DomainError):
+    """Raised when a story-linked learner response violates a domain rule."""
+
+
 class InvalidStimulusContextError(DomainError):
     """Raised when an activity's stimulus context violates a domain rule."""
 

@@ -50,6 +50,15 @@ class FakeQuery:
     def order_by(self, value: list[tuple[str]]) -> None:
         self._order = value
 
+    def add_filter(self, prop: str, operator: str, value: Any) -> None:
+        self._filters.append((prop, operator, value))
+
+    def _matches(self, entity: FakeEntity) -> bool:
+        for prop, operator, value in self._filters:
+            if operator == "=" and entity.get(prop) != value:
+                return False
+        return True
+
     def fetch(self) -> list[FakeEntity]:
         if self._client.fail_query:
             raise RuntimeError("simulated datastore query outage")
@@ -59,6 +68,8 @@ class FakeQuery:
             if key is None or key.kind != self._kind:
                 continue
             if key.namespace != self._namespace:
+                continue
+            if not self._matches(entity):
                 continue
             results.append(entity)
         return results

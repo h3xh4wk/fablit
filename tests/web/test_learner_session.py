@@ -24,6 +24,8 @@ from app.main import create_app
 from fablit.application import (
     PRACTICE_CAPABILITY_OBSERVE,
     AuthoringCandidateStore,
+    GeneratedPracticeRecord,
+    GeneratedPracticeRepository,
     InMemoryPublishedPracticeStore,
     PracticeAuthoringBrief,
     PracticeMode,
@@ -70,6 +72,7 @@ def _completes_within[T](seconds: float, action: Callable[[], T]) -> T:
 def _registry(
     store: PublishedPracticeStore | None = None,
     refresh_interval_seconds: float = 0.0,
+    generated_practice_repository: GeneratedPracticeRepository | None = None,
 ) -> LearnerApplicationRegistry:
     """A registry over the seeded library, with a publication store attached."""
     return LearnerApplicationRegistry(
@@ -77,6 +80,7 @@ def _registry(
         None,
         None,
         store=store if store is not None else InMemoryPublishedPracticeStore(),
+        generated_practice_repository=generated_practice_repository,
         refresh_interval_seconds=refresh_interval_seconds,
     )
 
@@ -216,6 +220,33 @@ def test_unavailable_publication_store_does_not_block_learner_requests() -> None
         TIMEOUT_SECONDS, lambda: registry.application_for(uuid4())
     )
 
+    assert application.get_dashboard().activities
+
+
+class _UnavailableGeneratedPractices(GeneratedPracticeRepository):
+    """A private practice store that cannot be read (SPEC-044)."""
+
+    def save(self, record: GeneratedPracticeRecord) -> GeneratedPracticeRecord:
+        raise PersistenceError("simulated private-store outage")
+
+    def get(
+        self, learner_id: UUID, practice_id: UUID
+    ) -> GeneratedPracticeRecord | None:
+        raise PersistenceError("simulated private-store outage")
+
+    def list_for_learner(self, learner_id: UUID) -> tuple[GeneratedPracticeRecord, ...]:
+        raise PersistenceError("simulated private-store outage")
+
+
+def test_unavailable_private_practice_store_does_not_block_learner_requests() -> None:
+    """A private store that cannot be read degrades to an empty request list."""
+    registry = _registry(generated_practice_repository=_UnavailableGeneratedPractices())
+
+    application = _completes_within(
+        TIMEOUT_SECONDS, lambda: registry.application_for(uuid4())
+    )
+
+    assert application.get_requested_practices() == ()
     assert application.get_dashboard().activities
 
 

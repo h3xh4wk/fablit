@@ -142,6 +142,8 @@ All settings are managed via environment variables (`FABLIT_*`), configured in `
 | `FABLIT_AI_PROVIDER_API_KEY` | `<provider-key>` | Optional server-side API key for the AI practice authoring provider (SPEC-032 / SEC-001). Never exposed to learners or clients. |
 | `FABLIT_AI_PROVIDER_MODEL` | `gemini-2.5-flash` | Gemini model used by the authoring provider adapter (ARCH-001), retained as authoring provenance. Only used when `FABLIT_AI_PROVIDER_API_KEY` is set. |
 | `FABLIT_PUBLISHED_PRACTICE_STORE` | `datastore` | Published learner-library practices (SPEC-035): `memory` locally, `datastore` on App Engine so published practices are shared across instances. |
+| `FABLIT_STORY_RESPONSE_REPOSITORY` | `datastore` | Private learner responses to Pulse story prompts (SPEC-044): `memory` locally, `datastore` on App Engine so responses are durable and shared across instances. |
+| `FABLIT_GENERATED_PRACTICE_REPOSITORY` | `datastore` | Private learner-requested practices (SPEC-044): `memory` locally, `datastore` on App Engine so requested practices are durable across instances. Requests also need `FABLIT_AI_PROVIDER_API_KEY`; without it the composer reports that requests are unavailable. |
 | `FABLIT_SERVICE_NAME` | `fablit` | Service name tag in structured logs |
 
 ---
@@ -391,8 +393,34 @@ introduced.
   `FABLIT_NEWS_FRESHNESS_DAYS`, `FABLIT_NEWS_MAX_SUMMARY_CHARS`,
   `FABLIT_NEWS_RELEVANCE_THRESHOLD`, `FABLIT_NEWS_FETCH_TIMEOUT`, and
   `FABLIT_NEWS_MAX_RESPONSE_BYTES`.
+
+### Private story responses (SPEC-044)
+
+- `FABLIT_STORY_RESPONSE_REPOSITORY="datastore"` in `app.yaml` stores learners'
+  private responses to Pulse story prompts under kind `StoryResponse`, namespace
+  `story-responses` (separate from curated news and practice history).
+- Responses are scoped by the existing anonymous learner identity. Saving one
+  never calls an AI provider and never creates a practice completion.
+- The repository requires no additional GCP configuration beyond the existing
+  Datastore access used by practice history and curated news.
 - `FABLIT_NEWS_MAX_SOURCES_PER_TASK` (default `2`) bounds how many approved
   sources one durable task unit processes.
+
+### Private requested practices (SPEC-044)
+
+- `FABLIT_GENERATED_PRACTICE_REPOSITORY="datastore"` in `app.yaml` stores a
+  learner's requested practices under kind `GeneratedPractice`, namespace
+  `learner-practices` (separate from the shared library, curated news, story
+  responses, and practice history).
+- Requests are generated with the server-side `FABLIT_AI_PROVIDER_API_KEY`
+  (and `FABLIT_AI_PROVIDER_MODEL`). Without a key the composition root offers
+  no generator: `/practice/request` explains that new requests are unavailable
+  while the practices a learner already requested stay readable.
+- Generated practices are stored with the contract, request preferences, and
+  provider/model provenance only — never raw provider payloads. Listing and
+  retrieval are scoped by the existing anonymous learner identity.
+- No additional GCP configuration is needed beyond the existing Datastore
+  access used by practice history, curated news, and story responses.
 
 ### Durable curation jobs (SPEC-042)
 

@@ -44,6 +44,12 @@ env_variables:
   # Curated Fashion & Design Pulse store (SPEC-041).
   # Use datastore on App Engine so the learner feed is shared across instances.
   FABLIT_NEWS_REPOSITORY: "datastore"
+  # Private learner responses to Pulse story prompts (SPEC-044).
+  # Use datastore on App Engine so responses are durable and shared across instances.
+  FABLIT_STORY_RESPONSE_REPOSITORY: "datastore"
+  # Private learner-requested generated practices (SPEC-044).
+  # Use datastore on App Engine so requested practices are durable across instances.
+  FABLIT_GENERATED_PRACTICE_REPOSITORY: "datastore"
   # Approved news-source allowlist (SPEC-041). Defaults to The Guardian's
   # Fashion and Art & Design RSS feeds; override to pin reviewed publishers.
   # FABLIT_NEWS_SOURCES: '[{"name":"The Guardian — Fashion","feed_url":"https://www.theguardian.com/fashion/rss","site_url":"https://www.theguardian.com"}]'

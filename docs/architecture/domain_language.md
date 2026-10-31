@@ -1,9 +1,9 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 1.16.0
+**Version:** 1.17.0
 **Status:** Draft
-**Last Updated:** 2026-10-28
+**Last Updated:** 2026-10-30
 
 ---
 
@@ -1153,6 +1153,110 @@ Persisted feed → learner Pulse (no live AI, image search, or network)
 | NEWS-011 | Story imagery is optional and illustrative: it is selected only inside curation from the existing provider-neutral image-search port, stored with its provenance, and labelled as illustrative so a generic stock photograph is never presented as evidence of a specific designer, collection, product, event, or craft item. |
 | NEWS-012 | Image search never runs on a learner request; a story renders its persisted image or a clean text-first card, and a search or persistence failure never blocks, removes, or misattributes an otherwise valid story. |
 | NEWS-013 | Only a public HTTP(S) image URL with a usable size, a non-extreme aspect ratio, and relevance to the story's derived visual query is persisted; unsafe, incomplete, or uncertain candidates yield no image. |
+
+## Story Response (SPEC-044)
+
+A **Story Response** is a learner's private, lightweight answer to the "What
+to try" prompt attached to a Fashion & Design Pulse story. It is a qualitative
+learner artifact, not a Submission, not a completed practice, and not a signal
+used to infer ability. Saving one records the learner's own words together
+with enough provenance to understand the context later.
+
+A Story Response retains the originating story's stable identity, the headline
+and source name shown when the response was written, the canonical story URL,
+the prompt the learner answered, the response text, and the UTC save time. It
+is owned by the current opaque learner identity and is never visible to other
+learners, never listed in the shared library, and never published.
+
+```
+Pulse story with "What to try" prompt
+        ↓ learner chooses "Try this"
+Short private response composer
+        ↓ explicit save + bounded text validation
+Story Response (story id · headline · source · canonical URL · prompt · text)
+        ↓ learner-scoped repository port
+Private learner history
+        ↓
+Revisit the response with its originating story and prompt
+```
+
+Saving a Story Response never invokes an AI provider, never evaluates or grades
+the response, and never creates a practice completion. A story prompt that is
+deliberately modelled as a supported formal practice follows the ordinary
+practice journey instead.
+
+### Rules
+
+| Rule | Description |
+|------|-------------|
+| SR-001 | A Story Response is saved only after an explicit learner action, and only for a story that offers a "What to try" prompt. |
+| SR-002 | A saved response retains the story's identity, headline, source name, canonical URL, prompt text, and the learner's response text. |
+| SR-003 | A Story Response is private to the current anonymous learner; listing, retrieval, and history display are scoped by learner identity. |
+| SR-004 | Saving a Story Response never evaluates, scores, grades, ranks, or sends the response to an AI provider, and never creates a practice completion. |
+| SR-005 | Retrying the same composer submission resolves to the same stable response identity, so a double submit or retry never creates a duplicate. |
+| SR-006 | Response text is bounded and validated before persistence; empty and over-long responses receive actionable, non-technical feedback without losing the learner's words. |
+| SR-007 | A persistence failure is reported honestly; Fablit never tells a learner a response was saved when the write failed. |
+| SR-008 | Saved responses are immutable; writing another response to the same story creates a separate record rather than silently changing the earlier one. |
+
+## Requested Practice (SPEC-044)
+
+A **Requested Practice** is one private practice generated for a single learner
+from that learner's own short request. It is explicit learner-requested
+content: it is not part of the shared curated library, it is never visible to
+another learner, and it is never scored, graded, ranked, or treated as evidence
+of ability. "Practice" stays the noun — the learner is practising, not being
+assessed.
+
+A **Practice Request** is the learner's short statement of what they want to
+practise, together with a few plain-language choices: a practice area, a
+preferred response form, an optional challenge preference, an optional
+examination context the learner states themselves, and whether their own
+recent practice may be used as context. The request is bounded before any
+generation happens, and nothing is generated until the learner submits it.
+
+A Requested Practice retains the validated title, description, and complete
+practice content contract the learner was shown, the request's own preferences,
+and safe provenance (provider, model, generation time). It reuses the ordinary
+learner activity and practice journey, so practising it produces ordinary
+practice history under the learner's own identity.
+
+```
+Learner request (what to practise + preferences)
+        ↓ explicit submit; bounded and validated first
+Generation through the provider-neutral port
+        ↓ untrusted output validated against the content + feedback boundary
+Requested Practice (title · description · contract · preferences · provenance)
+        ↓ learner-scoped repository port (never the shared library)
+Private practice brief
+        ↓ learner chooses to begin
+Ordinary practice journey → ordinary practice history
+```
+
+A Practice Request may also start from a Pulse story: "Make this a practice"
+carries that story's "What to try" prompt into the request as editable
+starter text, with a link back to the story. The prompt is a suggestion, not a
+constraint — the learner can rewrite it, and the story never narrows the area
+or challenge choice on their behalf.
+
+Generation receives only the learner's request, its preferences, and — when
+the learner leaves the option on — a minimal slice of that learner's own
+completed practice (titles and capability areas). Full responses, reflections,
+artifacts, other learners' records, and the learner's identity are never sent.
+
+### Rules
+
+| Rule | Description |
+|------|-------------|
+| RP-001 | A Requested Practice is generated only after an explicit learner action, from a request that is non-blank and bounded in length. |
+| RP-002 | A Requested Practice is private to the current anonymous learner; listing and retrieval are scoped by learner identity, and another learner's practice is indistinguishable from one that does not exist. |
+| RP-003 | A Requested Practice never enters the shared curated library, learner discovery, or practice-mode selections. |
+| RP-004 | Generated output is untrusted until it passes the existing practice content contract and feedback language validation; invalid output never reaches the learner and is never persisted. |
+| RP-005 | History context is opt-in, limited to the learner's own recent completed practice titles and areas, and never includes their responses, reflections, artifacts, or identity. |
+| RP-006 | A Requested Practice is never scored, graded, ranked, or used to infer ability, motivation, or future performance. |
+| RP-007 | Retrying the same request token resolves to the same stable practice identity, so a double submit or retry never creates a duplicate. |
+| RP-008 | A generation or persistence failure is reported honestly with plain language; Fablit never claims a practice was made or saved when it was not. |
+| RP-009 | Requested Practices are always self-contained: the task must be doable in one focused response with no external material the learner does not have. |
+| RP-010 | Practising a Requested Practice follows the ordinary practice journey and produces ordinary practice history under the learner's own identity. |
 
 ## Learner Practice Application Flow (SPEC-012)
 

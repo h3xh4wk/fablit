@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Story Response{% endblock %}
+{% block content %}
+<article class="review story-response-review">
+  <p class="review__crumb"><a href="/history">Your practice</a> <span aria-hidden="true">→</span> Story response</p>
+  <h1 class="display">{{ view.story_headline }}</h1>
+  <p class="review__timestamp">Saved {{ view.saved_at.strftime('%-d %B %Y at %H:%M UTC') }}</p>
+
+  <section class="review__section">
+    <h2 class="practice__step">What to try</h2>
+    <div class="review__evidence">{{ view.prompt }}</div>
+  </section>
+
+  <section class="review__section">
+    <h2 class="practice__step">Your response</h2>
+    <div class="review__evidence">{{ view.response_text }}</div>
+  </section>
+
+  <section class="review__section">
+    <h2 class="practice__step">Where this came from</h2>
+    <p class="card__source">
+      <span class="card__source-name">{{ view.source_name }}</span>
+    </p>
+    {% if view.canonical_url %}
+    <p>
+      <a class="card__action" href="{{ view.canonical_url }}"
+         target="_blank" rel="noopener noreferrer nofollow">
+        Read the original story <span aria-hidden="true">↗</span>
+      </a>
+    </p>
+    {% endif %}
+    <p class="story-response__hint">
+      This response is private to you. It is a note, not a completed practice.
+    </p>
+  </section>
+
+  <nav class="review__nav" aria-label="Story response navigation">
+    <a class="button" href="/history">Back to your practice <span aria-hidden="true">→</span></a>
+    <a class="button button--secondary" href="/pulse">More stories <span aria-hidden="true">→</span></a>
+  </nav>
+</article>
+{% endblock %}

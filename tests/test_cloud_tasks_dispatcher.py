@@ -66,7 +66,8 @@ def test_dispatch_enqueues_an_authenticated_task() -> None:
     assert headers["Authorization"] == "Bearer api-token"
     assert headers["Content-Type"] == "application/json"
     payload = json.loads(body.decode("utf-8"))
-    http_request = payload["task"]["http_request"]
+    task = payload["task"]
+    http_request = task["http_request"]
     assert http_request["url"] == HANDLER
     assert http_request["http_method"] == "POST"
     assert http_request["headers"] == {"Content-Type": "application/json"}
@@ -75,7 +76,9 @@ def test_dispatch_enqueues_an_authenticated_task() -> None:
         "service_account_email": SERVICE_ACCOUNT,
         "audience": HANDLER,
     }
-    assert http_request["dispatch_deadline"] == "540s"
+    # The deadline is a field of the task, not of the HTTP request.
+    assert task["dispatch_deadline"] == "540s"
+    assert "dispatch_deadline" not in http_request
 
 
 def test_dispatch_uses_an_explicit_audience_when_configured() -> None:
