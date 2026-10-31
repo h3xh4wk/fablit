@@ -90,7 +90,8 @@
       <details class="story-response"{% if story.has_response_error %} open{% endif %}>
         <summary class="story-response__summary">Try this</summary>
         <form class="story-response__form" method="post"
-              action="/pulse/stories/{{ story.story_id }}/responses">
+              action="/pulse/stories/{{ story.story_id }}/responses"
+              hx-disabled-elt="find button" hx-sync="this:drop">
           {% if story.has_response_error %}
           <p class="validation-panel validation-panel--error" role="alert">
             {{ view.response_error }}
@@ -110,9 +111,15 @@
           <input type="hidden" name="request_id"
                  value="{{ story.response_request_id }}">
           <input type="hidden" name="category" value="{{ view.selected }}">
-          <button class="button button--secondary" type="submit">
-            Save response
-          </button>
+          <p class="form-actions">
+            <button class="button button--secondary" type="submit">
+              <span class="authoring-generate__idle">Save response</span>
+              <span class="authoring-generate__progress">Saving response…</span>
+            </button>
+            <span class="htmx-indicator loading-indicator" role="status" aria-live="polite">
+              Saving your response…
+            </span>
+          </p>
         </form>
       </details>
 

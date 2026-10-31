@@ -20,7 +20,8 @@
   </div>
   {% endif %}
 
-  <form class="request-practice__form" method="post" action="/practice/request">
+  <form class="request-practice__form" method="post" action="/practice/request"
+        hx-disabled-elt="find button" hx-sync="this:drop">
     <input type="hidden" name="request_token" value="{{ view.token }}">
 
     {% if view.story_context %}
@@ -105,8 +106,12 @@
 
     <p class="form-actions">
       <button class="button" type="submit" {% if not view.is_available %}disabled{% endif %}>
-        Make this practice
+        <span class="authoring-generate__idle">Make this practice <span aria-hidden="true">→</span></span>
+        <span class="authoring-generate__progress">Making your practice…</span>
       </button>
+      <span class="htmx-indicator loading-indicator" role="status" aria-live="polite">
+        Making your practice. This can take a moment.
+      </span>
     </p>
     <p class="form-hint">
       Making a practice can take a short moment. It will not start until you
