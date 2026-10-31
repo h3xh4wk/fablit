@@ -19,10 +19,11 @@ not scored, graded, ranked, or treated as evidence of ability.
 from __future__ import annotations
 
 import logging
+import math
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from threading import Lock
 from typing import Any, Protocol, runtime_checkable
@@ -44,6 +45,7 @@ from .errors import (
     GeneratedPracticeValidationError,
     InvalidLearnerPracticeRequestError,
     LearnerPracticeGenerationError,
+    LearnerPracticeRateLimitError,
 )
 from .practice_modes import PracticeMode
 from .store import DemoActivity, PracticeContentContract
@@ -57,6 +59,10 @@ MAX_RESPONSE_FORM_CHARS = 200
 MAX_EXAM_CONTEXT_CHARS = 200
 MAX_HISTORY_ITEMS = 5
 
+#: Default per-learner generation rate limit and rolling window (SPEC-044).
+DEFAULT_LEARNER_PRACTICE_RATE_LIMIT = 5
+DEFAULT_LEARNER_PRACTICE_RATE_WINDOW_SECONDS = 3600
+
 DEFAULT_RESPONSE_FORM = "A short written response"
 GENERATION_UNAVAILABLE_MESSAGE = (
     "Making a practice is temporarily unavailable. Please try again shortly."
@@ -65,6 +71,68 @@ VALIDATION_FAILURE_MESSAGE = (
     "We couldn't make a practice from that request. Try describing what you "
     "want to practise in a little more detail."
 )
+
+
+def _format_rate_window(seconds: int) -> str:
+    bounded = max(1, seconds)
+    if bounded == 3600:
+        return "hour"
+    if bounded % 3600 == 0:
+        return f"{bounded // 3600} hours"
+    if bounded == 60:
+        return "minute"
+    if bounded % 60 == 0:
+        return f"{bounded // 60} minutes"
+    return "second" if bounded == 1 else f"{bounded} seconds"
+
+
+def _format_retry_wait(seconds: int) -> str:
+    bounded = max(1, seconds)
+    if bounded >= 60:
+        minutes = math.ceil(bounded / 60)
+        return "1 minute" if minutes == 1 else f"{minutes} minutes"
+    return "1 second" if bounded == 1 else f"{bounded} seconds"
+
+
+def rate_limit_message(
+    *,
+    limit: int = DEFAULT_LEARNER_PRACTICE_RATE_LIMIT,
+    window_seconds: int = DEFAULT_LEARNER_PRACTICE_RATE_WINDOW_SECONDS,
+    retry_after_seconds: int | None = None,
+) -> str:
+    """Return a calm, learner-friendly message when the generation limit is reached."""
+    noun = "practice request" if limit == 1 else "practice requests"
+    window_label = _format_rate_window(window_seconds)
+    wait_label = _format_retry_wait(
+        window_seconds if retry_after_seconds is None else retry_after_seconds
+    )
+    return (
+        f"You've reached the limit of {limit} {noun} per {window_label}. "
+        "You can still use practices you've already requested or explore the "
+        f"practice library, and try again in {wait_label}."
+    )
+
+
+RATE_LIMIT_MESSAGE = rate_limit_message()
+
+
+def _normalize_rate_limit_params(
+    now: datetime,
+    *,
+    limit: int,
+    window_seconds: int,
+) -> tuple[datetime, int, int]:
+    if not isinstance(now, datetime) or now.tzinfo is None:
+        raise ValueError("rate limit timestamp must be timezone-aware")
+    if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+        raise ValueError("rate limit must be a positive integer")
+    if (
+        not isinstance(window_seconds, int)
+        or isinstance(window_seconds, bool)
+        or window_seconds < 1
+    ):
+        raise ValueError("rate limit window_seconds must be a positive integer")
+    return now.astimezone(UTC), limit, window_seconds
 
 
 class PracticeArea(StrEnum):
@@ -471,6 +539,36 @@ class GeneratedPracticeRepository(ABC):
     def list_for_learner(self, learner_id: UUID) -> tuple[GeneratedPracticeRecord, ...]:
         """Return the learner's records, newest first."""
 
+    def reserve_generation_slot(
+        self,
+        learner_id: UUID,
+        *,
+        now: datetime,
+        limit: int = DEFAULT_LEARNER_PRACTICE_RATE_LIMIT,
+        window_seconds: int = DEFAULT_LEARNER_PRACTICE_RATE_WINDOW_SECONDS,
+    ) -> int | None:
+        """Reserve one generation attempt within the learner's rate-limit window.
+
+        Returns ``None`` when the attempt is within ``limit`` for the trailing
+        ``window_seconds`` ending at ``now``, or the positive number of seconds
+        until the learner may retry when the limit has been reached.
+        """
+        if not isinstance(learner_id, UUID):
+            raise ValueError("rate limit learner_id must be a UUID")
+        current, max_requests, window = _normalize_rate_limit_params(
+            now, limit=limit, window_seconds=window_seconds
+        )
+        window_start = current - timedelta(seconds=window)
+        active = sorted(
+            record.created_at.astimezone(UTC)
+            for record in self.list_for_learner(learner_id)
+            if record.created_at.astimezone(UTC) > window_start
+        )
+        if len(active) >= max_requests:
+            unlock_at = active[-max_requests] + timedelta(seconds=window)
+            return max(1, math.ceil((unlock_at - current).total_seconds()))
+        return None
+
 
 class InMemoryGeneratedPracticeRepository(GeneratedPracticeRepository):
     """Deterministic in-memory store for tests and local development."""
@@ -478,6 +576,7 @@ class InMemoryGeneratedPracticeRepository(GeneratedPracticeRepository):
     def __init__(self) -> None:
         self._records: dict[UUID, GeneratedPracticeRecord] = {}
         self._learner_records: dict[UUID, list[UUID]] = {}
+        self._rate_limit_attempts: dict[UUID, list[datetime]] = {}
         self._lock = Lock()
 
     def save(self, record: GeneratedPracticeRecord) -> GeneratedPracticeRecord:
@@ -523,6 +622,34 @@ class InMemoryGeneratedPracticeRepository(GeneratedPracticeRepository):
                 reverse=True,
             )
         )
+
+    def reserve_generation_slot(
+        self,
+        learner_id: UUID,
+        *,
+        now: datetime,
+        limit: int = DEFAULT_LEARNER_PRACTICE_RATE_LIMIT,
+        window_seconds: int = DEFAULT_LEARNER_PRACTICE_RATE_WINDOW_SECONDS,
+    ) -> int | None:
+        if not isinstance(learner_id, UUID):
+            raise ValueError("rate limit learner_id must be a UUID")
+        current, max_requests, window = _normalize_rate_limit_params(
+            now, limit=limit, window_seconds=window_seconds
+        )
+        window_start = current - timedelta(seconds=window)
+        with self._lock:
+            active = sorted(
+                ts
+                for ts in self._rate_limit_attempts.get(learner_id, ())
+                if ts > window_start
+            )
+            if len(active) >= max_requests:
+                self._rate_limit_attempts[learner_id] = active
+                unlock_at = active[-max_requests] + timedelta(seconds=window)
+                return max(1, math.ceil((unlock_at - current).total_seconds()))
+            active.append(current)
+            self._rate_limit_attempts[learner_id] = active
+            return None
 
 
 def new_request_token() -> UUID:
@@ -579,17 +706,37 @@ def generate_private_practice(
     request: PracticeRequest,
     history: HistoryContext,
     now: datetime | None = None,
+    rate_limit: int = DEFAULT_LEARNER_PRACTICE_RATE_LIMIT,
+    rate_window_seconds: int = DEFAULT_LEARNER_PRACTICE_RATE_WINDOW_SECONDS,
 ) -> GeneratedPracticeRecord:
     """Generate, validate, and privately persist one requested practice.
 
     A repeated request with the same token returns the already-persisted
-    record without calling the provider again. Invalid provider output never
-    reaches persistence or the learner.
+    record without calling the provider again. A fresh generation attempt is
+    bounded by the learner's rate limit before invoking the provider. Invalid
+    provider output never reaches persistence or the learner.
     """
     practice_id = practice_id_for(request.learner_id, request.token)
     existing = repository.get(request.learner_id, practice_id)
     if existing is not None:
         return existing
+
+    created_at = now or datetime.now(UTC)
+    retry_after = repository.reserve_generation_slot(
+        request.learner_id,
+        now=created_at,
+        limit=rate_limit,
+        window_seconds=rate_window_seconds,
+    )
+    if retry_after is not None:
+        raise LearnerPracticeRateLimitError(
+            rate_limit_message(
+                limit=rate_limit,
+                window_seconds=rate_window_seconds,
+                retry_after_seconds=retry_after,
+            ),
+            retry_after_seconds=retry_after,
+        )
 
     effective_history = history if request.include_history else HistoryContext()
     brief = _brief_for(request, effective_history)
@@ -627,7 +774,6 @@ def generate_private_practice(
         )
         raise GeneratedPracticeValidationError(VALIDATION_FAILURE_MESSAGE)
 
-    created_at = now or datetime.now(UTC)
     record = GeneratedPracticeRecord(
         practice_id=practice_id,
         learner_id=request.learner_id,

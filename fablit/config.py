@@ -222,6 +222,24 @@ class AppConfig(BaseSettings):
             "environment). Holds practices generated for one learner."
         ),
     )
+    learner_practice_rate_limit: int = Field(
+        5,
+        ge=1,
+        le=100,
+        description=(
+            "Maximum learner-requested practice generations permitted per "
+            "learner within learner_practice_rate_window_seconds (SPEC-044)."
+        ),
+    )
+    learner_practice_rate_window_seconds: int = Field(
+        3600,
+        ge=1,
+        le=86_400,
+        description=(
+            "Rolling window in seconds for the per-learner practice generation "
+            "rate limit (SPEC-044)."
+        ),
+    )
     news_sources: tuple[NewsSource, ...] = Field(
         default_factory=lambda: DEFAULT_NEWS_SOURCES,
         description=(
@@ -627,6 +645,10 @@ def _resolve_environment_overrides() -> dict[str, Any]:
         "news_repository": "FABLIT_NEWS_REPOSITORY",
         "story_response_repository": "FABLIT_STORY_RESPONSE_REPOSITORY",
         "generated_practice_repository": "FABLIT_GENERATED_PRACTICE_REPOSITORY",
+        "learner_practice_rate_limit": "FABLIT_LEARNER_PRACTICE_RATE_LIMIT",
+        "learner_practice_rate_window_seconds": (
+            "FABLIT_LEARNER_PRACTICE_RATE_WINDOW_SECONDS"
+        ),
         "news_sources": "FABLIT_NEWS_SOURCES",
         "news_max_items_per_source": "FABLIT_NEWS_MAX_ITEMS_PER_SOURCE",
         "news_freshness_days": "FABLIT_NEWS_FRESHNESS_DAYS",

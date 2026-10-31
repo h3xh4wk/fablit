@@ -524,6 +524,38 @@ def test_unsupported_generated_practice_repository_raises() -> None:
         AppConfig.model_validate({"generated_practice_repository": "sqlite"})
 
 
+def test_learner_practice_rate_limit_defaults_and_environment_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    default_config = AppConfig.model_validate({})
+    assert default_config.learner_practice_rate_limit == 5
+    assert default_config.learner_practice_rate_window_seconds == 3600
+
+    monkeypatch.setenv("FABLIT_LEARNER_PRACTICE_RATE_LIMIT", "3")
+    monkeypatch.setenv("FABLIT_LEARNER_PRACTICE_RATE_WINDOW_SECONDS", "1800")
+
+    overridden = load_config()
+
+    assert overridden.learner_practice_rate_limit == 3
+    assert overridden.learner_practice_rate_window_seconds == 1800
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"learner_practice_rate_limit": 0},
+        {"learner_practice_rate_limit": 101},
+        {"learner_practice_rate_window_seconds": 0},
+        {"learner_practice_rate_window_seconds": 86_401},
+    ],
+)
+def test_learner_practice_rate_limit_validates_bounds(
+    overrides: dict[str, int],
+) -> None:
+    with pytest.raises(ValidationError):
+        AppConfig.model_validate(overrides)
+
+
 def test_news_sources_parse_from_json_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -8,14 +8,18 @@ existing SPEC-029/SPEC-030 boundary, and persist the result privately.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
 
 from fablit.application import (
+    DEFAULT_LEARNER_PRACTICE_RATE_LIMIT,
+    DEFAULT_LEARNER_PRACTICE_RATE_WINDOW_SECONDS,
     DEMO_LEARNER_ID,
+    FORBIDDEN_FEEDBACK_TERMS,
+    RATE_LIMIT_MESSAGE,
     ChallengePreference,
     DemoActivity,
     DemoEvaluator,
@@ -29,6 +33,7 @@ from fablit.application import (
     LearnerJourneyStore,
     LearnerPracticeGenerationError,
     LearnerPracticeGenerationRequest,
+    LearnerPracticeRateLimitError,
     PracticeApplication,
     PracticeArea,
     PracticeRequest,
@@ -40,6 +45,7 @@ from fablit.application import (
     default_candidate_data,
     generate_private_practice,
     practice_id_for,
+    rate_limit_message,
 )
 from fablit.application.persistence import (
     PersistenceError,
@@ -346,6 +352,286 @@ def test_examination_context_is_carried_when_the_learner_states_it() -> None:
     )
 
     assert record.examination_context == "A portfolio interview next month"
+
+
+# --- Rate limiting -----------------------------------------------------------
+
+
+def test_rate_limit_blocks_excess_requests_and_suppresses_provider_calls() -> None:
+    repository = InMemoryGeneratedPracticeRepository()
+    generator = FakeLearnerPracticeGenerator()
+
+    for index in range(DEFAULT_LEARNER_PRACTICE_RATE_LIMIT):
+        generate_private_practice(
+            repository,
+            generator,
+            request=_request(token=uuid4()),
+            history=HistoryContext(),
+            now=NOW + timedelta(minutes=index),
+        )
+
+    assert len(generator.calls) == DEFAULT_LEARNER_PRACTICE_RATE_LIMIT
+
+    with pytest.raises(LearnerPracticeRateLimitError) as caught:
+        generate_private_practice(
+            repository,
+            generator,
+            request=_request(token=uuid4()),
+            history=HistoryContext(),
+            now=NOW + timedelta(minutes=10),
+        )
+
+    assert len(generator.calls) == DEFAULT_LEARNER_PRACTICE_RATE_LIMIT
+    assert caught.value.retry_after_seconds == 3000
+    assert "reached the limit of 5 practice requests per hour" in str(caught.value)
+    assert "try again in 50 minutes" in str(caught.value)
+    lowered = str(caught.value).lower()
+    for term in FORBIDDEN_FEEDBACK_TERMS:
+        assert term not in lowered
+
+
+def test_rate_limit_boundary_expires_after_configured_window() -> None:
+    repository = InMemoryGeneratedPracticeRepository()
+    generator = FakeLearnerPracticeGenerator()
+    window = DEFAULT_LEARNER_PRACTICE_RATE_WINDOW_SECONDS
+
+    generate_private_practice(
+        repository,
+        generator,
+        request=_request(token=uuid4()),
+        history=HistoryContext(),
+        now=NOW,
+        rate_limit=2,
+        rate_window_seconds=window,
+    )
+    generate_private_practice(
+        repository,
+        generator,
+        request=_request(token=uuid4()),
+        history=HistoryContext(),
+        now=NOW + timedelta(seconds=600),
+        rate_limit=2,
+        rate_window_seconds=window,
+    )
+
+    # One second before the oldest request exits the window: still rate-limited.
+    with pytest.raises(LearnerPracticeRateLimitError) as caught:
+        generate_private_practice(
+            repository,
+            generator,
+            request=_request(token=uuid4()),
+            history=HistoryContext(),
+            now=NOW + timedelta(seconds=window - 1),
+            rate_limit=2,
+            rate_window_seconds=window,
+        )
+
+    assert caught.value.retry_after_seconds == 1
+    assert len(generator.calls) == 2
+
+    # At the window boundary: the first slot has expired and a new request succeeds.
+    record = generate_private_practice(
+        repository,
+        generator,
+        request=_request(token=uuid4()),
+        history=HistoryContext(),
+        now=NOW + timedelta(seconds=window),
+        rate_limit=2,
+        rate_window_seconds=window,
+    )
+
+    assert record.practice_id is not None
+    assert len(generator.calls) == 3
+
+
+def test_idempotent_resubmission_succeeds_even_when_learner_is_at_rate_limit() -> None:
+    repository = InMemoryGeneratedPracticeRepository()
+    generator = FakeLearnerPracticeGenerator()
+    first_request = _request(token=uuid4())
+    second_request = _request(token=uuid4())
+
+    first = generate_private_practice(
+        repository,
+        generator,
+        request=first_request,
+        history=HistoryContext(),
+        now=NOW,
+        rate_limit=2,
+    )
+    second = generate_private_practice(
+        repository,
+        generator,
+        request=second_request,
+        history=HistoryContext(),
+        now=NOW + timedelta(minutes=1),
+        rate_limit=2,
+    )
+
+    # Repeating an already-generated token returns the existing record without
+    # invoking the provider or failing with a rate-limit error.
+    repeated_first = generate_private_practice(
+        repository,
+        generator,
+        request=first_request,
+        history=HistoryContext(),
+        now=NOW + timedelta(minutes=2),
+        rate_limit=2,
+    )
+    repeated_second = generate_private_practice(
+        repository,
+        generator,
+        request=second_request,
+        history=HistoryContext(),
+        now=NOW + timedelta(minutes=2),
+        rate_limit=2,
+    )
+
+    assert repeated_first == first
+    assert repeated_second == second
+    assert len(generator.calls) == 2
+
+
+def test_failed_provider_calls_still_count_toward_the_rate_limit() -> None:
+    repository = InMemoryGeneratedPracticeRepository()
+    failing_generator = FakeLearnerPracticeGenerator(
+        error=LearnerPracticeGenerationError("provider temporary failure")
+    )
+
+    for index in range(2):
+        with pytest.raises(LearnerPracticeGenerationError):
+            generate_private_practice(
+                repository,
+                failing_generator,
+                request=_request(token=uuid4()),
+                history=HistoryContext(),
+                now=NOW + timedelta(seconds=index * 10),
+                rate_limit=2,
+            )
+
+    assert len(failing_generator.calls) == 2
+
+    with pytest.raises(LearnerPracticeRateLimitError):
+        generate_private_practice(
+            repository,
+            failing_generator,
+            request=_request(token=uuid4()),
+            history=HistoryContext(),
+            now=NOW + timedelta(seconds=30),
+            rate_limit=2,
+        )
+
+    assert len(failing_generator.calls) == 2
+
+
+def test_rate_limit_is_scoped_per_learner_identity() -> None:
+    repository = InMemoryGeneratedPracticeRepository()
+    generator = FakeLearnerPracticeGenerator()
+    other_learner = uuid4()
+
+    generate_private_practice(
+        repository,
+        generator,
+        request=_request(learner_id=DEMO_LEARNER_ID, token=uuid4()),
+        history=HistoryContext(),
+        now=NOW,
+        rate_limit=1,
+    )
+
+    with pytest.raises(LearnerPracticeRateLimitError):
+        generate_private_practice(
+            repository,
+            generator,
+            request=_request(learner_id=DEMO_LEARNER_ID, token=uuid4()),
+            history=HistoryContext(),
+            now=NOW + timedelta(minutes=1),
+            rate_limit=1,
+        )
+
+    other_record = generate_private_practice(
+        repository,
+        generator,
+        request=_request(learner_id=other_learner, token=uuid4()),
+        history=HistoryContext(),
+        now=NOW + timedelta(minutes=1),
+        rate_limit=1,
+    )
+
+    assert other_record.learner_id == other_learner
+    assert len(generator.calls) == 2
+
+
+def test_rate_limit_message_formats_custom_windows_and_waits_cleanly() -> None:
+    assert "5 practice requests per hour" in RATE_LIMIT_MESSAGE
+    assert "1 practice request per minute" in rate_limit_message(
+        limit=1, window_seconds=60, retry_after_seconds=60
+    )
+    assert "per 2 hours" in rate_limit_message(
+        limit=3, window_seconds=7200, retry_after_seconds=90
+    )
+    assert "per 15 minutes" in rate_limit_message(
+        limit=2, window_seconds=900, retry_after_seconds=1
+    )
+    assert "try again in 1 second." in rate_limit_message(
+        limit=2, window_seconds=30, retry_after_seconds=1
+    )
+    assert "per second" in rate_limit_message(
+        limit=1, window_seconds=1, retry_after_seconds=5
+    )
+
+
+def test_reserve_generation_slot_validates_parameters_and_base_fallback() -> None:
+    repository = InMemoryGeneratedPracticeRepository()
+
+    with pytest.raises(ValueError, match="learner_id"):
+        repository.reserve_generation_slot(
+            "not-a-uuid",  # type: ignore[arg-type]
+            now=NOW,
+        )
+    with pytest.raises(ValueError, match="timezone-aware"):
+        repository.reserve_generation_slot(
+            DEMO_LEARNER_ID,
+            now=datetime(2026, 10, 30, 12, 0),
+        )
+    with pytest.raises(ValueError, match="rate limit must be"):
+        repository.reserve_generation_slot(DEMO_LEARNER_ID, now=NOW, limit=0)
+    with pytest.raises(ValueError, match="window_seconds"):
+        repository.reserve_generation_slot(DEMO_LEARNER_ID, now=NOW, window_seconds=0)
+
+    record = generate_private_practice(
+        InMemoryGeneratedPracticeRepository(),
+        FakeLearnerPracticeGenerator(),
+        request=_request(),
+        history=HistoryContext(),
+        now=NOW,
+    )
+
+    class CustomRepository(GeneratedPracticeRepository):
+        def save(self, item: GeneratedPracticeRecord) -> GeneratedPracticeRecord:
+            return item
+
+        def get(
+            self, learner_id: UUID, practice_id: UUID
+        ) -> GeneratedPracticeRecord | None:
+            return None
+
+        def list_for_learner(
+            self, learner_id: UUID
+        ) -> tuple[GeneratedPracticeRecord, ...]:
+            return (record,)
+
+    custom = CustomRepository()
+    with pytest.raises(ValueError, match="learner_id"):
+        custom.reserve_generation_slot("bad", now=NOW)  # type: ignore[arg-type]
+    assert custom.reserve_generation_slot(DEMO_LEARNER_ID, now=NOW, limit=2) is None
+    assert (
+        custom.reserve_generation_slot(
+            DEMO_LEARNER_ID,
+            now=NOW + timedelta(seconds=10),
+            limit=1,
+            window_seconds=60,
+        )
+        == 50
+    )
 
 
 # --- Private storage ---------------------------------------------------------

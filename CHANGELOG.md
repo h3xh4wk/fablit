@@ -28,6 +28,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **SPEC-044 follow-up — Per-learner rate limit for personalised practice generation**: `POST /practice/request` now enforces a bounded, per-learner request-rate limit before invoking the AI provider.
+  - **Rolling window & configuration:** defaults to `5` generation attempts per learner per `3600`-second (1-hour) rolling window, configurable via `FABLIT_LEARNER_PRACTICE_RATE_LIMIT` (`1`–`100`) and `FABLIT_LEARNER_PRACTICE_RATE_WINDOW_SECONDS` (`1`–`86400`).
+  - **Shared across App Engine instances:** `GeneratedPracticeRepository.reserve_generation_slot(...)` is implemented both in `InMemoryGeneratedPracticeRepository` (local/tests) and transactionally in `DatastoreGeneratedPracticeRepository` under kind `GeneratedPracticeRateLimit` in the `learner-practices` namespace, so rate-limit state is shared across instances without relying on in-process memory.
+  - **Idempotent retries & provider suppression:** idempotent re-submissions of an already persisted composer token return the existing `GeneratedPracticeRecord` before checking or consuming a rate-limit slot. Once the limit is reached, new generation requests raise `LearnerPracticeRateLimitError` before calling `LearnerPracticeGenerator`, and the web route responds with HTTP `429 Too Many Requests`, a `Retry-After` header, preserved form inputs, and calm, non-evaluative learner copy.
+  - See issue [#177](https://github.com/h3xh4wk/fablit/issues/177).
+
 - **SPEC-044 — Private story-linked responses**: every Fashion & Design Pulse story with a "What to try" prompt now offers a keyboard-accessible **Try this** action, opening a short private composer on the story card itself.
   - **Private capture, not assessment:** a saved response keeps the learner's words together with the story identity, headline, source name, canonical URL, prompt, and UTC save time. Saving never invokes an AI provider, evaluates, scores, or grades the response, and never creates a practice completion.
   - **Bounded and retry-safe:** text is trimmed and limited to 2,000 characters; empty or over-long input is refused with actionable copy and the draft stays in the form. A hidden composer token derives a stable response identity, so a double submit or explicit retry returns the existing record instead of creating a duplicate.

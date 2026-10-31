@@ -23,9 +23,12 @@ from fablit.application.errors import (
     GeneratedPracticeValidationError,
     InvalidLearnerPracticeRequestError,
     LearnerPracticeGenerationError,
+    LearnerPracticeRateLimitError,
 )
 from fablit.application.learner_practice import (
     CHALLENGE_LABELS,
+    DEFAULT_LEARNER_PRACTICE_RATE_LIMIT,
+    DEFAULT_LEARNER_PRACTICE_RATE_WINDOW_SECONDS,
     DEFAULT_RESPONSE_FORM,
     GENERATION_UNAVAILABLE_MESSAGE,
     MAX_REQUEST_CHARS,
@@ -73,6 +76,19 @@ def _learner_practice_generator(
 ) -> LearnerPracticeGenerator | None:
     generator: object = getattr(request.app.state, "learner_practice_generator", None)
     return generator if isinstance(generator, LearnerPracticeGenerator) else None
+
+
+def _rate_limit_settings(request: Request) -> tuple[int, int]:
+    config: object = getattr(request.app.state, "config", None)
+    limit = getattr(
+        config, "learner_practice_rate_limit", DEFAULT_LEARNER_PRACTICE_RATE_LIMIT
+    )
+    window = getattr(
+        config,
+        "learner_practice_rate_window_seconds",
+        DEFAULT_LEARNER_PRACTICE_RATE_WINDOW_SECONDS,
+    )
+    return int(limit), int(window)
 
 
 def _error_response(
@@ -177,6 +193,7 @@ def _render_request(
     practice: Any,
     *,
     status_code: int = 200,
+    headers: dict[str, str] | None = None,
     token: str | None = None,
     request_text: str = "",
     story_context: dict[str, str] | None = None,
@@ -208,6 +225,7 @@ def _render_request(
         "practice_request.html",
         {"view": view},
         status_code=status_code,
+        headers=headers,
     )
 
 
@@ -329,12 +347,37 @@ async def submit_practice_request(
         if practice_request.include_history
         else HistoryContext()
     )
+    rate_limit, rate_window_seconds = _rate_limit_settings(request)
     try:
         record = generate_private_practice(
             repository,
             generator,
             request=practice_request,
             history=history,
+            now=practice_request.created_at,
+            rate_limit=rate_limit,
+            rate_window_seconds=rate_window_seconds,
+        )
+    except LearnerPracticeRateLimitError as exc:
+        headers = (
+            {"Retry-After": str(exc.retry_after_seconds)}
+            if exc.retry_after_seconds > 0
+            else None
+        )
+        return _render_request(
+            request,
+            practice,
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            headers=headers,
+            token=request_token,
+            request_text=request_text,
+            area=practice_area,
+            challenge=challenge,
+            response_form=response_form,
+            examination_context=examination_context,
+            include_history=opted_in,
+            error=str(exc),
+            is_available=True,
         )
     except GeneratedPracticeValidationError as exc:
         return _render_request(

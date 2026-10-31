@@ -7,7 +7,7 @@ learner who requested the practice.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -23,6 +23,7 @@ from fablit.application.store import PracticeContentContract
 from fablit.platform.datastore_learner_practice_repository import (
     DEFAULT_GENERATED_PRACTICE_NAMESPACE,
     GENERATED_PRACTICE_KIND,
+    GENERATED_PRACTICE_RATE_LIMIT_KIND,
     DatastoreGeneratedPracticeRepository,
     deserialize_generated_practice,
     serialize_generated_practice,
@@ -275,3 +276,102 @@ def test_datetimes_are_normalised_to_utc() -> None:
     restored = deserialize_generated_practice(serialized)
 
     assert restored.created_at.tzinfo is UTC
+
+
+def test_rate_limit_state_is_shared_across_repository_instances() -> None:
+    client = FakeDatastoreClient()
+    instance_a = DatastoreGeneratedPracticeRepository(client)
+    instance_b = DatastoreGeneratedPracticeRepository(client)
+
+    assert (
+        instance_a.reserve_generation_slot(
+            LEARNER, now=NOW, limit=2, window_seconds=3600
+        )
+        is None
+    )
+    assert (
+        instance_b.reserve_generation_slot(
+            LEARNER,
+            now=NOW + timedelta(minutes=10),
+            limit=2,
+            window_seconds=3600,
+        )
+        is None
+    )
+
+    # Third request within the window on either instance is blocked.
+    retry_after = instance_a.reserve_generation_slot(
+        LEARNER,
+        now=NOW + timedelta(minutes=15),
+        limit=2,
+        window_seconds=3600,
+    )
+    assert retry_after == 2700
+
+    # Another learner is unaffected.
+    assert (
+        instance_b.reserve_generation_slot(
+            uuid4(),
+            now=NOW + timedelta(minutes=15),
+            limit=2,
+            window_seconds=3600,
+        )
+        is None
+    )
+
+    # Once the first slot expires, a new request is allowed and prunes old entries.
+    assert (
+        instance_b.reserve_generation_slot(
+            LEARNER,
+            now=NOW + timedelta(seconds=3600),
+            limit=2,
+            window_seconds=3600,
+        )
+        is None
+    )
+    entity = client.get(
+        client.key(
+            GENERATED_PRACTICE_RATE_LIMIT_KIND,
+            str(LEARNER),
+            namespace=DEFAULT_GENERATED_PRACTICE_NAMESPACE,
+        )
+    )
+    assert entity is not None
+    assert entity["requested_at"] == [
+        NOW + timedelta(minutes=10),
+        NOW + timedelta(seconds=3600),
+    ]
+    assert set(entity.exclude_from_indexes) == {"requested_at", "updated_at"}
+
+
+def test_rate_limit_works_without_client_transaction_method() -> None:
+    class NonTransactionalClient(FakeDatastoreClient):
+        transaction = None  # type: ignore[assignment]
+
+    repository = DatastoreGeneratedPracticeRepository(NonTransactionalClient())
+
+    assert (
+        repository.reserve_generation_slot(LEARNER, now=NOW, limit=1, window_seconds=60)
+        is None
+    )
+    assert (
+        repository.reserve_generation_slot(
+            LEARNER,
+            now=NOW + timedelta(seconds=20),
+            limit=1,
+            window_seconds=60,
+        )
+        == 40
+    )
+
+
+def test_rate_limit_datastore_failure_raises_persistence_error() -> None:
+    client = FakeDatastoreClient()
+    repository = DatastoreGeneratedPracticeRepository(client)
+    client.fail_next_put = True
+
+    with pytest.raises(PersistenceError):
+        repository.reserve_generation_slot(LEARNER, now=NOW)
+
+    with pytest.raises(ValueError, match="learner_id"):
+        repository.reserve_generation_slot("not-a-uuid", now=NOW)  # type: ignore[arg-type]
