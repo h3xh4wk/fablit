@@ -426,3 +426,74 @@ def test_saving_a_story_response_does_not_call_an_ai_provider() -> None:
     )
 
     assert saved.status_code == 200
+
+
+# --- Submission progress and duplicate prevention ----------------------------
+
+
+def test_story_response_form_announces_progress_and_blocks_duplicate_requests() -> None:
+    """Submitting a story response disables the button, swaps to an in-progress
+    label, and exposes a polite status region without fabricated percentages."""
+    client, app = _client()
+    story = make_story()
+    _save_story(app, story)
+
+    feed = client.get("/pulse")
+
+    assert feed.status_code == 200
+    form_match = re.search(
+        rf'<form[^>]*action="/pulse/stories/{re.escape(str(story.story_id))}/responses"[^>]*>(.*?)</form>',
+        feed.text,
+        re.DOTALL,
+    )
+    assert form_match is not None
+    form_tag = form_match.group(0).split(">", 1)[0]
+    form_body = form_match.group(1)
+
+    assert 'hx-disabled-elt="find button"' in form_tag
+    assert 'hx-sync="this:drop"' in form_tag
+    assert "authoring-generate__idle" in form_body
+    assert "Save response" in form_body
+    assert "authoring-generate__progress" in form_body
+    assert "Saving response…" in form_body
+
+    indicator = re.search(
+        r'<span[^>]*class="[^"]*htmx-indicator[^"]*loading-indicator[^"]*"[^>]*>'
+        r"(.*?)</span>",
+        form_body,
+        re.DOTALL,
+    )
+    assert indicator is not None
+    assert 'role="status"' in indicator.group(0)
+    assert 'aria-live="polite"' in indicator.group(0)
+    assert "%" not in indicator.group(1)
+
+
+def test_failed_story_response_returns_submit_button_in_idle_enabled_state() -> None:
+    """When saving a story response fails validation, the re-rendered form
+    leaves the submit button enabled and out of the in-progress state."""
+    client, app = _client()
+    story = make_story()
+    _save_story(app, story)
+
+    feed = client.get("/pulse")
+    failed = client.post(
+        f"/pulse/stories/{story.story_id}/responses",
+        data={
+            "response_text": "   ",
+            "request_id": _response_token(feed.text),
+        },
+        follow_redirects=False,
+    )
+
+    assert failed.status_code == 400
+    assert "htmx-request" not in failed.text
+    submit_button = re.search(
+        r'<button[^>]*type="submit"[^>]*>.*?</button>',
+        failed.text,
+        re.DOTALL,
+    )
+    assert submit_button is not None
+    button_open = submit_button.group(0).split(">", 1)[0]
+    assert "disabled" not in button_open
+    assert "Save response" in submit_button.group(0)

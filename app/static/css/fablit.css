@@ -1836,6 +1836,10 @@ ol {
   margin-top: var(--space-3);
 }
 
+.story-response__form .form-actions {
+  margin: 0;
+}
+
 .story-response__label {
   font-size: var(--text-small);
   font-weight: 600;
