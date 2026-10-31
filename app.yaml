@@ -50,6 +50,10 @@ env_variables:
   # Private learner-requested generated practices (SPEC-044).
   # Use datastore on App Engine so requested practices are durable across instances.
   FABLIT_GENERATED_PRACTICE_REPOSITORY: "datastore"
+  # Optional per-learner rate limit for practice requests (SPEC-044 / Issue #177).
+  # Shared across App Engine instances in the learner-practices Datastore namespace.
+  # FABLIT_LEARNER_PRACTICE_RATE_LIMIT: "5"
+  # FABLIT_LEARNER_PRACTICE_RATE_WINDOW_SECONDS: "3600"
   # Approved news-source allowlist (SPEC-041). Defaults to The Guardian's
   # Fashion and Art & Design RSS feeds; override to pin reviewed publishers.
   # FABLIT_NEWS_SOURCES: '[{"name":"The Guardian — Fashion","feed_url":"https://www.theguardian.com/fashion/rss","site_url":"https://www.theguardian.com"}]'

@@ -39,6 +39,19 @@ class LearnerPracticeGenerationError(ApplicationError):
     """Raised when a learner-requested practice cannot be generated."""
 
 
+class LearnerPracticeRateLimitError(ApplicationError):
+    """Raised when a learner reaches the practice-generation rate limit (SPEC-044)."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        retry_after_seconds: int = 0,
+    ) -> None:
+        super().__init__(message)
+        self.retry_after_seconds = max(0, retry_after_seconds)
+
+
 class GeneratedPracticeValidationError(ApplicationError):
     """Raised when generated practice output fails the quality boundary."""
 

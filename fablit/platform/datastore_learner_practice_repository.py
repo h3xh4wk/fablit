@@ -15,17 +15,22 @@ could not be written is never reported as generated.
 from __future__ import annotations
 
 import logging
+import math
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from contextlib import nullcontext
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
 from fablit.application.authoring import _CONTRACT_FIELDS
 from fablit.application.learner_practice import (
+    DEFAULT_LEARNER_PRACTICE_RATE_LIMIT,
+    DEFAULT_LEARNER_PRACTICE_RATE_WINDOW_SECONDS,
     ChallengePreference,
     GeneratedPracticeRecord,
     GeneratedPracticeRepository,
     PracticeArea,
+    _normalize_rate_limit_params,
 )
 from fablit.application.persistence import PersistenceError
 from fablit.application.store import PracticeContentContract
@@ -35,6 +40,9 @@ logger = logging.getLogger(__name__)
 
 #: Datastore kind holding learner-requested private practices.
 GENERATED_PRACTICE_KIND = "GeneratedPractice"
+
+#: Datastore kind holding per-learner generation rate-limit state across instances.
+GENERATED_PRACTICE_RATE_LIMIT_KIND = "GeneratedPracticeRateLimit"
 
 #: Private requested practices live in their own namespace.
 DEFAULT_GENERATED_PRACTICE_NAMESPACE = "learner-practices"
@@ -54,6 +62,11 @@ _UNINDEXED_FIELDS = (
     "model",
     "generated_at",
     "examination_context",
+)
+
+_RATE_LIMIT_UNINDEXED_FIELDS = (
+    "requested_at",
+    "updated_at",
 )
 
 
@@ -230,9 +243,84 @@ class DatastoreGeneratedPracticeRepository(GeneratedPracticeRepository):
             )
         )
 
+    def reserve_generation_slot(
+        self,
+        learner_id: UUID,
+        *,
+        now: datetime,
+        limit: int = DEFAULT_LEARNER_PRACTICE_RATE_LIMIT,
+        window_seconds: int = DEFAULT_LEARNER_PRACTICE_RATE_WINDOW_SECONDS,
+    ) -> int | None:
+        if not isinstance(learner_id, UUID):
+            raise ValueError("rate limit learner_id must be a UUID")
+        current, max_requests, window = _normalize_rate_limit_params(
+            now, limit=limit, window_seconds=window_seconds
+        )
+        window_start = current - timedelta(seconds=window)
+        try:
+            with self._transaction() as transaction:
+                key = self._rate_limit_key(learner_id)
+                entity = self._read(transaction, key)
+                raw_timestamps = (
+                    entity.get("requested_at", ()) if entity is not None else ()
+                )
+                active = sorted(
+                    ts
+                    for item in raw_timestamps
+                    if (ts := _as_utc(item)) > window_start
+                )
+                if len(active) >= max_requests:
+                    unlock_at = active[-max_requests] + timedelta(seconds=window)
+                    return max(1, math.ceil((unlock_at - current).total_seconds()))
+                active.append(current)
+                rate_entity = self._client.entity(
+                    key, exclude_from_indexes=_RATE_LIMIT_UNINDEXED_FIELDS
+                )
+                rate_entity.update(
+                    {
+                        "learner_id": str(learner_id),
+                        "requested_at": active,
+                        "updated_at": current,
+                    }
+                )
+                self._write(rate_entity, transaction)
+                return None
+        except Exception as exc:
+            logger.exception(
+                "Failed to reserve generation slot",
+                extra={"learner_id": str(learner_id)},
+            )
+            raise PersistenceError(
+                f"Failed to check generation rate limit for learner {learner_id}: {exc}"
+            ) from exc
+
+    def _transaction(self) -> Any:
+        transaction = getattr(self._client, "transaction", None)
+        return transaction() if callable(transaction) else nullcontext(None)
+
+    def _read(self, transaction: Any, key: Any) -> Any:
+        getter = getattr(transaction, "get", None)
+        if callable(getter):
+            return getter(key)
+        return self._client.get(key)
+
+    def _write(self, entity: Any, transaction: Any) -> None:
+        putter = getattr(transaction, "put", None)
+        if callable(putter):
+            putter(entity)
+            return
+        self._client.put(entity)
+
     def _key(self, practice_id: UUID) -> Any:
         return self._client.key(
             GENERATED_PRACTICE_KIND,
             str(practice_id),
+            namespace=self._namespace,
+        )
+
+    def _rate_limit_key(self, learner_id: UUID) -> Any:
+        return self._client.key(
+            GENERATED_PRACTICE_RATE_LIMIT_KIND,
+            str(learner_id),
             namespace=self._namespace,
         )

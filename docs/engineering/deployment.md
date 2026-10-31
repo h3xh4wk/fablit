@@ -144,6 +144,8 @@ All settings are managed via environment variables (`FABLIT_*`), configured in `
 | `FABLIT_PUBLISHED_PRACTICE_STORE` | `datastore` | Published learner-library practices (SPEC-035): `memory` locally, `datastore` on App Engine so published practices are shared across instances. |
 | `FABLIT_STORY_RESPONSE_REPOSITORY` | `datastore` | Private learner responses to Pulse story prompts (SPEC-044): `memory` locally, `datastore` on App Engine so responses are durable and shared across instances. |
 | `FABLIT_GENERATED_PRACTICE_REPOSITORY` | `datastore` | Private learner-requested practices (SPEC-044): `memory` locally, `datastore` on App Engine so requested practices are durable across instances. Requests also need `FABLIT_AI_PROVIDER_API_KEY`; without it the composer reports that requests are unavailable. |
+| `FABLIT_LEARNER_PRACTICE_RATE_LIMIT` | `5` | Maximum new personalised practice requests per learner within the rolling rate-limit window (SPEC-044 / Issue #177). |
+| `FABLIT_LEARNER_PRACTICE_RATE_WINDOW_SECONDS` | `3600` | Rolling rate-limit window in seconds (default 1 hour) for personalised practice requests (SPEC-044 / Issue #177). |
 | `FABLIT_SERVICE_NAME` | `fablit` | Service name tag in structured logs |
 
 ---
@@ -416,6 +418,16 @@ introduced.
   (and `FABLIT_AI_PROVIDER_MODEL`). Without a key the composition root offers
   no generator: `/practice/request` explains that new requests are unavailable
   while the practices a learner already requested stay readable.
+- Per-learner generation rate limiting (`FABLIT_LEARNER_PRACTICE_RATE_LIMIT`,
+  default `5`, per `FABLIT_LEARNER_PRACTICE_RATE_WINDOW_SECONDS`, default
+  `3600` seconds) is enforced transactionally in Datastore under kind
+  `GeneratedPracticeRateLimit` in the same `learner-practices` namespace, so
+  the limit is shared across App Engine instances without relying on in-process
+  memory. Idempotent re-submissions of an already persisted composer token
+  return the existing practice without consuming a slot or invoking the AI
+  provider; when the limit is reached, `/practice/request` returns HTTP `429
+  Too Many Requests` with `Retry-After` and preserves the learner's input
+  without calling the AI provider.
 - Generated practices are stored with the contract, request preferences, and
   provider/model provenance only — never raw provider payloads. Listing and
   retrieval are scoped by the existing anonymous learner identity.

@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 
 from app.main import create_app
 from fablit.application import (
+    FORBIDDEN_FEEDBACK_TERMS,
     ChallengePreference,
     FakeLearnerPracticeGenerator,
     InMemoryNewsRepository,
@@ -28,29 +29,32 @@ from fablit.application import (
 )
 from fablit.application.persistence import PersistenceError
 from fablit.config import load_config
+from fablit.platform.datastore_learner_practice_repository import (
+    DatastoreGeneratedPracticeRepository,
+)
+from tests.persistence.test_datastore_authoring_store import FakeDatastoreClient
 
 REQUEST_TEXT = "I want to practise noticing how colour and texture work together."
 
 
-def _app() -> FastAPI:
-    return create_app(
-        load_config(
-            overrides={
-                "environment": "testing",
-                "practice_history_repository": "memory",
-                "generated_practice_repository": "memory",
-                "story_response_repository": "memory",
-            }
-        )
-    )
+def _app(**config_overrides: Any) -> FastAPI:
+    overrides: dict[str, Any] = {
+        "environment": "testing",
+        "practice_history_repository": "memory",
+        "generated_practice_repository": "memory",
+        "story_response_repository": "memory",
+    }
+    overrides.update(config_overrides)
+    return create_app(load_config(overrides=overrides))
 
 
 def _client(
     *,
     generator: FakeLearnerPracticeGenerator | None = None,
+    **config_overrides: Any,
 ) -> tuple[TestClient, FastAPI]:
     """A client over an app with a deterministic generator injected."""
-    app = _app()
+    app = _app(**config_overrides)
     app.state.learner_practice_generator = generator or FakeLearnerPracticeGenerator()
     return TestClient(app), app
 
@@ -610,3 +614,110 @@ def test_a_malformed_story_parameter_is_ignored() -> None:
 
     assert page.status_code == 200
     assert 'name="request_text"' in page.text
+
+
+# --- Per-learner rate limiting (SPEC-044 / Issue #177) -----------------------
+
+
+def test_reaching_the_rate_limit_returns_429_preserves_inputs_and_skips_provider() -> (
+    None
+):
+    generator = FakeLearnerPracticeGenerator()
+    client, _ = _client(
+        generator=generator,
+        learner_practice_rate_limit=2,
+        learner_practice_rate_window_seconds=3600,
+    )
+
+    first_page = client.get("/practice/request")
+    first = _submit(client, first_page.text)
+    second_page = client.get("/practice/request")
+    second = _submit(client, second_page.text)
+
+    third_page = client.get("/practice/request")
+    custom_text = "I want to practise comparing two garment silhouettes."
+    limited = _submit(
+        client,
+        third_page.text,
+        request_text=custom_text,
+        examination_context="Design studio review",
+    )
+
+    assert first.status_code == 303
+    assert second.status_code == 303
+    assert limited.status_code == 429
+    assert int(limited.headers["retry-after"]) > 0
+    assert "reached the limit of 2 practice requests per hour" in limited.text
+    assert custom_text in limited.text
+    assert "Design studio review" in limited.text
+    assert len(generator.calls) == 2
+    alert_match = re.search(
+        r'role="alert">\s*<p>(.*?)</p>',
+        limited.text,
+        re.DOTALL,
+    )
+    assert alert_match is not None
+    alert_text = alert_match.group(1).lower()
+    for term in FORBIDDEN_FEEDBACK_TERMS:
+        assert term not in alert_text
+    for term in ("score", "grade", "mastery", "streak", "urgent", "hurry"):
+        assert term not in limited.text.lower()
+
+
+def test_idempotent_resubmission_still_redirects_when_learner_is_at_rate_limit() -> (
+    None
+):
+    generator = FakeLearnerPracticeGenerator()
+    client, _ = _client(
+        generator=generator,
+        learner_practice_rate_limit=1,
+        learner_practice_rate_window_seconds=3600,
+    )
+
+    page = client.get("/practice/request")
+    first = _submit(client, page.text)
+    repeated = _submit(client, page.text)
+
+    assert first.status_code == 303
+    assert repeated.status_code == 303
+    assert repeated.headers["location"] == first.headers["location"]
+    assert len(generator.calls) == 1
+
+
+def test_rate_limit_is_enforced_across_app_instances_sharing_datastore() -> None:
+    datastore_client = FakeDatastoreClient()
+    generator_a = FakeLearnerPracticeGenerator()
+    generator_b = FakeLearnerPracticeGenerator()
+    client_a, app_a = _client(
+        generator=generator_a,
+        learner_practice_rate_limit=2,
+        learner_practice_rate_window_seconds=3600,
+    )
+    client_b, app_b = _client(
+        generator=generator_b,
+        learner_practice_rate_limit=2,
+        learner_practice_rate_window_seconds=3600,
+    )
+    app_a.state.generated_practice_repository = DatastoreGeneratedPracticeRepository(
+        datastore_client
+    )
+    app_b.state.generated_practice_repository = DatastoreGeneratedPracticeRepository(
+        datastore_client
+    )
+
+    page_a = client_a.get("/practice/request")
+    for name, value in client_a.cookies.items():
+        client_b.cookies.set(name, value)
+    first = _submit(client_a, page_a.text)
+
+    page_b = client_b.get("/practice/request")
+    second = _submit(client_b, page_b.text)
+
+    page_a_again = client_a.get("/practice/request")
+    third = _submit(client_a, page_a_again.text)
+
+    assert first.status_code == 303
+    assert second.status_code == 303
+    assert third.status_code == 429
+    assert len(generator_a.calls) == 1
+    assert len(generator_b.calls) == 1
