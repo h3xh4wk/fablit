@@ -1254,7 +1254,7 @@ never sent.
 | RP-004 | Generated output is untrusted until it passes the existing practice content contract and feedback language validation; invalid output never reaches the learner and is never persisted. |
 | RP-005 | History context is opt-in, limited to the learner's own recent completed practice titles and areas, and never includes their responses, reflections, artifacts, or identity. |
 | RP-006 | A Requested Practice is never scored, graded, ranked, or used to infer ability, motivation, or future performance. |
-| RP-007 | Retrying the same request token resolves to the same stable practice identity, so a double submit or retry never creates a duplicate. |
+| RP-007 | Retrying or concurrently submitting the same request token resolves to the same stable practice identity and claims the token before calling the AI provider, so a double submit or retry never triggers duplicate generation or creates a duplicate record. |
 | RP-008 | A generation or persistence failure is reported honestly with plain language; Fablit never claims a practice was made or saved when it was not. |
 | RP-009 | Requested Practices are always self-contained: the task must be doable in one focused response with no external material the learner does not have. |
 | RP-010 | Practising a Requested Practice follows the ordinary practice journey and produces ordinary practice history under the learner's own identity. |

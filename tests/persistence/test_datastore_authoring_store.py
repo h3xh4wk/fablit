@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
+from threading import RLock
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -60,19 +61,20 @@ class FakeQuery:
         return True
 
     def fetch(self) -> list[FakeEntity]:
-        if self._client.fail_query:
-            raise RuntimeError("simulated datastore query outage")
-        results: list[FakeEntity] = []
-        for entity in self._client._store.values():
-            key = entity.key
-            if key is None or key.kind != self._kind:
-                continue
-            if key.namespace != self._namespace:
-                continue
-            if not self._matches(entity):
-                continue
-            results.append(entity)
-        return results
+        with self._client._lock:
+            if self._client.fail_query:
+                raise RuntimeError("simulated datastore query outage")
+            results: list[FakeEntity] = []
+            for entity in list(self._client._store.values()):
+                key = entity.key
+                if key is None or key.kind != self._kind:
+                    continue
+                if key.namespace != self._namespace:
+                    continue
+                if not self._matches(entity):
+                    continue
+                results.append(entity)
+            return results
 
 
 class FakeDatastoreClient:
@@ -81,6 +83,7 @@ class FakeDatastoreClient:
     def __init__(self, project: str = "test-project") -> None:
         self.project = project
         self._store: dict[tuple[str, str, str | None], FakeEntity] = {}
+        self._lock = RLock()
         self.fail_next_put = False
         self.fail_next_get = False
         self.fail_query = False
@@ -94,22 +97,25 @@ class FakeDatastoreClient:
         return FakeEntity(key, exclude_from_indexes)
 
     def get(self, key: FakeKey) -> FakeEntity | None:
-        if self.fail_next_get:
-            self.fail_next_get = False
-            raise RuntimeError("simulated datastore get outage")
-        return self._store.get(key._id())
+        with self._lock:
+            if self.fail_next_get:
+                self.fail_next_get = False
+                raise RuntimeError("simulated datastore get outage")
+            return self._store.get(key._id())
 
     def put(self, entity: FakeEntity) -> None:
-        if self.fail_next_put:
-            self.fail_next_put = False
-            raise RuntimeError("simulated datastore put outage")
-        assert_within_index_limits(entity)
-        if entity.key is None:
-            raise ValueError("Entity must have a key")
-        self._store[entity.key._id()] = entity
+        with self._lock:
+            if self.fail_next_put:
+                self.fail_next_put = False
+                raise RuntimeError("simulated datastore put outage")
+            assert_within_index_limits(entity)
+            if entity.key is None:
+                raise ValueError("Entity must have a key")
+            self._store[entity.key._id()] = entity
 
     def delete(self, key: FakeKey) -> None:
-        self._store.pop(key._id(), None)
+        with self._lock:
+            self._store.pop(key._id(), None)
 
     def query(self, kind: str, namespace: str | None = None, **_: Any) -> FakeQuery:
         return FakeQuery(self, kind, namespace or "")
@@ -117,16 +123,17 @@ class FakeDatastoreClient:
     def transaction(self) -> FakeDatastoreClient:
         """Mirror ``google.cloud.datastore.Client.transaction``.
 
-        The fake has no isolation to offer, but it is a context manager with
-        the same ``get``/``put`` surface the adapters use, so the transactional
-        call path is exercised without GCP credentials.
+        Uses a re-entrant lock so concurrent transactions across threads are
+        serialized atomically without GCP credentials.
         """
         return self
 
     def __enter__(self) -> FakeDatastoreClient:
+        self._lock.acquire()
         return self
 
     def __exit__(self, *exc_info: object) -> None:
+        self._lock.release()
         return None
 
 

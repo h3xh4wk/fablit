@@ -245,9 +245,9 @@ class PracticeApplication:
 
     def register_generated_practice(self, record: GeneratedPracticeRecord) -> None:
         """Make a just-generated practice immediately available to its learner."""
-        records = (*self._generated_practice_records.values(), record)
+        merged = {**self._generated_practice_records, record.practice_id: record}
         self._generated_practice_fingerprint = ()
-        self.apply_generated_practices(records)
+        self.apply_generated_practices(tuple(merged.values()))
 
     def get_requested_practices(self) -> tuple[RequestedPracticeSummary, ...]:
         """List this learner's private requested practices, newest first."""

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -9,6 +10,7 @@ import pytest
 
 from fablit.application.errors import InvalidStoryResponseInputError
 from fablit.application.news import NewsCategory, NewsStory
+from fablit.application.persistence import PersistenceError
 from fablit.application.story_responses import (
     EMPTY_RESPONSE_MESSAGE,
     NO_PROMPT_MESSAGE,
@@ -21,6 +23,7 @@ from fablit.application.story_responses import (
     save_story_response,
     story_response_id,
 )
+from fablit.domain import StoryResponse
 from fablit.domain.story_response import MAX_STORY_RESPONSE_CHARS
 
 NOW = datetime(2026, 10, 30, 12, 0, tzinfo=UTC)
@@ -260,3 +263,58 @@ def test_repository_returns_none_for_invalid_identities() -> None:
     assert repository.get("learner", uuid4()) is None  # type: ignore[arg-type]
     assert repository.get(uuid4(), "response") is None  # type: ignore[arg-type]
     assert repository.list_for_learner("learner") == ()  # type: ignore[arg-type]
+
+
+def test_concurrent_duplicate_story_response_saves_resolve_to_one_record() -> None:
+    repository = InMemoryStoryResponseRepository()
+    learner_id = uuid4()
+    story = make_story()
+    request_id = uuid4()
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = [
+            pool.submit(
+                save_story_response,
+                repository,
+                learner_id=learner_id,
+                story=story,
+                response_text=f"Submission attempt {index}",
+                request_id=request_id,
+                saved_at=NOW + timedelta(seconds=index),
+            )
+            for index in range(4)
+        ]
+        results = [future.result(timeout=2.0) for future in futures]
+
+    assert all(result == results[0] for result in results)
+    assert list_story_responses(repository, learner_id=learner_id) == (results[0],)
+
+
+def test_repository_rejects_colliding_id_owned_by_another_learner() -> None:
+    repository = InMemoryStoryResponseRepository()
+    learner_a = uuid4()
+    learner_b = uuid4()
+    story = make_story()
+    saved = save_story_response(
+        repository,
+        learner_id=learner_a,
+        story=story,
+        response_text="Learner A's note.",
+        request_id=uuid4(),
+        saved_at=NOW,
+    )
+    colliding = StoryResponse(
+        learner_id=learner_b,
+        story_id=story.story_id,
+        story_headline=story.headline,
+        story_source_name=story.source_name,
+        canonical_url=story.canonical_url,
+        prompt=PROMPT,
+        response_text="Learner B trying to overwrite.",
+        created_at=NOW,
+        id=saved.id,
+        request_id=uuid4(),
+    )
+
+    with pytest.raises(PersistenceError, match="belongs to another learner"):
+        repository.save(colliding)
