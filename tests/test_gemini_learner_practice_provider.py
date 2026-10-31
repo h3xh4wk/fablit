@@ -115,6 +115,7 @@ def test_adapter_satisfies_the_generation_port() -> None:
     assert isinstance(provider, LearnerPracticeGenerator)
     assert provider.provider_id == GEMINI_LEARNER_PROVIDER_ID
     assert provider.model_id == DEFAULT_GEMINI_MODEL
+    assert DEFAULT_MAX_OUTPUT_TOKENS == 4096
     assert provider.max_output_tokens == DEFAULT_MAX_OUTPUT_TOKENS
     assert provider.max_response_bytes == DEFAULT_MAX_RESPONSE_BYTES
 
@@ -529,18 +530,37 @@ def test_injected_transport_oversized_response_is_rejected_before_json_parsing(
     assert sensitive_marker not in str(caught.value)
 
 
-def test_truncated_practice_json_fails_safely_without_leaking_content() -> None:
+def test_truncated_practice_json_fails_safely_without_leaking_content(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     raw_fragment = '{"title": "Sensitive internal fragment", "description": "Truncated'
+    truncated_response = json.dumps(
+        {
+            "candidates": [
+                {
+                    "finishReason": "MAX_TOKENS",
+                    "content": {"parts": [{"text": raw_fragment}]},
+                }
+            ]
+        }
+    )
 
-    with pytest.raises(LearnerPracticeGenerationError) as caught:
-        _provider(
-            lambda _url, _body, _headers: _gemini_response(raw_fragment)
-        ).generate(_generation_request())
+    with (
+        caplog.at_level("WARNING", logger="fablit.learner.gemini"),
+        pytest.raises(LearnerPracticeGenerationError) as caught,
+    ):
+        _provider(lambda _url, _body, _headers: truncated_response).generate(
+            _generation_request()
+        )
 
     assert str(caught.value) == (
         "the practice generator is unavailable (unreadable practice)"
     )
     assert "Sensitive internal fragment" not in str(caught.value)
+    assert any(
+        getattr(record, "finish_reason", None) == "MAX_TOKENS"
+        for record in caplog.records
+    )
 
 
 # --- Composition root --------------------------------------------------------

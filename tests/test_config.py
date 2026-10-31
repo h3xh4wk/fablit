@@ -530,7 +530,7 @@ def test_learner_practice_rate_limit_defaults_and_environment_overrides(
     default_config = AppConfig.model_validate({})
     assert default_config.learner_practice_rate_limit == 5
     assert default_config.learner_practice_rate_window_seconds == 3600
-    assert default_config.learner_practice_max_output_tokens == 1024
+    assert default_config.learner_practice_max_output_tokens == 4096
     assert default_config.learner_practice_max_response_bytes == 65_536
 
     monkeypatch.setenv("FABLIT_LEARNER_PRACTICE_RATE_LIMIT", "3")
