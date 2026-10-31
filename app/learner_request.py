@@ -27,6 +27,7 @@ from fablit.application.errors import (
 )
 from fablit.application.learner_practice import (
     CHALLENGE_LABELS,
+    DEFAULT_GENERATION_CLAIM_TTL_SECONDS,
     DEFAULT_LEARNER_PRACTICE_RATE_LIMIT,
     DEFAULT_LEARNER_PRACTICE_RATE_WINDOW_SECONDS,
     DEFAULT_RESPONSE_FORM,
@@ -89,6 +90,16 @@ def _rate_limit_settings(request: Request) -> tuple[int, int]:
         DEFAULT_LEARNER_PRACTICE_RATE_WINDOW_SECONDS,
     )
     return int(limit), int(window)
+
+
+def _claim_ttl_seconds(request: Request) -> int:
+    config: object = getattr(request.app.state, "config", None)
+    ttl = getattr(
+        config,
+        "learner_practice_claim_ttl_seconds",
+        DEFAULT_GENERATION_CLAIM_TTL_SECONDS,
+    )
+    return int(ttl)
 
 
 def _error_response(
@@ -348,6 +359,7 @@ async def submit_practice_request(
         else HistoryContext()
     )
     rate_limit, rate_window_seconds = _rate_limit_settings(request)
+    claim_ttl_seconds = _claim_ttl_seconds(request)
     try:
         record = generate_private_practice(
             repository,
@@ -357,6 +369,7 @@ async def submit_practice_request(
             now=practice_request.created_at,
             rate_limit=rate_limit,
             rate_window_seconds=rate_window_seconds,
+            claim_ttl_seconds=claim_ttl_seconds,
         )
     except LearnerPracticeRateLimitError as exc:
         headers = (

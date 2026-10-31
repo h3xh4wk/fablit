@@ -530,11 +530,13 @@ def test_learner_practice_rate_limit_defaults_and_environment_overrides(
     default_config = AppConfig.model_validate({})
     assert default_config.learner_practice_rate_limit == 5
     assert default_config.learner_practice_rate_window_seconds == 3600
+    assert default_config.learner_practice_claim_ttl_seconds == 60
     assert default_config.learner_practice_max_output_tokens == 4096
     assert default_config.learner_practice_max_response_bytes == 65_536
 
     monkeypatch.setenv("FABLIT_LEARNER_PRACTICE_RATE_LIMIT", "3")
     monkeypatch.setenv("FABLIT_LEARNER_PRACTICE_RATE_WINDOW_SECONDS", "1800")
+    monkeypatch.setenv("FABLIT_LEARNER_PRACTICE_CLAIM_TTL_SECONDS", "120")
     monkeypatch.setenv("FABLIT_LEARNER_PRACTICE_MAX_OUTPUT_TOKENS", "1536")
     monkeypatch.setenv("FABLIT_LEARNER_PRACTICE_MAX_RESPONSE_BYTES", "32768")
 
@@ -542,6 +544,7 @@ def test_learner_practice_rate_limit_defaults_and_environment_overrides(
 
     assert overridden.learner_practice_rate_limit == 3
     assert overridden.learner_practice_rate_window_seconds == 1800
+    assert overridden.learner_practice_claim_ttl_seconds == 120
     assert overridden.learner_practice_max_output_tokens == 1536
     assert overridden.learner_practice_max_response_bytes == 32_768
 
@@ -553,6 +556,8 @@ def test_learner_practice_rate_limit_defaults_and_environment_overrides(
         {"learner_practice_rate_limit": 101},
         {"learner_practice_rate_window_seconds": 0},
         {"learner_practice_rate_window_seconds": 86_401},
+        {"learner_practice_claim_ttl_seconds": 4},
+        {"learner_practice_claim_ttl_seconds": 601},
         {"learner_practice_max_output_tokens": 127},
         {"learner_practice_max_output_tokens": 8193},
         {"learner_practice_max_response_bytes": 1023},

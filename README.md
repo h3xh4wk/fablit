@@ -106,6 +106,7 @@ Key settings include:
 - `FABLIT_GENERATED_PRACTICE_REPOSITORY` — private requested-practice persistence (SPEC-044): `memory` (default; in-memory for tests and local development) or `datastore` (Google Cloud Datastore for multi-instance production). Learner requests and their generation also need `FABLIT_AI_PROVIDER_API_KEY`; without it the composer explains that requests are unavailable
 - `FABLIT_LEARNER_PRACTICE_RATE_LIMIT` — maximum new personalised practice requests per learner within the rolling window (SPEC-044; default `5`, range `1`–`100`)
 - `FABLIT_LEARNER_PRACTICE_RATE_WINDOW_SECONDS` — rolling rate-limit window in seconds for personalised practice requests (SPEC-044; default `3600`, range `1`–`86400`)
+- `FABLIT_LEARNER_PRACTICE_CLAIM_TTL_SECONDS` — lease duration in seconds for in-flight personalised practice generation claims (SPEC-044; default `60`, range `5`–`600`); active generation renews its claim lease while running, and expired claims can be safely replaced if a worker crashes
 - `FABLIT_NEWS_SOURCES` — JSON allowlist of approved news sources (SPEC-041), for example `[{"name": "The Guardian — Fashion", "feed_url": "https://www.theguardian.com/fashion/rss", "site_url": "https://www.theguardian.com"}]`. Defaults to The Guardian's Fashion and Art & Design feeds; an empty list disables fetching
 - `FABLIT_NEWS_MAX_ITEMS_PER_SOURCE` — maximum stories considered per source in one refresh (default `6`)
 - `FABLIT_NEWS_FRESHNESS_DAYS` — oldest eligible publication date in days (default `14`)
