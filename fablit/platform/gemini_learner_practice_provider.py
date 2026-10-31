@@ -38,7 +38,7 @@ logger = logging.getLogger("fablit.learner.gemini")
 GEMINI_LEARNER_PROVIDER_ID: Final[str] = "google-gemini"
 DEFAULT_GEMINI_MODEL: Final[str] = "gemini-2.5-flash"
 DEFAULT_GEMINI_ENDPOINT: Final[str] = "https://generativelanguage.googleapis.com/v1beta"
-DEFAULT_MAX_OUTPUT_TOKENS: Final[int] = 1024
+DEFAULT_MAX_OUTPUT_TOKENS: Final[int] = 4096
 DEFAULT_MAX_RESPONSE_BYTES: Final[int] = 65_536
 MAX_ATTEMPTS: Final[int] = 3
 RETRY_BACKOFF_SECONDS: Final[float] = 0.5
@@ -154,10 +154,21 @@ class GeminiLearnerPracticeProvider:
         except LearnerPracticeGenerationError:
             raise
         except urllib.error.HTTPError as exc:
+            logger.warning(
+                "Gemini learner practice generation failed with HTTP error",
+                extra={"status_code": exc.code, "model": self._model},
+            )
             raise LearnerPracticeGenerationError(
                 f"{_UNAVAILABLE_MESSAGE} (status {exc.code})"
             ) from exc
         except Exception as exc:
+            logger.warning(
+                "Gemini learner practice generation failed with transport error",
+                extra={
+                    "error_type": type(exc).__name__,
+                    "model": self._model,
+                },
+            )
             raise LearnerPracticeGenerationError(_UNAVAILABLE_MESSAGE) from exc
 
         return LearnerPracticeGenerationResult(
@@ -304,12 +315,26 @@ class GeminiLearnerPracticeProvider:
             )
         text = _candidate_text(data)
         if not text:
+            logger.warning(
+                "Gemini learner practice response contained no candidate text",
+                extra={
+                    "finish_reason": _candidate_finish_reason(data),
+                    "model": self._model,
+                },
+            )
             raise LearnerPracticeGenerationError(
                 f"{_UNAVAILABLE_MESSAGE} (no practice content)"
             )
         try:
             output = json.loads(_extract_json_object(text))
         except (ValueError, TypeError) as exc:
+            logger.warning(
+                "Gemini learner practice response contained unreadable JSON",
+                extra={
+                    "finish_reason": _candidate_finish_reason(data),
+                    "model": self._model,
+                },
+            )
             raise LearnerPracticeGenerationError(
                 f"{_UNAVAILABLE_MESSAGE} (unreadable practice)"
             ) from exc
@@ -318,6 +343,17 @@ class GeminiLearnerPracticeProvider:
                 f"{_UNAVAILABLE_MESSAGE} (unexpected practice shape)"
             )
         return output
+
+
+def _candidate_finish_reason(data: Mapping[str, Any]) -> str | None:
+    candidates = data.get("candidates")
+    if not isinstance(candidates, list) or not candidates:
+        return None
+    first = candidates[0]
+    if not isinstance(first, Mapping):
+        return None
+    reason = first.get("finishReason")
+    return reason if isinstance(reason, str) else None
 
 
 def _candidate_text(data: Mapping[str, Any]) -> str:

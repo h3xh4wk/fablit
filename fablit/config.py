@@ -241,7 +241,7 @@ class AppConfig(BaseSettings):
         ),
     )
     learner_practice_max_output_tokens: int = Field(
-        1024,
+        4096,
         ge=128,
         le=8192,
         description=(
