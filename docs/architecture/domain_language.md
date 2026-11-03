@@ -1,9 +1,9 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 1.17.0
+**Version:** 1.18.0
 **Status:** Draft
-**Last Updated:** 2026-10-30
+**Last Updated:** 2026-11-03
 
 ---
 
@@ -1588,6 +1588,42 @@ Skill Labs are reusable across multiple Content Packs.
 ## DLR-008
 
 Content Packs compose learning experiences but do not define platform behaviour.
+
+---
+
+## Learning Guide Domain Model (SPEC-045)
+
+A Learning Guide is curated editorial content that helps a learner approach a
+practice through a shared guided-thinking sequence. It is optional content,
+never a gate, and it never owns learner progress.
+
+```
+Practice 1 ──── *  Learning Guide 1 ──── *  Guide Section
+                          │                      │
+                          │                      └── Guide Image (provenance)
+                          └── draft / published / archived
+```
+
+| Term | Definition |
+|------|------------|
+| Learning Guide | Versioned, authored guide content associated with one or more existing practices by stable identity |
+| Guide Section | One ordered stage of a guide: Observe, Think, Explore, Create, or Reflect |
+| Guide Stage | The shared guided-thinking sequence; a learning structure, not a visual template |
+| Guide Layout | A controlled presentation hint (hero, photo, split, comparison, quote); an unsupported hint falls back to the text-led default |
+| Guide Image | An author-selected stock image retaining provider, source, creator, attribution, licence, alt text, and caption |
+| Guide Status | Authoring/publication state — draft, published, or archived; only published guides are learner-visible |
+| Guide Version | Content version assigned on explicit publication; editing published content returns the guide to draft |
+
+### Domain Rules
+
+| ID | Rule |
+|----|------|
+| DLR-009 | A guide is optional: a learner can start or continue a practice without opening it, and a guide never owns practice progress |
+| DLR-010 | Only published guides are learner-visible; drafts and archived guides never appear beside a practice |
+| DLR-011 | Guide content is structured, versioned data; layout is a controlled hint, never executable markup |
+| DLR-012 | Section imagery requires known provenance (source, creator or attribution, alt text) before publication |
+| DLR-013 | Image search happens only during authoring; learner rendering uses persisted content and makes no image search or LLM call |
+| DLR-014 | Guide associations use stable practice identities, never titles, and creating a guide never creates a practice |
 
 ---
 

@@ -13,6 +13,19 @@
     <p class="practice__intention">🎯 {{ view.intention }}</p>
     {% endif %}
   </header>
+  {% if guide %}
+  <section class="practice__guide" aria-labelledby="guide-heading">
+    <h2 class="practice__step" id="guide-heading">Need help getting started?</h2>
+    <p class="practice__guide-copy">
+      Explore a few ways to approach this challenge in a short learning guide.
+      It is entirely optional, and your practice is waiting whenever you return.
+    </p>
+    <a class="button button--secondary"
+       href="/guides/{{ guide.id }}?practice_id={{ practice_id }}">
+      Explore a Learning Guide <span aria-hidden="true">→</span>
+    </a>
+  </section>
+  {% endif %}
   {% if view.stimulus %}
   <section class="practice__observe" aria-labelledby="observe-heading">
     <h2 class="practice__step" id="observe-heading">Observe</h2>

@@ -31,6 +31,7 @@ SUPPORTED_PRACTICE_HISTORY_REPOSITORIES = {"memory", "datastore"}
 SUPPORTED_ARTIFACT_STORAGE_BACKENDS = {"file", "gcs"}
 SUPPORTED_AUTHORING_CANDIDATE_STORES = {"memory", "datastore"}
 SUPPORTED_PUBLISHED_PRACTICE_STORES = {"memory", "datastore"}
+SUPPORTED_LEARNING_GUIDE_REPOSITORIES = {"memory", "datastore"}
 SUPPORTED_NEWS_REPOSITORIES = {"memory", "datastore"}
 SUPPORTED_NEWS_TASK_DISPATCH = {"inline", "cloud_tasks"}
 SUPPORTED_STORY_RESPONSE_REPOSITORIES = {"memory", "datastore"}
@@ -192,6 +193,15 @@ class AppConfig(BaseSettings):
             "Datastore, for the deployed App Engine environment). Holds the "
             "explicitly published learner-library practices derived from "
             "approved authoring candidates."
+        ),
+    )
+    learning_guide_repository: str = Field(
+        "memory",
+        description=(
+            "Learning guide repository backend (SPEC-045): 'memory' (in-memory, "
+            "for tests and local development) or 'datastore' (Google Cloud "
+            "Datastore, for the deployed App Engine environment). Holds "
+            "authored and published Learning Guides."
         ),
     )
     news_repository: str = Field(
@@ -494,6 +504,24 @@ class AppConfig(BaseSettings):
                 allowed = ", ".join(sorted(SUPPORTED_PUBLISHED_PRACTICE_STORES))
                 raise ValueError(
                     f"Unsupported published practice store '{value}'. "
+                    f"Must be one of: {allowed}."
+                )
+            return normalized
+        return str(value)
+
+    @field_validator("learning_guide_repository", mode="before")
+    def normalize_learning_guide_repository(cls, value: object) -> str:
+        """Normalize the learning guide repository; defaults to 'memory'."""
+        if value is None:
+            return "memory"
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if not normalized:
+                return "memory"
+            if normalized not in SUPPORTED_LEARNING_GUIDE_REPOSITORIES:
+                allowed = ", ".join(sorted(SUPPORTED_LEARNING_GUIDE_REPOSITORIES))
+                raise ValueError(
+                    f"Unsupported learning guide repository '{value}'. "
                     f"Must be one of: {allowed}."
                 )
             return normalized

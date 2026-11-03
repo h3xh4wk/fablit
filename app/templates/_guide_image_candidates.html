@@ -1,0 +1,40 @@
+{% if error %}
+<div class="validation-panel validation-panel--caution" role="status">
+  <p>{{ error }}</p>
+</div>
+{% endif %}
+{% if candidates %}
+<ul class="guide-authoring__candidates">
+  {% for candidate in candidates %}
+  <li class="guide-authoring__candidate">
+    <img class="guide-authoring__candidate-image"
+         src="{{ candidate.thumbnail_url }}" alt="{{ candidate.alt_text }}"
+         loading="lazy" referrerpolicy="no-referrer">
+    <p class="form-hint">
+      {% if candidate.photographer %}{{ candidate.photographer }}{% endif %}
+      {% if candidate.source %}· {{ candidate.source }}{% endif %}
+      {% if candidate.attribution %}<br>{{ candidate.attribution }}{% endif %}
+      <br><a href="{{ candidate.source_url }}" target="_blank"
+             rel="noopener noreferrer nofollow">View source</a>
+    </p>
+    <form method="post"
+          action="/authoring/guides/{{ guide.id }}/sections/{{ section.id }}/images">
+      <input type="hidden" name="photo_id" value="{{ candidate.photo_id }}">
+      <div class="form-field">
+        <label class="form-label" for="alt-{{ section.id }}-{{ loop.index }}">Alt text</label>
+        <input class="form-control" id="alt-{{ section.id }}-{{ loop.index }}"
+               name="alt_text" value="{{ candidate.alt_text }}" required>
+      </div>
+      <div class="form-field">
+        <label class="form-label" for="caption-{{ section.id }}-{{ loop.index }}">Caption (optional)</label>
+        <input class="form-control" id="caption-{{ section.id }}-{{ loop.index }}"
+               name="caption">
+      </div>
+      <p class="form-actions">
+        <button type="submit" class="button button--secondary">Use this image</button>
+      </p>
+    </form>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}

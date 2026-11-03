@@ -1,9 +1,9 @@
 # SPEC-045: Learning Guides — Guided Thinking for Creative Practice
 
-**Status:** Proposed  
-**Owner:** Fablit product  
-**Related architecture:** ARCH-001, SEC-001  
-**Related specifications:** SPEC-032, SPEC-043, SPEC-044  
+**Status:** Proposed
+**Owner:** Fablit product
+**Related architecture:** ARCH-001, SEC-001
+**Related specifications:** SPEC-032, SPEC-043, SPEC-044
 **Related capabilities:** Existing practice authoring, provider-neutral image-search port, Pexafy image-search adapter
 
 ## 1. Overview and goal
@@ -94,7 +94,7 @@ Opening or leaving a guide must not reset, submit, or otherwise alter an in-prog
 
 ### 5.4 Example learning guide
 
-**Associated practice:**  
+**Associated practice:**
 *Observe the surrounding environment and consider how photography could be used to highlight unseen human effort.*
 
 **Observe — Look beyond what is immediately visible**

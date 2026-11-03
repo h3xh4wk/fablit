@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}{{ guide.title }}{% endblock %}
+{% block content %}
+<article class="guide">
+  {% if preview %}
+  <div class="validation-panel validation-panel--caution" role="status">
+    <p><strong>Draft preview.</strong> This is how learners will see the guide.
+    It is not published, and only you can open this page.</p>
+  </div>
+  {% endif %}
+
+  <header class="guide__header">
+    <p class="guide__eyebrow">{{ guide.practice_area or "Learning guide" }}</p>
+    <h1 class="guide__title">{{ guide.title }}</h1>
+    <p class="guide__summary">{{ guide.summary }}</p>
+    {% if guide.intended_learner_context %}
+    <p class="guide__context">{{ guide.intended_learner_context }}</p>
+    {% endif %}
+  </header>
+
+  {% if guide.sections %}
+  <nav class="guide__toc" aria-label="Guide sections">
+    <p class="guide__toc-label">In this guide</p>
+    <ol class="guide__toc-list">
+      {% for section in guide.sections %}
+      <li class="guide__toc-item">
+        <a class="guide__toc-link" href="#section-{{ section.id }}">
+          <span class="guide__toc-stage">{{ section.stage_label }}</span>
+          {{ section.heading }}
+        </a>
+      </li>
+      {% endfor %}
+    </ol>
+  </nav>
+  {% endif %}
+
+  {% for section in guide.sections %}
+  <section class="guide-section guide-section--{{ section.resolved_layout.value }}"
+           id="section-{{ section.id }}"
+           aria-labelledby="section-heading-{{ section.id }}">
+    <p class="guide-section__stage">
+      <span class="guide-section__number" aria-hidden="true">{{ "%02d"|format(loop.index) }}</span>
+      {{ section.stage_label }}
+    </p>
+    <h2 class="guide-section__heading" id="section-heading-{{ section.id }}">{{ section.heading }}</h2>
+    <p class="guide-section__body">{{ section.body }}</p>
+
+    {% if section.questions %}
+    <div class="guide-section__block">
+      <h3 class="guide-section__subheading">Questions to sit with</h3>
+      <ul class="guide-section__list guide-section__list--questions">
+        {% for question in section.questions %}<li>{{ question }}</li>{% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    {% if section.examples %}
+    <div class="guide-section__block">
+      <h3 class="guide-section__subheading">Possibilities to explore</h3>
+      <ul class="guide-section__list guide-section__list--examples">
+        {% for example in section.examples %}<li>{{ example }}</li>{% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    {% if section.images %}
+    <div class="guide-section__figures">
+      {% for image in section.images %}
+      <figure class="guide-figure">
+        <img class="guide-figure__image" src="{{ image.display_url }}"
+             alt="{{ image.alt_text }}" loading="lazy" referrerpolicy="no-referrer">
+        <figcaption class="guide-figure__caption">
+          {% if image.caption %}<span class="guide-figure__text">{{ image.caption }}</span>{% endif %}
+          <span class="guide-figure__credit">
+            Illustrative stock image{% if image.creator %} by {{ image.creator }}{% endif %}{% if image.source %} on {{ image.source }}{% endif %}.
+            {% if image.attribution %}{{ image.attribution }}.{% endif %}
+            <a href="{{ image.source_url }}" target="_blank"
+               rel="noopener noreferrer nofollow">View source</a>
+          </span>
+        </figcaption>
+      </figure>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if section.reflection_prompt %}
+    <blockquote class="guide-section__reflection">
+      <p>{{ section.reflection_prompt }}</p>
+    </blockquote>
+    {% endif %}
+  </section>
+  {% endfor %}
+
+  <footer class="guide__footer">
+    {% if return_practice %}
+    <p class="guide__closing">
+      Keep your own observations and choices in mind — the practice is yours to
+      take in your own direction.
+    </p>
+    <a class="button"
+       href="/guides/{{ guide.id }}/return-to-practice?practice_id={{ return_practice }}">
+      Return to the practice <span aria-hidden="true">→</span>
+    </a>
+    {% endif %}
+    {% if preview %}
+    <p class="form-hint"><a href="/authoring/guides/{{ guide.id }}">Back to the guide editor</a></p>
+    {% endif %}
+  </footer>
+</article>
+{% endblock %}

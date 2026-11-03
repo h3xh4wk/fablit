@@ -41,6 +41,10 @@ env_variables:
   # Published practice store for the learner library (SPEC-035).
   # Use datastore on App Engine so published practices are shared across instances.
   FABLIT_PUBLISHED_PRACTICE_STORE: "datastore"
+  # Learning Guide store (SPEC-045).
+  # Use datastore on App Engine so authored and published guides are shared
+  # across instances.
+  FABLIT_LEARNING_GUIDE_REPOSITORY: "datastore"
   # Curated Fashion & Design Pulse store (SPEC-041).
   # Use datastore on App Engine so the learner feed is shared across instances.
   FABLIT_NEWS_REPOSITORY: "datastore"
