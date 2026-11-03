@@ -31,6 +31,18 @@ class InvalidStoryResponseInputError(ApplicationError):
     """Raised when a story-linked response cannot be accepted (SPEC-044)."""
 
 
+class InvalidLearningGuideError(ApplicationError):
+    """Raised when guide content or a guide edit is not representable (SPEC-045)."""
+
+
+class LearningGuideNotFoundError(ApplicationError):
+    """Raised when a requested learning guide does not exist (SPEC-045)."""
+
+
+class LearningGuideNotPublishableError(ApplicationError):
+    """Raised when a guide fails the publication gate (SPEC-045 §9.3)."""
+
+
 class InvalidLearnerPracticeRequestError(ApplicationError):
     """Raised when a learner's practice request is invalid (SPEC-044)."""
 

@@ -1,9 +1,9 @@
 # Fablit Architecture Blueprint
 
 **Document ID:** AB-001
-**Version:** 0.21.0
+**Version:** 0.22.0
 **Status:** Draft
-**Last Updated:** 2026-10-28
+**Last Updated:** 2026-11-03
 
 ---
 
@@ -1206,6 +1206,45 @@ Content Packs
 
 Learners
 ```
+
+## Learning Guides (SPEC-045)
+
+Learning Guides are optional editorial content that helps a learner approach a
+practice through Observe → Think → Explore → Create, with an optional
+reflection stage. They are curated by authorised authors and never prescribe a
+single correct creative outcome.
+
+```
+Learner ── GET /guides/{id} ── Published Learning Guide ── Guide Section* ── Guide Image*
+                                      │
+                                      └── associated practice ids (stable identities)
+
+Author ── /authoring/guides (SEC-001) ── LearningGuideRepository ── Datastore / memory
+                                      └── ImageSearchProvider (existing Pexafy adapter)
+```
+
+- **Not a learning-domain model:** guides are authored content and workflow
+  state (draft / published / archived), never learner progress.
+  `fablit/application/learning_guides.py` owns the content model, the
+  publication gate, the lifecycle, and the repository port.
+- **Structured content, controlled presentation:** sections and layout hints
+  are data. An unsupported hint falls back to the text-led default; no
+  executable markup is stored or rendered.
+- **Existing image boundary:** section image search reuses
+  `fablit/application/image_search.py` and the configured Pexafy adapter,
+  including provenance, bounded results, and safe failure. No parallel
+  provider, media service, or image abstraction is introduced.
+- **Runtime boundary:** learner pages render persisted content only — no image
+  search and no LLM call. Publication refuses incomplete sections and
+  inadequately attributed imagery, while text-only sections remain
+  first-class.
+- **Reuse, not a CMS:** authoring extends the SEC-001-protected authoring
+  experience and the existing Datastore conventions
+  (`fablit/platform/datastore_learning_guide_store.py`), with guide content in
+  its own namespace.
+- **Optional by design:** a practice offers an entry point only when a
+  published guide is associated, and opening or leaving a guide never alters
+  an in-progress practice.
 
 ---
 

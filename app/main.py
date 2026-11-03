@@ -37,6 +37,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.authoring import AuthoringCandidateStore
 from app.authoring import router as authoring_router
+from app.guides import router as guides_router
 from app.learner_request import router as learner_request_router
 from app.learner_session import (
     DemoContent,
@@ -60,6 +61,7 @@ from fablit.application import (
     ImageSearchProvider,
     InlineNewsCurationTaskDispatcher,
     InMemoryGeneratedPracticeRepository,
+    InMemoryLearningGuideRepository,
     InMemoryNewsCurationJobRepository,
     InMemoryNewsRepository,
     InMemoryPublishedPracticeStore,
@@ -67,6 +69,8 @@ from fablit.application import (
     InvalidPracticeResponseError,
     InvalidReflectionResponseError,
     LearnerPracticeGenerator,
+    LearningGuide,
+    LearningGuideRepository,
     NewsCurationJobRepository,
     NewsCurationJobService,
     NewsCurationTaskDispatcher,
@@ -653,6 +657,59 @@ def _build_published_practice_store(
     return InMemoryPublishedPracticeStore()
 
 
+def _build_learning_guide_repository(
+    app_config: AppConfig,
+) -> LearningGuideRepository:
+    """Build the learning guide repository from configuration (SPEC-045 §7).
+
+    Defaults to the in-memory repository for local development and tests. In
+    production on App Engine, Google Cloud Datastore keeps authored and
+    published guides consistent across application instances.
+    """
+    if app_config.learning_guide_repository == "datastore":
+        try:
+            from google.cloud import datastore
+
+            from fablit.platform.datastore_learning_guide_store import (
+                DatastoreLearningGuideStore,
+            )
+
+            client: datastore.Client = datastore.Client()
+            logger.info(
+                "initialized Datastore learning guide store",
+                extra={"project_id": client.project},
+            )
+            return DatastoreLearningGuideStore(client)
+        except Exception as e:
+            logger.exception("failed to initialize datastore learning guide store")
+            raise RuntimeError(
+                "Could not initialize Google Cloud Datastore for learning "
+                "guides. Check GCP configuration and credentials."
+            ) from e
+
+    logger.info("initialized in-memory learning guide repository")
+    return InMemoryLearningGuideRepository()
+
+
+def _published_guide_for(request: Request, activity_id: UUID) -> LearningGuide | None:
+    """Resolve the optional published guide for a practice (SPEC-045 §5.1).
+
+    A guide is an invitation, never a gate: an unavailable store or a storage
+    failure degrades to "no guide" so the practice journey is unaffected.
+    """
+    repository = getattr(request.app.state, "learning_guide_repository", None)
+    if not isinstance(repository, LearningGuideRepository):
+        return None
+    try:
+        guides = repository.published_for_practice(activity_id)
+    except PersistenceError:
+        logger.exception(
+            "learning guide lookup failed; practice continues without a guide"
+        )
+        return None
+    return guides[0] if guides else None
+
+
 def _activity_id(value: str) -> UUID:
     """Parse an activity identity, raising ActivityNotFoundError when invalid."""
     try:
@@ -911,6 +968,7 @@ def create_app(config: AppConfig) -> FastAPI:
         app.state.authoring_image_search = _build_image_search(config)
         app.state.authoring_candidate_store = _build_authoring_candidate_store(config)
         app.state.published_practice_store = _build_published_practice_store(config)
+        app.state.learning_guide_repository = _build_learning_guide_repository(config)
         app.state.news_repository = _build_news_repository(config)
         app.state.story_response_repository = _build_story_response_repository(config)
         app.state.generated_practice_repository = _build_generated_practice_repository(
@@ -944,6 +1002,7 @@ def create_app(config: AppConfig) -> FastAPI:
         app.state.authoring_image_search = None
         app.state.authoring_candidate_store = None
         app.state.published_practice_store = None
+        app.state.learning_guide_repository = None
         app.state.news_repository = None
         app.state.story_response_repository = None
         app.state.generated_practice_repository = None
@@ -975,6 +1034,7 @@ def create_app(config: AppConfig) -> FastAPI:
     app.state.authoring_image_search = _build_image_search(config)
     app.state.authoring_candidate_store = _build_authoring_candidate_store(config)
     app.state.published_practice_store = _build_published_practice_store(config)
+    app.state.learning_guide_repository = _build_learning_guide_repository(config)
     app.state.news_repository = _build_news_repository(config)
     app.state.story_response_repository = _build_story_response_repository(config)
     app.state.generated_practice_repository = _build_generated_practice_repository(
@@ -1013,6 +1073,8 @@ def create_app(config: AppConfig) -> FastAPI:
     app.add_exception_handler(Exception, _unhandled_exception_handler)
     # SEC-001: internal authoring access and AI-generation routes
     app.include_router(authoring_router)
+    # SPEC-045: Learning Guide authoring and the learner-facing guide page
+    app.include_router(guides_router)
     # SPEC-041: learner news feed and the protected on-demand curation action
     app.include_router(news_router)
     # SPEC-044: learner-requested private practice generation
@@ -1099,10 +1161,19 @@ def create_app(config: AppConfig) -> FastAPI:
         """Render the practice activity page (UC-002)."""
         practice = practice_for_request(request)
         try:
-            view = practice.start_practice(_activity_id(activity_id))
+            activity = _activity_id(activity_id)
+            view = practice.start_practice(activity)
         except ActivityNotFoundError:
             return _error_response(request, "Activity not found.")
-        return templates.TemplateResponse(request, "practice.html", {"view": view})
+        return templates.TemplateResponse(
+            request,
+            "practice.html",
+            {
+                "view": view,
+                "guide": _published_guide_for(request, activity),
+                "practice_id": activity,
+            },
+        )
 
     @app.post("/activities/{activity_id}/submit", response_class=HTMLResponse)
     async def submit_response(

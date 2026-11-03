@@ -1938,3 +1938,394 @@ ol {
 .history__stories > p:first-of-type {
   color: var(--color-ink-muted);
 }
+
+/* --------------------------------------------------------------------------
+   Learning Guides (SPEC-045) — editorial-meets-creative-workbook.
+   Warm editorial headings, reading typography, generous whitespace, and
+   controlled layout variants. Every variant falls back to the text-led
+   presentation when the hint is unsupported.
+   -------------------------------------------------------------------------- */
+.guide {
+  max-width: 54rem;
+  margin: 0 auto;
+  padding: var(--space-8) 0 var(--space-12);
+}
+
+.guide__header {
+  padding-bottom: var(--space-6);
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.guide__eyebrow {
+  margin: 0 0 var(--space-3);
+  color: var(--color-accent);
+  font-size: var(--text-small);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.guide__title {
+  margin: 0 0 var(--space-4);
+  font-family: var(--font-display);
+  font-size: clamp(2.25rem, 1.6rem + 2.6vw, 3.5rem);
+  line-height: var(--leading-tight);
+  letter-spacing: -0.01em;
+  color: var(--color-ink);
+}
+
+.guide__summary {
+  max-width: 38rem;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.125rem, 1rem + 0.6vw, 1.375rem);
+  font-style: italic;
+  line-height: var(--leading-body);
+  color: var(--color-ink-muted);
+}
+
+.guide__context {
+  margin: var(--space-4) 0 0;
+  font-size: var(--text-small);
+  color: var(--color-ink-muted);
+}
+
+.guide__toc {
+  margin: var(--space-8) 0;
+  padding: var(--space-5);
+  background: var(--color-surface);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-lg);
+}
+
+.guide__toc-label {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-small);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+}
+
+.guide__toc-list {
+  margin: 0;
+  padding-left: var(--space-5);
+}
+
+.guide__toc-item {
+  margin-bottom: var(--space-2);
+}
+
+.guide__toc-link {
+  color: var(--color-ink);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.guide__toc-link:hover {
+  color: var(--color-accent-hover);
+}
+
+.guide__toc-stage {
+  display: inline-block;
+  min-width: 5.5rem;
+  color: var(--color-ink-muted);
+  font-size: var(--text-small);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.guide__toc-link:focus-visible,
+.guide-figure__credit a:focus-visible,
+.guide-section a:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.guide-section {
+  margin: 0 0 var(--space-10);
+  padding-bottom: var(--space-8);
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.guide-section:last-of-type {
+  border-bottom: 0;
+}
+
+.guide-section__stage {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-small);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.guide-section__number {
+  font-family: var(--font-display);
+  font-size: var(--text-title);
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--color-rule);
+}
+
+.guide-section__heading {
+  margin: 0 0 var(--space-4);
+  font-family: var(--font-display);
+  font-size: clamp(1.75rem, 1.4rem + 1.4vw, 2.5rem);
+  font-weight: 400;
+  line-height: var(--leading-tight);
+  color: var(--color-ink);
+}
+
+.guide-section__body {
+  max-width: 38rem;
+  margin: 0 0 var(--space-5);
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  color: var(--color-ink);
+}
+
+.guide-section__block {
+  max-width: 38rem;
+  margin: var(--space-6) 0;
+}
+
+.guide-section__subheading {
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-body);
+  font-size: var(--text-small);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+}
+
+.guide-section__list {
+  margin: 0;
+  padding-left: var(--space-5);
+  line-height: var(--leading-body);
+}
+
+.guide-section__list li {
+  margin-bottom: var(--space-2);
+}
+
+.guide-section__list--questions li {
+  font-family: var(--font-display);
+  font-size: 1.1875rem;
+  font-style: italic;
+}
+
+.guide-section__figures {
+  display: grid;
+  gap: var(--space-5);
+  margin: var(--space-6) 0;
+}
+
+.guide-figure {
+  margin: 0;
+}
+
+.guide-figure__image {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-md);
+  background: var(--color-accent-soft);
+}
+
+.guide-figure__caption {
+  display: block;
+  margin-top: var(--space-3);
+  font-size: var(--text-small);
+  line-height: 1.5;
+  color: var(--color-ink-muted);
+}
+
+.guide-figure__text {
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--color-ink);
+}
+
+.guide-figure__credit a {
+  color: var(--color-accent);
+}
+
+.guide-section__reflection {
+  max-width: 38rem;
+  margin: var(--space-6) 0 0;
+  padding: var(--space-5) var(--space-6);
+  background: var(--color-surface);
+  border-left: 3px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+}
+
+.guide-section__reflection p {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.1875rem;
+  font-style: italic;
+  line-height: var(--leading-body);
+}
+
+/* Layout variants: presentation only; content order never changes. */
+.guide-section--hero .guide-section__figures,
+.guide-section--photo .guide-section__figures {
+  max-width: none;
+}
+
+.guide-section--hero .guide-figure:first-child .guide-figure__image {
+  max-height: 30rem;
+  object-fit: cover;
+}
+
+.guide-section--comparison .guide-section__figures {
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  align-items: start;
+}
+
+.guide-section--quote .guide-section__body {
+  font-family: var(--font-display);
+  font-size: clamp(1.375rem, 1.2rem + 1vw, 1.875rem);
+  font-style: italic;
+}
+
+.guide-section--quote .guide-section__figures {
+  max-width: 30rem;
+}
+
+@media (min-width: 48rem) {
+  .guide-section--split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: var(--space-8);
+  }
+
+  .guide-section--split .guide-section__stage,
+  .guide-section--split .guide-section__heading,
+  .guide-section--split .guide-section__body,
+  .guide-section--split .guide-section__block,
+  .guide-section--split .guide-section__reflection {
+    grid-column: 1;
+  }
+
+  .guide-section--split .guide-section__figures {
+    grid-column: 2;
+    grid-row: 1 / span 5;
+    align-self: start;
+    margin-top: 0;
+  }
+}
+
+.guide__footer {
+  margin-top: var(--space-8);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--color-rule);
+}
+
+.guide__closing {
+  max-width: 34rem;
+  margin: 0 0 var(--space-5);
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-style: italic;
+  line-height: var(--leading-body);
+}
+
+/* Authoring surface ------------------------------------------------------- */
+.guide-authoring__practices {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.guide-authoring__sections {
+  margin: var(--space-5) 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-6);
+}
+
+.guide-authoring__section {
+  padding: var(--space-5);
+  background: var(--color-surface);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-lg);
+}
+
+.guide-authoring__section-index {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-small);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+}
+
+.guide-authoring__section-actions,
+.guide-authoring__publication {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.guide-authoring__images {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px dashed var(--color-rule);
+}
+
+.guide-authoring__images-heading {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-heading);
+}
+
+.guide-authoring__image {
+  margin: var(--space-4) 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-md);
+}
+
+.guide-authoring__image-preview,
+.guide-authoring__candidate-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+}
+
+.guide-authoring__candidates {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: var(--space-4);
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.guide-authoring__candidate {
+  padding: var(--space-3);
+  background: var(--color-bg);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-md);
+}
+
+.guide-authoring__add-section {
+  margin-top: var(--space-8);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--color-rule);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .guide *,
+  .guide-authoring * {
+    transition: none;
+  }
+}

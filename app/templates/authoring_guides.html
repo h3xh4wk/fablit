@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Learning Guides — Authoring{% endblock %}
+{% block content %}
+<article class="intention">
+  {% include "_authoring_nav.html" %}
+
+  <h1 class="display">Learning Guides</h1>
+  <p class="lede">
+    Optional editorial guides that help learners approach a practice through
+    observe, think, explore, and create.
+  </p>
+  <p class="authoring__intro">
+    A guide never blocks a practice. Only a published guide appears beside the
+    practices it is associated with, and creating a guide does not create a
+    practice.
+  </p>
+
+  {% if error %}
+  <div class="validation-panel validation-panel--error" role="alert">
+    <p>{{ error }}</p>
+  </div>
+  {% endif %}
+  {% if message %}
+  <div class="authoring-outcome" role="status"><p>{{ message }}</p></div>
+  {% endif %}
+
+  <section class="authoring-section" aria-labelledby="create-guide-heading">
+    <h2 id="create-guide-heading" class="subheading authoring-section__heading">Create a guide</h2>
+    <p class="authoring-section__intro">
+      Start with a draft. You can add sections, imagery, and practice
+      associations before publishing.
+    </p>
+    <form method="post" action="/authoring/guides">
+      <div class="form-field">
+        <label class="form-label" for="new-guide-title">Title</label>
+        <input class="form-control" id="new-guide-title" name="title"
+               placeholder="e.g. Finding stories in everyday surroundings" required>
+      </div>
+      <div class="form-field">
+        <label class="form-label" for="new-guide-area">Practice area</label>
+        <input class="form-control" id="new-guide-area" name="practice_area"
+               placeholder="e.g. Observation and photography">
+        <p class="form-hint">Optional for a draft.</p>
+      </div>
+      <p class="form-actions">
+        <button type="submit" class="button">Create draft guide</button>
+      </p>
+    </form>
+  </section>
+
+  <section class="authoring-section" aria-labelledby="guide-list-heading">
+    <h2 id="guide-list-heading" class="subheading authoring-section__heading">Guides</h2>
+    <ul class="queue">
+      {% for guide in guides %}
+      <li class="queue__item">
+        <a class="queue__link" href="/authoring/guides/{{ guide.id }}">{{ guide.title }}</a>
+        <div class="queue__meta">
+          {{ guide.status.value|capitalize }} · version {{ guide.version }} ·
+          {{ guide.sections|length }} section{{ "" if guide.sections|length == 1 else "s" }} ·
+          {{ guide.associated_practice_ids|length }} practice{{ "" if guide.associated_practice_ids|length == 1 else "s" }}
+        </div>
+      </li>
+      {% else %}
+      <li class="queue__empty">No learning guides yet.</li>
+      {% endfor %}
+    </ul>
+  </section>
+</article>
+{% endblock %}

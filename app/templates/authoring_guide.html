@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+{% block title %}{{ guide.title }} — Guide authoring{% endblock %}
+{% block content %}
+<article class="intention guide-authoring">
+  {% include "_authoring_nav.html" %}
+
+  <nav class="subnav" aria-label="Guide navigation">
+    <a href="/authoring/guides"><span aria-hidden="true">←</span> All learning guides</a>
+    <a href="/authoring/guides/{{ guide.id }}/preview">Preview learner view</a>
+  </nav>
+
+  <h1 class="display">{{ guide.title }}</h1>
+  <p class="lede">
+    A guide is an optional companion to a practice. Only a published guide
+    appears beside the practices it is associated with.
+  </p>
+  <p class="authoring__intro">
+    <strong>{{ guide.status.value|capitalize }}</strong> · version {{ guide.version }}
+    {% if guide.published_at %}· last published {{ guide.published_at.strftime("%d %b %Y") }}{% endif %}
+  </p>
+
+  {% if error %}
+  <div class="validation-panel validation-panel--error" role="alert">
+    <p>{{ error }}</p>
+  </div>
+  {% endif %}
+  {% if message %}
+  <div class="authoring-outcome" role="status"><p>{{ message }}</p></div>
+  {% endif %}
+  {% if validation and validation.errors %}
+  <div class="validation-panel validation-panel--error" role="alert">
+    <p>This guide is not ready to publish:</p>
+    <ul>
+      {% for item in validation.errors %}<li>{{ item }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  {% if validation and validation.warnings %}
+  <div class="validation-panel validation-panel--caution" role="status">
+    <p>Before publishing, note:</p>
+    <ul>
+      {% for item in validation.warnings %}<li>{{ item }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <section class="authoring-section" aria-labelledby="details-heading">
+    <h2 id="details-heading" class="subheading authoring-section__heading">Guide details</h2>
+    <form method="post" action="/authoring/guides/{{ guide.id }}/details">
+      <div class="form-field">
+        <label class="form-label" for="guide-title">Title</label>
+        <input class="form-control" id="guide-title" name="title"
+               value="{{ guide.title }}" required>
+      </div>
+      <div class="form-field">
+        <label class="form-label" for="guide-summary">Summary</label>
+        <textarea class="form-control" id="guide-summary" name="summary"
+                  rows="3">{{ guide.summary }}</textarea>
+        <p class="form-hint">A short description of what the guide helps explore.</p>
+      </div>
+      <div class="form-field">
+        <label class="form-label" for="guide-area">Practice area</label>
+        <input class="form-control" id="guide-area" name="practice_area"
+               value="{{ guide.practice_area }}">
+      </div>
+      <div class="form-field">
+        <label class="form-label" for="guide-context">Intended learner context</label>
+        <input class="form-control" id="guide-context"
+               name="intended_learner_context"
+               value="{{ guide.intended_learner_context }}">
+      </div>
+
+      <fieldset class="form-section">
+        <legend class="form-section__legend">Associated practices</legend>
+        <p class="form-hint">
+          A guide can support more than one existing practice. This never
+          creates a practice.
+        </p>
+        <div class="guide-authoring__practices">
+          {% for practice_id, title in practices %}
+          <label class="form-check">
+            <input type="checkbox" name="associated_practice_ids"
+                   value="{{ practice_id }}"
+                   {% if practice_id in guide.associated_practice_ids %}checked{% endif %}>
+            <span>{{ title }}</span>
+          </label>
+          {% else %}
+          <p class="form-hint">No practices are available yet.</p>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <p class="form-actions">
+        <button type="submit" class="button">Save details</button>
+      </p>
+    </form>
+  </section>
+
+  <section class="authoring-section" aria-labelledby="sections-heading">
+    <h2 id="sections-heading" class="subheading authoring-section__heading">Sections</h2>
+    <p class="authoring-section__intro">
+      Observe, Think, Explore, and Create form the learning sequence. A section
+      can stay text-only; images are optional.
+    </p>
+    <ol class="guide-authoring__sections">
+      {% for section in guide.sections %}
+      <li class="guide-authoring__section" id="section-{{ section.id }}">
+        <form method="post"
+              action="/authoring/guides/{{ guide.id }}/sections/{{ section.id }}">
+          <p class="guide-authoring__section-index">
+            Section {{ loop.index }} · {{ section.stage_label }}
+          </p>
+          <div class="form-field">
+            <label class="form-label" for="heading-{{ section.id }}">Heading</label>
+            <input class="form-control" id="heading-{{ section.id }}"
+                   name="heading" value="{{ section.heading }}" required>
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="body-{{ section.id }}">Content</label>
+            <textarea class="form-control" id="body-{{ section.id }}"
+                      name="body" rows="4" required>{{ section.body }}</textarea>
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="stage-{{ section.id }}">Stage</label>
+            <select class="form-control" id="stage-{{ section.id }}" name="stage">
+              {% for stage_value, stage_label in stages %}
+              <option value="{{ stage_value }}"
+                      {% if stage_value == section.stage.value %}selected{% endif %}>{{ stage_label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="layout-{{ section.id }}">Layout</label>
+            <select class="form-control" id="layout-{{ section.id }}" name="layout">
+              {% for layout_value, layout_label in layouts %}
+              <option value="{{ layout_value }}"
+                      {% if layout_value == section.resolved_layout.value %}selected{% endif %}>{{ layout_label }}</option>
+              {% endfor %}
+            </select>
+            <p class="form-hint">Layout is a presentation hint; unsupported hints fall back to text-led.</p>
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="questions-{{ section.id }}">Questions (one per line)</label>
+            <textarea class="form-control" id="questions-{{ section.id }}"
+                      name="questions" rows="3">{{ section.questions|join("\n") }}</textarea>
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="examples-{{ section.id }}">Possibilities to explore (one per line)</label>
+            <textarea class="form-control" id="examples-{{ section.id }}"
+                      name="examples" rows="3">{{ section.examples|join("\n") }}</textarea>
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="reflection-{{ section.id }}">Reflection prompt (optional)</label>
+            <textarea class="form-control" id="reflection-{{ section.id }}"
+                      name="reflection_prompt" rows="2">{{ section.reflection_prompt }}</textarea>
+          </div>
+          <p class="form-actions">
+            <button type="submit" class="button button--secondary">Save section</button>
+          </p>
+        </form>
+
+        <div class="guide-authoring__section-actions">
+          <form method="post"
+                action="/authoring/guides/{{ guide.id }}/sections/{{ section.id }}/move">
+            <input type="hidden" name="direction" value="up">
+            <button type="submit" class="button button--secondary">Move up</button>
+          </form>
+          <form method="post"
+                action="/authoring/guides/{{ guide.id }}/sections/{{ section.id }}/move">
+            <input type="hidden" name="direction" value="down">
+            <button type="submit" class="button button--secondary">Move down</button>
+          </form>
+          <form method="post"
+                action="/authoring/guides/{{ guide.id }}/sections/{{ section.id }}/remove">
+            <button type="submit" class="button button--secondary">Remove section</button>
+          </form>
+        </div>
+
+        <div class="guide-authoring__images">
+          <h3 class="guide-authoring__images-heading">Section images</h3>
+          <p class="form-hint">
+            Search the existing image library during authoring. Only an image
+            with a source, creator or attribution, and alt text can be published.
+          </p>
+          {% for image in section.images %}
+          <figure class="guide-authoring__image">
+            <img class="guide-authoring__image-preview" src="{{ image.display_url }}"
+                 alt="{{ image.alt_text }}" loading="lazy" referrerpolicy="no-referrer">
+            <figcaption class="form-hint">
+              {{ image.alt_text }}
+              {% if image.creator %}· {{ image.creator }}{% endif %}
+              {% if image.source %}· {{ image.source }}{% endif %}
+              <br>{{ image.attribution }}
+            </figcaption>
+            <form method="post"
+                  action="/authoring/guides/{{ guide.id }}/sections/{{ section.id }}/images/remove">
+              <input type="hidden" name="asset_id" value="{{ image.asset_id }}">
+              <button type="submit" class="button button--secondary">Remove image</button>
+            </form>
+          </figure>
+          {% endfor %}
+
+          <form method="post"
+                action="/authoring/guides/{{ guide.id }}/sections/{{ section.id }}/images/search"
+                hx-post="/authoring/guides/{{ guide.id }}/sections/{{ section.id }}/images/search"
+                hx-target="#candidates-{{ section.id }}" hx-swap="innerHTML">
+            <div class="form-field">
+              <label class="form-label" for="query-{{ section.id }}">Image search query</label>
+              <input class="form-control" id="query-{{ section.id }}" name="query"
+                     value="{{ section.search_query }}"
+                     placeholder="e.g. hands at work in a market">
+              <p class="form-hint">Edit the words before searching. Search only runs when you ask for it.</p>
+            </div>
+            <p class="form-actions">
+              <button type="submit" class="button button--secondary">Search images</button>
+            </p>
+          </form>
+
+          <div id="candidates-{{ section.id }}" class="guide-authoring__candidates-wrap">
+            {% with candidates=section.search_candidates, error=None %}
+            {% include "_guide_image_candidates.html" %}
+            {% endwith %}
+          </div>
+        </div>
+      </li>
+      {% else %}
+      <li class="queue__empty">No sections yet. Add the first stage below.</li>
+      {% endfor %}
+    </ol>
+
+    <form method="post" action="/authoring/guides/{{ guide.id }}/sections"
+          class="guide-authoring__add-section">
+      <h3 class="guide-authoring__images-heading">Add a section</h3>
+      <div class="form-field">
+        <label class="form-label" for="new-stage">Stage</label>
+        <select class="form-control" id="new-stage" name="stage">
+          {% for stage_value, stage_label in stages %}
+          <option value="{{ stage_value }}">{{ stage_label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-field">
+        <label class="form-label" for="new-heading">Heading</label>
+        <input class="form-control" id="new-heading" name="heading" required>
+      </div>
+      <div class="form-field">
+        <label class="form-label" for="new-body">Content</label>
+        <textarea class="form-control" id="new-body" name="body" rows="3" required></textarea>
+      </div>
+      <p class="form-actions">
+        <button type="submit" class="button button--secondary">Add section</button>
+      </p>
+    </form>
+  </section>
+
+  <section class="authoring-section" aria-labelledby="publication-heading">
+    <h2 id="publication-heading" class="subheading authoring-section__heading">Publication</h2>
+    <p class="authoring-section__intro">
+      Publishing is deliberate. Saving a draft never makes it visible to
+      learners, and editing a published guide returns it to draft until you
+      publish it again as a new version.
+    </p>
+    <div class="guide-authoring__publication">
+      <form method="post" action="/authoring/guides/{{ guide.id }}/publish">
+        <button type="submit" class="button"
+                {% if guide.status.value == 'published' %}disabled{% endif %}>
+          {% if guide.status.value == 'published' %}Published{% else %}Publish guide{% endif %}
+        </button>
+      </form>
+      <form method="post" action="/authoring/guides/{{ guide.id }}/archive">
+        <button type="submit" class="button button--secondary"
+                {% if guide.status.value == 'archived' %}disabled{% endif %}>
+          {% if guide.status.value == 'archived' %}Archived{% else %}Archive guide{% endif %}
+        </button>
+      </form>
+      <a class="button button--secondary"
+         href="/authoring/guides/{{ guide.id }}/preview">Preview learner view</a>
+    </div>
+  </section>
+</article>
+{% endblock %}
