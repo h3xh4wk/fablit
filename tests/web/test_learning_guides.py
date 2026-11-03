@@ -350,6 +350,8 @@ def test_published_guide_opens_from_its_practice_and_returns(
 
     assert guide_page.status_code == 200
     assert SECTION_HEADING in guide_page.text
+    assert "https://cdn.example/large.jpg" in guide_page.text
+    assert "https://example/photographers/a" in guide_page.text
     assert "Illustrative stock image" in guide_page.text
     assert "Photo by A. Photographer on Pixabay" in guide_page.text
 
@@ -405,3 +407,86 @@ def test_reading_a_guide_never_searches_or_calls_the_llm() -> None:
     assert response.status_code == 200
     assert search.queries == []
     provider.generate.assert_not_called()
+
+
+def test_author_can_update_section_image_and_see_provenance_warning() -> None:
+    client, app = _client(image_search=FakeImageSearch(candidate=UNATTRIBUTED))
+    guide_id, _, section_id = _prepare(client, app)
+
+    # New section pre-fills a suggested search query from its heading.
+    editor = client.get(f"/authoring/guides/{guide_id}", headers=HTML_HEADERS)
+    assert f'value="{SECTION_HEADING}"' in editor.text
+
+    # Unattributed candidate displays a provenance warning before selection.
+    partial = _search(client, guide_id, section_id)
+    assert "Missing creator or source attribution" in partial.text
+
+    # Switch to a valid attributed candidate, select it, and update its details.
+    app.state.authoring_image_search = FakeImageSearch(candidate=IMAGE)
+    _search(client, guide_id, section_id)
+    _select(client, guide_id, section_id, alt_text="Initial alt", caption="Initial")
+
+    updated = client.post(
+        f"/authoring/guides/{guide_id}/sections/{section_id}/images/update",
+        headers=HTML_HEADERS,
+        data={
+            "asset_id": "photo-1",
+            "alt_text": "Refined market alt text",
+            "caption": "Refined market caption",
+        },
+    )
+    assert updated.status_code == 200
+    assert "Image details saved." in updated.text
+    assert "Refined market alt text" in updated.text
+    assert "Refined market caption" in updated.text
+
+
+def test_author_can_seed_the_five_pilot_guides_idempotently() -> None:
+    client, _ = _client()
+
+    seeded = client.post("/authoring/guides/pilot", headers=HTML_HEADERS)
+    assert seeded.status_code == 200
+    assert "Loaded 5 pilot draft guides." in seeded.text
+    assert "Finding Stories in Everyday Surroundings" in seeded.text
+    assert "Finding Multiple Ideas in One Ordinary Object" in seeded.text
+
+    repeated = client.post("/authoring/guides/pilot", headers=HTML_HEADERS)
+    assert repeated.status_code == 200
+    assert "All five pilot guides are already in the library." in repeated.text
+
+
+def test_practice_submission_error_keeps_guide_link_and_supports_multiple_guides() -> (
+    None
+):
+    client, app = _client()
+    first_id, practice_id, _ = _prepare(client, app)
+    assert _publish(client, first_id).status_code == 200
+
+    second_id = _new_guide(client)
+    client.post(
+        f"/authoring/guides/{second_id}/details",
+        headers=HTML_HEADERS,
+        data={
+            "title": "Learning to Notice Details",
+            "summary": "A second guide for the same practice.",
+            "practice_area": "Observation and visual awareness",
+            "associated_practice_ids": str(practice_id),
+        },
+    )
+    _add_section(client, second_id, heading="Separate what you know from what you see")
+    assert _publish(client, second_id).status_code == 200
+
+    practice_page = client.get(f"/activities/{practice_id}")
+    assert practice_page.status_code == 200
+    assert f"/guides/{first_id}?practice_id={practice_id}" in practice_page.text
+    assert f"/guides/{second_id}?practice_id={practice_id}" in practice_page.text
+
+    # Submitting an empty response (non-HTMX) re-renders practice.html without
+    # losing the guide links.
+    failed_submit = client.post(
+        f"/activities/{practice_id}/submit",
+        data={"response": ""},
+    )
+    assert failed_submit.status_code == 200
+    assert "Explore a Learning Guide" in failed_submit.text
+    assert f"/guides/{first_id}?practice_id={practice_id}" in failed_submit.text

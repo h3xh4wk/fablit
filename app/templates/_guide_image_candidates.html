@@ -14,6 +14,9 @@
       {% if candidate.photographer %}{{ candidate.photographer }}{% endif %}
       {% if candidate.source %}· {{ candidate.source }}{% endif %}
       {% if candidate.attribution %}<br>{{ candidate.attribution }}{% endif %}
+      {% if not candidate.source or (not candidate.photographer and not candidate.attribution) %}
+      <br><strong>Missing creator or source attribution — cannot be published.</strong>
+      {% endif %}
       <br><a href="{{ candidate.source_url }}" target="_blank"
              rel="noopener noreferrer nofollow">View source</a>
     </p>
@@ -30,6 +33,18 @@
         <input class="form-control" id="caption-{{ section.id }}-{{ loop.index }}"
                name="caption">
       </div>
+      {% if section.images %}
+      <div class="form-field">
+        <label class="form-label" for="replace-{{ section.id }}-{{ loop.index }}">Add or replace</label>
+        <select class="form-control" id="replace-{{ section.id }}-{{ loop.index }}"
+                name="replace_asset_id">
+          <option value="">Add as another section image</option>
+          {% for existing in section.images %}
+          <option value="{{ existing.asset_id }}">Replace {{ existing.asset_id }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
       <p class="form-actions">
         <button type="submit" class="button button--secondary">Use this image</button>
       </p>

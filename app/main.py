@@ -691,23 +691,47 @@ def _build_learning_guide_repository(
     return InMemoryLearningGuideRepository()
 
 
-def _published_guide_for(request: Request, activity_id: UUID) -> LearningGuide | None:
-    """Resolve the optional published guide for a practice (SPEC-045 §5.1).
+def _published_guides_for(
+    request: Request, activity_id: UUID
+) -> tuple[LearningGuide, ...]:
+    """Resolve the optional published guides for a practice (SPEC-045 §5.1).
 
     A guide is an invitation, never a gate: an unavailable store or a storage
     failure degrades to "no guide" so the practice journey is unaffected.
     """
     repository = getattr(request.app.state, "learning_guide_repository", None)
     if not isinstance(repository, LearningGuideRepository):
-        return None
+        return ()
     try:
-        guides = repository.published_for_practice(activity_id)
+        return repository.published_for_practice(activity_id)
     except PersistenceError:
         logger.exception(
             "learning guide lookup failed; practice continues without a guide"
         )
-        return None
+        return ()
+
+
+def _published_guide_for(request: Request, activity_id: UUID) -> LearningGuide | None:
+    """Resolve the first optional published guide for a practice."""
+    guides = _published_guides_for(request, activity_id)
     return guides[0] if guides else None
+
+
+def _practice_page_context(
+    request: Request,
+    activity: UUID,
+    view: object,
+    **extra: object,
+) -> dict[str, object]:
+    """Build the template context for the full learner practice page."""
+    guides = _published_guides_for(request, activity)
+    return {
+        "view": view,
+        "guide": guides[0] if guides else None,
+        "guides": guides,
+        "practice_id": activity,
+        **extra,
+    }
 
 
 def _activity_id(value: str) -> UUID:
@@ -1168,11 +1192,7 @@ def create_app(config: AppConfig) -> FastAPI:
         return templates.TemplateResponse(
             request,
             "practice.html",
-            {
-                "view": view,
-                "guide": _published_guide_for(request, activity),
-                "practice_id": activity,
-            },
+            _practice_page_context(request, activity, view),
         )
 
     @app.post("/activities/{activity_id}/submit", response_class=HTMLResponse)
@@ -1214,7 +1234,13 @@ def create_app(config: AppConfig) -> FastAPI:
             return templates.TemplateResponse(
                 request,
                 "practice.html",
-                {"view": view, "error": str(exc), "submitted_response": response},
+                _practice_page_context(
+                    request,
+                    activity,
+                    view,
+                    error=str(exc),
+                    submitted_response=response,
+                ),
             )
         except ActivityNotFoundError:
             return _error_response(request, "Activity not found.")
@@ -1230,7 +1256,13 @@ def create_app(config: AppConfig) -> FastAPI:
             return templates.TemplateResponse(
                 request,
                 "practice.html",
-                {"view": view, "error": str(exc), "submitted_response": response},
+                _practice_page_context(
+                    request,
+                    activity,
+                    view,
+                    error=str(exc),
+                    submitted_response=response,
+                ),
             )
         except SubmissionInProgressError as exc:
             view = practice.start_practice(activity)
@@ -1244,7 +1276,13 @@ def create_app(config: AppConfig) -> FastAPI:
             return templates.TemplateResponse(
                 request,
                 "practice.html",
-                {"view": view, "error": str(exc), "submitted_response": response},
+                _practice_page_context(
+                    request,
+                    activity,
+                    view,
+                    error=str(exc),
+                    submitted_response=response,
+                ),
             )
         except EvaluationFailedError as exc:
             view = practice.start_practice(activity)
@@ -1258,7 +1296,13 @@ def create_app(config: AppConfig) -> FastAPI:
             return templates.TemplateResponse(
                 request,
                 "practice.html",
-                {"view": view, "error": str(exc), "submitted_response": response},
+                _practice_page_context(
+                    request,
+                    activity,
+                    view,
+                    error=str(exc),
+                    submitted_response=response,
+                ),
             )
         if is_htmx:
             return _feedback_partial(request, practice)

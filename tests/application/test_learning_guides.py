@@ -29,12 +29,15 @@ from fablit.application.learning_guides import (
     add_section,
     archive_guide,
     move_section,
+    pilot_guides,
     publish_guide,
     remove_image,
     remove_section,
     save_guide_details,
+    seed_pilot_guides,
     select_image,
     set_search_candidates,
+    update_image,
     update_section,
     validate_guide,
 )
@@ -474,3 +477,92 @@ def test_adding_a_section_keeps_authorship_evidence_and_unsets_draft() -> None:
     assert added.sections == (section,)
     assert added.status is GuideStatus.DRAFT
     assert added.updated_at >= guide.updated_at
+
+
+def test_guide_image_display_and_preview_urls_distinguish_learner_and_authoring() -> (
+    None
+):
+    image = GuideImage.from_candidate(_candidate("photo-1"))
+
+    assert image.display_url == "https://cdn.example/photo-1-large.jpg"
+    assert image.preview_url == "https://cdn.example/photo-1-thumb.jpg"
+
+
+def test_section_suggested_search_query_falls_back_to_heading() -> None:
+    section = _section(heading="  Look   beyond what is visible  ")
+    assert section.suggested_search_query == "Look beyond what is visible"
+
+    searched = GuideSection(
+        heading="Look beyond",
+        body="Body.",
+        search_query="custom market query",
+    )
+    assert searched.suggested_search_query == "custom market query"
+
+
+def test_updating_and_replacing_a_selected_section_image() -> None:
+    section = _section()
+    guide = _guide(sections=(section,))
+    candidates = (_candidate("photo-1"), _candidate("photo-2"))
+    guide = set_search_candidates(guide, section.id, candidates, query="market")
+    guide = select_image(
+        guide,
+        section.id,
+        photo_id="photo-1",
+        alt_text="Original alt",
+        caption="Original caption",
+    )
+
+    refined = update_image(
+        guide,
+        section.id,
+        asset_id="photo-1",
+        alt_text="Refined alt text",
+        caption="Refined caption",
+    )
+    assert refined.sections[0].images[0].alt_text == "Refined alt text"
+    assert refined.sections[0].images[0].caption == "Refined caption"
+
+    replaced = select_image(
+        refined,
+        section.id,
+        photo_id="photo-2",
+        alt_text="Replacement alt",
+        caption="Replacement caption",
+        replace_asset_id="photo-1",
+    )
+    assert len(replaced.sections[0].images) == 1
+    assert replaced.sections[0].images[0].asset_id == "photo-2"
+    assert replaced.sections[0].images[0].alt_text == "Replacement alt"
+
+    with pytest.raises(InvalidLearningGuideError):
+        update_image(
+            replaced,
+            section.id,
+            asset_id="photo-1",
+            alt_text="Missing",
+        )
+
+
+def test_seeding_pilot_guides_is_idempotent_and_publishable() -> None:
+    repository = InMemoryLearningGuideRepository()
+    guides = pilot_guides()
+    assert len(guides) == 5
+
+    seeded = seed_pilot_guides(repository)
+    assert len(seeded) == 5
+    assert len(repository.list_guides()) == 5
+
+    # Every pilot guide covers the Observe-Think-Explore-Create sequence and is
+    # ready for publication once reviewed.
+    layouts_seen: set[GuideLayout] = set()
+    for item in seeded:
+        assert item.status is GuideStatus.DRAFT
+        assert validate_guide(item).is_publishable
+        for sec in item.sections:
+            layouts_seen.add(sec.resolved_layout)
+    assert len(layouts_seen) >= 4
+
+    # Seeding a second time does not duplicate or overwrite existing guides.
+    assert seed_pilot_guides(repository) == ()
+    assert len(repository.list_guides()) == 5

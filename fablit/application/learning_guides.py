@@ -210,6 +210,11 @@ class GuideImage:
     @property
     def display_url(self) -> str:
         """The URL the section renders, with a safe thumbnail fallback."""
+        return self.image_url or self.thumbnail_url.strip()
+
+    @property
+    def preview_url(self) -> str:
+        """The authoring preview URL, preferring the lighter thumbnail."""
         return self.thumbnail_url.strip() or self.image_url
 
     @property
@@ -342,6 +347,13 @@ class GuideSection:
     def stage_label(self) -> str:
         """The learner-facing stage label for this section."""
         return STAGE_LABELS[self.stage]
+
+    @property
+    def suggested_search_query(self) -> str:
+        """An editable search query derived from the section when none is saved."""
+        if self.search_query.strip():
+            return self.search_query.strip()[:MAX_SEARCH_QUERY_LENGTH]
+        return " ".join(self.heading.split())[:MAX_SEARCH_QUERY_LENGTH]
 
 
 @dataclass(frozen=True)
@@ -689,6 +701,7 @@ def select_image(
     photo_id: str,
     alt_text: str = "",
     caption: str = "",
+    replace_asset_id: str = "",
     now: datetime | None = None,
 ) -> LearningGuide:
     """Select one stored candidate as section imagery (SPEC-045 §8.2).
@@ -711,16 +724,66 @@ def select_image(
         caption=caption,
         query=section.search_query,
     )
-    images = tuple(
-        existing
-        for existing in section.images
-        if existing.asset_id != image.asset_id and existing.image_url != image.image_url
-    )
-    if len(images) >= MAX_SECTION_IMAGES:
-        raise InvalidLearningGuideError(
-            f"a guide section can carry at most {MAX_SECTION_IMAGES} images"
+    target_asset_id = replace_asset_id.strip()
+    if target_asset_id and any(
+        existing.asset_id == target_asset_id for existing in section.images
+    ):
+        replaced_list: list[GuideImage] = []
+        for existing in section.images:
+            if existing.asset_id == target_asset_id:
+                replaced_list.append(image)
+            elif (
+                existing.asset_id != image.asset_id
+                and existing.image_url != image.image_url
+            ):
+                replaced_list.append(existing)
+        updated_images = tuple(replaced_list)
+    else:
+        images = tuple(
+            existing
+            for existing in section.images
+            if existing.asset_id != image.asset_id
+            and existing.image_url != image.image_url
         )
-    updated = replace(section, images=images + (image,))
+        if len(images) >= MAX_SECTION_IMAGES:
+            raise InvalidLearningGuideError(
+                f"a guide section can carry at most {MAX_SECTION_IMAGES} images"
+            )
+        updated_images = images + (image,)
+    updated = replace(section, images=updated_images)
+    sections = tuple(
+        updated if item.id == section_id else item for item in guide.sections
+    )
+    return _revise(guide, now=now, sections=sections)
+
+
+def update_image(
+    guide: LearningGuide,
+    section_id: UUID,
+    *,
+    asset_id: str,
+    alt_text: str,
+    caption: str = "",
+    now: datetime | None = None,
+) -> LearningGuide:
+    """Update alt text and optional caption on a selected section image (§8.2)."""
+    section = guide.section(section_id)
+    cleaned_asset_id = asset_id.strip()
+    if not any(image.asset_id == cleaned_asset_id for image in section.images):
+        raise InvalidLearningGuideError(
+            f"section {section_id} has no selected image {cleaned_asset_id!r}"
+        )
+    images = tuple(
+        replace(
+            image,
+            alt_text=alt_text.strip(),
+            caption=caption.strip(),
+        )
+        if image.asset_id == cleaned_asset_id
+        else image
+        for image in section.images
+    )
+    updated = replace(section, images=images)
     sections = tuple(
         updated if item.id == section_id else item for item in guide.sections
     )
@@ -908,3 +971,489 @@ def archive_guide(
         extra={"guide_id": str(guide.id), "guide_version": guide.version},
     )
     return archived
+
+
+_PILOT_SEED_TIME = datetime(2026, 1, 1, 0, 0, tzinfo=UTC)
+
+
+def pilot_guides() -> tuple[LearningGuide, ...]:
+    """Return the five initial pilot guides defined in SPEC-045 §12.
+
+    Each guide begins as a draft with deterministic identities so authors can
+    load, edit, attach imagery or practice associations, and publish them
+    intentionally without creating duplicates.
+    """
+    return (
+        LearningGuide(
+            id=UUID("45000000-0000-4000-8000-000000000001"),
+            title="Finding Stories in Everyday Surroundings",
+            summary=(
+                "A guided walk through observation and photography that looks "
+                "for human rhythm, preparation, and quiet transitions in "
+                "familiar places."
+            ),
+            practice_area="Observation and photography",
+            intended_learner_context=(
+                "Helpful when an everyday street, room, or workspace feels "
+                "too ordinary to photograph or describe."
+            ),
+            created_at=_PILOT_SEED_TIME,
+            updated_at=_PILOT_SEED_TIME,
+            sections=(
+                GuideSection(
+                    id=UUID("45000001-0000-4000-8000-000000000001"),
+                    stage=GuideStage.OBSERVE,
+                    heading="Look beyond the main attraction",
+                    body=(
+                        "When we enter a familiar place, our eyes usually jump "
+                        "straight to the loudest subject. Pause for a moment "
+                        "and look at the edges of the scene instead: the worn "
+                        "handle on a door, a chair pulled slightly out of "
+                        "line, or the light collecting on a counter before a "
+                        "room fills up."
+                    ),
+                    questions=(
+                        "What happened here ten minutes before you arrived?",
+                        ("Which small detail shows that someone cares for this place?"),
+                    ),
+                    layout=GuideLayout.HERO.value,
+                    search_query="morning light market stall preparation",
+                ),
+                GuideSection(
+                    id=UUID("45000001-0000-4000-8000-000000000002"),
+                    stage=GuideStage.THINK,
+                    heading="Ask what the scene is holding together",
+                    body=(
+                        "Every everyday setting balances different needs: "
+                        "speed and rest, shelter and display, private routines "
+                        "and shared space. Naming the tension in front of you "
+                        "often reveals the story."
+                    ),
+                    questions=(
+                        "Who uses this space differently at dawn than at dusk?",
+                        "What stays still while everything else moves around it?",
+                    ),
+                    layout=GuideLayout.SPLIT.value,
+                    search_query="quiet street corner bench shadow",
+                ),
+                GuideSection(
+                    id=UUID("45000001-0000-4000-8000-000000000003"),
+                    stage=GuideStage.EXPLORE,
+                    heading="Try more than one angle on the same place",
+                    body=(
+                        "Before settling on your first idea, consider a few "
+                        "distinct ways you could frame the same surroundings."
+                    ),
+                    examples=(
+                        (
+                            "Follow a single material — paper, chalk, water, "
+                            "or stone — through the scene."
+                        ),
+                        (
+                            "Stand in one spot and notice how people enter "
+                            "and leave a patch of light."
+                        ),
+                        "Focus on the tools or hands that keep a routine running.",
+                    ),
+                    layout=GuideLayout.PHOTO.value,
+                    search_query="hands working craft workshop table",
+                ),
+                GuideSection(
+                    id=UUID("45000001-0000-4000-8000-000000000004"),
+                    stage=GuideStage.CREATE,
+                    heading="Choose one observation to carry into your practice",
+                    body=(
+                        "Pick the detail or moment that stayed with you most "
+                        "and build your response around it in your own way."
+                    ),
+                    reflection_prompt=(
+                        "Which detail in your surroundings only became visible "
+                        "once you slowed down?"
+                    ),
+                    layout=GuideLayout.QUOTE.value,
+                ),
+            ),
+        ),
+        LearningGuide(
+            id=UUID("45000000-0000-4000-8000-000000000002"),
+            title="Learning to Notice Details",
+            summary=(
+                "Ways to slow down visual attention and notice texture, scale, "
+                "and subtle contrasts that first glances skip over."
+            ),
+            practice_area="Observation and visual awareness",
+            intended_learner_context=(
+                "Helpful before an observation practice when you want to "
+                "move past general labels and notice specific qualities."
+            ),
+            created_at=_PILOT_SEED_TIME,
+            updated_at=_PILOT_SEED_TIME,
+            sections=(
+                GuideSection(
+                    id=UUID("45000002-0000-4000-8000-000000000001"),
+                    stage=GuideStage.OBSERVE,
+                    heading="Separate what you know from what you see",
+                    body=(
+                        "Our minds name objects quickly — 'a cup', 'a leaf', "
+                        "'a brick wall' — and then stop looking. Try setting "
+                        "the name aside for thirty seconds and noticing only "
+                        "surface, edge, weight, and reflection."
+                    ),
+                    questions=(
+                        (
+                            "Where is the surface smooth, and where has time "
+                            "roughened it?"
+                        ),
+                        (
+                            "How does light behave at the boundary between "
+                            "two materials?"
+                        ),
+                    ),
+                    layout=GuideLayout.PHOTO.value,
+                    search_query="weathered wood grain stone texture close up",
+                ),
+                GuideSection(
+                    id=UUID("45000002-0000-4000-8000-000000000002"),
+                    stage=GuideStage.THINK,
+                    heading="Notice what repeats and what breaks the pattern",
+                    body=(
+                        "Details often become meaningful in relation to what "
+                        "surrounds them: one repaired tile in a neat row, or "
+                        "one crooked stem in a tidy window box."
+                    ),
+                    questions=(
+                        "What pattern sets the expectation here?",
+                        "What small interruption draws your eye back again?",
+                    ),
+                    layout=GuideLayout.COMPARISON.value,
+                    search_query="patterned tiles worn step detail",
+                ),
+                GuideSection(
+                    id=UUID("45000002-0000-4000-8000-000000000003"),
+                    stage=GuideStage.EXPLORE,
+                    heading="Shift your distance",
+                    body=(
+                        "Changing how close you stand changes what counts as "
+                        "the subject."
+                    ),
+                    examples=(
+                        (
+                            "Step close enough that only texture and colour "
+                            "remain in view."
+                        ),
+                        (
+                            "Step back until the object becomes a small note "
+                            "inside its setting."
+                        ),
+                        (
+                            "Compare how the same surface looks in direct "
+                            "light and in shadow."
+                        ),
+                    ),
+                    layout=GuideLayout.SPLIT.value,
+                ),
+                GuideSection(
+                    id=UUID("45000002-0000-4000-8000-000000000004"),
+                    stage=GuideStage.CREATE,
+                    heading="Bring one concrete detail into focus",
+                    body=(
+                        "Use specific sensory language or framing so someone "
+                        "else can notice the exact detail you found."
+                    ),
+                    reflection_prompt=(
+                        "What did you notice on a second look that you missed "
+                        "at first glance?"
+                    ),
+                    layout=GuideLayout.DEFAULT.value,
+                ),
+            ),
+        ),
+        LearningGuide(
+            id=UUID("45000000-0000-4000-8000-000000000003"),
+            title="Telling a Story Through Three Frames",
+            summary=(
+                "Explore how a beginning, a shift, and an aftermath can work "
+                "together as a visual or written sequence."
+            ),
+            practice_area="Visual storytelling and sequencing",
+            intended_learner_context=(
+                "Helpful when a single image or sentence feels too cramped "
+                "to capture how a moment unfolds."
+            ),
+            created_at=_PILOT_SEED_TIME,
+            updated_at=_PILOT_SEED_TIME,
+            sections=(
+                GuideSection(
+                    id=UUID("45000003-0000-4000-8000-000000000001"),
+                    stage=GuideStage.OBSERVE,
+                    heading="Watch for before, during, and after",
+                    body=(
+                        "Even small actions have chapters: a table before a "
+                        "meal, the shared reach across it, and the quiet trace "
+                        "left behind afterwards."
+                    ),
+                    questions=(
+                        (
+                            "What establishes the setting without explaining "
+                            "everything at once?"
+                        ),
+                        "What trace remains after the main action finishes?",
+                    ),
+                    layout=GuideLayout.HERO.value,
+                    search_query="coffee cup notebook morning table sequence",
+                ),
+                GuideSection(
+                    id=UUID("45000003-0000-4000-8000-000000000002"),
+                    stage=GuideStage.THINK,
+                    heading="Let the gaps between frames do some of the work",
+                    body=(
+                        "Three frames do not need to show every step. When "
+                        "each frame changes scale, angle, or pace, the viewer "
+                        "connects the thread between them."
+                    ),
+                    questions=(
+                        (
+                            "How does the mood shift between the first frame "
+                            "and the third?"
+                        ),
+                        (
+                            "What happens if you swap the order of your first "
+                            "and last frames?"
+                        ),
+                    ),
+                    layout=GuideLayout.COMPARISON.value,
+                ),
+                GuideSection(
+                    id=UUID("45000003-0000-4000-8000-000000000003"),
+                    stage=GuideStage.EXPLORE,
+                    heading="Experiment with different three-part rhythms",
+                    body=("There is no single formula for a three-frame sequence."),
+                    examples=(
+                        (
+                            "Wide setting → close detail of hands or tools → "
+                            "changed setting."
+                        ),
+                        "Arrival → point of decision → quiet departure.",
+                        (
+                            "Three different people interacting with the same "
+                            "corner or object."
+                        ),
+                    ),
+                    layout=GuideLayout.SPLIT.value,
+                ),
+                GuideSection(
+                    id=UUID("45000003-0000-4000-8000-000000000004"),
+                    stage=GuideStage.CREATE,
+                    heading="Compose your own three-part sequence",
+                    body=(
+                        "Return to the practice and sketch, photograph, or "
+                        "describe the three moments you chose."
+                    ),
+                    reflection_prompt=(
+                        "Which transition between frames carries the heart of "
+                        "your story?"
+                    ),
+                    layout=GuideLayout.QUOTE.value,
+                ),
+            ),
+        ),
+        LearningGuide(
+            id=UUID("45000000-0000-4000-8000-000000000004"),
+            title="Turning Everyday Problems into Design Opportunities",
+            summary=(
+                "A human-centred way to look at small daily frictions, "
+                "understand why they happen, and imagine thoughtful improvements."
+            ),
+            practice_area="Design thinking",
+            intended_learner_context=(
+                "Helpful when you want to move from noticing an everyday "
+                "annoyance to shaping a practical, considerate design idea."
+            ),
+            created_at=_PILOT_SEED_TIME,
+            updated_at=_PILOT_SEED_TIME,
+            sections=(
+                GuideSection(
+                    id=UUID("45000004-0000-4000-8000-000000000001"),
+                    stage=GuideStage.OBSERVE,
+                    heading="Notice where people improvise a workaround",
+                    body=(
+                        "Some of the clearest design clues hide in makeshift "
+                        "fixes: a folded piece of cardboard under a table leg, "
+                        "a handwritten sign taped over an unclear button, or a "
+                        "path worn across the grass beside a pavement."
+                    ),
+                    questions=(
+                        "Where do people hesitate, squint, or reach awkwardly?",
+                        "What homemade fix has someone already added here?",
+                    ),
+                    layout=GuideLayout.SPLIT.value,
+                    search_query="everyday workspace tools notes desk",
+                ),
+                GuideSection(
+                    id=UUID("45000004-0000-4000-8000-000000000002"),
+                    stage=GuideStage.THINK,
+                    heading="Reframe the friction around human need",
+                    body=(
+                        "Before jumping to a gadget or rule, ask what the "
+                        "person is actually trying to accomplish in that "
+                        "moment and what gets in their way."
+                    ),
+                    questions=(
+                        (
+                            "Who experiences this friction most acutely, and "
+                            "under what conditions?"
+                        ),
+                        (
+                            "What would make the task feel calmer, clearer, "
+                            "or more forgiving?"
+                        ),
+                    ),
+                    layout=GuideLayout.DEFAULT.value,
+                ),
+                GuideSection(
+                    id=UUID("45000004-0000-4000-8000-000000000003"),
+                    stage=GuideStage.EXPLORE,
+                    heading="Sketch several distinct directions",
+                    body=(
+                        "Explore options at different scales rather than "
+                        "polishing the very first idea."
+                    ),
+                    examples=(
+                        (
+                            "Change the physical shape or placement so the "
+                            "next step is self-evident."
+                        ),
+                        "Remove a step altogether instead of adding instructions.",
+                        (
+                            "Design a low-cost change that could be tried in "
+                            "an afternoon."
+                        ),
+                    ),
+                    layout=GuideLayout.COMPARISON.value,
+                ),
+                GuideSection(
+                    id=UUID("45000004-0000-4000-8000-000000000004"),
+                    stage=GuideStage.CREATE,
+                    heading="Shape one proposal to test in your practice",
+                    body=(
+                        "Take the friction you noticed and describe or sketch "
+                        "how your design responds to the person using it."
+                    ),
+                    reflection_prompt=(
+                        "How did looking at the problem through someone's "
+                        "workaround change your design idea?"
+                    ),
+                    layout=GuideLayout.QUOTE.value,
+                ),
+            ),
+        ),
+        LearningGuide(
+            id=UUID("45000000-0000-4000-8000-000000000005"),
+            title="Finding Multiple Ideas in One Ordinary Object",
+            summary=(
+                "Stretch creative exploration by looking at a single familiar "
+                "object through form, material, metaphor, and unexpected use."
+            ),
+            practice_area="Ideation and creative exploration",
+            intended_learner_context=(
+                "Helpful when your first idea arrives quickly and you want "
+                "to explore wider possibilities before choosing a direction."
+            ),
+            created_at=_PILOT_SEED_TIME,
+            updated_at=_PILOT_SEED_TIME,
+            sections=(
+                GuideSection(
+                    id=UUID("45000005-0000-4000-8000-000000000001"),
+                    stage=GuideStage.OBSERVE,
+                    heading="Meet the object through its physical qualities",
+                    body=(
+                        "Pick an ordinary object nearby — a key, a paperclip, "
+                        "a ceramic mug, a folding umbrella — and list its "
+                        "qualities without mentioning its usual job: hinge, "
+                        "hollow curve, spring tension, cool rim."
+                    ),
+                    questions=(
+                        "What shapes, joints, or textures make up this object?",
+                        "What sound, shadow, or movement does it make?",
+                    ),
+                    layout=GuideLayout.PHOTO.value,
+                    search_query="ordinary objects desk key cup notebook shadow",
+                ),
+                GuideSection(
+                    id=UUID("45000005-0000-4000-8000-000000000002"),
+                    stage=GuideStage.THINK,
+                    heading="Change one assumption at a time",
+                    body=(
+                        "New ideas often appear when you alter a single constraint: "
+                        "scale, setting, material, or audience."
+                    ),
+                    questions=(
+                        (
+                            "What if this object were the size of a doorway, "
+                            "or small enough to fit on a stamp?"
+                        ),
+                        (
+                            "What role could it play in a garden, a stage "
+                            "set, or a quiet ritual?"
+                        ),
+                    ),
+                    layout=GuideLayout.SPLIT.value,
+                ),
+                GuideSection(
+                    id=UUID("45000005-0000-4000-8000-000000000003"),
+                    stage=GuideStage.EXPLORE,
+                    heading="Branch in several directions before choosing",
+                    body=(
+                        "Aim for variety across your possibilities rather "
+                        "than small variations on the same idea."
+                    ),
+                    examples=(
+                        (
+                            "Use the object's shadow or silhouette as the "
+                            "starting point for a drawing."
+                        ),
+                        (
+                            "Treat the object as a character with a long "
+                            "memory of who has held it."
+                        ),
+                        (
+                            "Combine two of its physical qualities to solve "
+                            "an unrelated everyday task."
+                        ),
+                    ),
+                    layout=GuideLayout.DEFAULT.value,
+                ),
+                GuideSection(
+                    id=UUID("45000005-0000-4000-8000-000000000004"),
+                    stage=GuideStage.CREATE,
+                    heading="Carry your most surprising angle into the practice",
+                    body=(
+                        "Choose the direction that sparked the most curiosity "
+                        "and develop it in your practice response."
+                    ),
+                    reflection_prompt=(
+                        "Which idea only appeared after you moved past the "
+                        "object's obvious purpose?"
+                    ),
+                    layout=GuideLayout.QUOTE.value,
+                ),
+            ),
+        ),
+    )
+
+
+def seed_pilot_guides(
+    repository: LearningGuideRepository,
+) -> tuple[LearningGuide, ...]:
+    """Ensure the five SPEC-045 §12 pilot guides exist in ``repository``.
+
+    Existing guides with the same identity are preserved untouched so author
+    edits and publication states are never overwritten.
+    """
+    seeded: list[LearningGuide] = []
+    for guide in pilot_guides():
+        existing = repository.get(guide.id)
+        if existing is None:
+            repository.save(guide)
+            seeded.append(guide)
+    return tuple(seeded)

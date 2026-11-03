@@ -184,7 +184,7 @@
           </p>
           {% for image in section.images %}
           <figure class="guide-authoring__image">
-            <img class="guide-authoring__image-preview" src="{{ image.display_url }}"
+            <img class="guide-authoring__image-preview" src="{{ image.preview_url }}"
                  alt="{{ image.alt_text }}" loading="lazy" referrerpolicy="no-referrer">
             <figcaption class="form-hint">
               {{ image.alt_text }}
@@ -192,6 +192,23 @@
               {% if image.source %}· {{ image.source }}{% endif %}
               <br>{{ image.attribution }}
             </figcaption>
+            <form method="post"
+                  action="/authoring/guides/{{ guide.id }}/sections/{{ section.id }}/images/update">
+              <input type="hidden" name="asset_id" value="{{ image.asset_id }}">
+              <div class="form-field">
+                <label class="form-label" for="selected-alt-{{ section.id }}-{{ loop.index }}">Alt text</label>
+                <input class="form-control" id="selected-alt-{{ section.id }}-{{ loop.index }}"
+                       name="alt_text" value="{{ image.alt_text }}" required>
+              </div>
+              <div class="form-field">
+                <label class="form-label" for="selected-caption-{{ section.id }}-{{ loop.index }}">Caption (optional)</label>
+                <input class="form-control" id="selected-caption-{{ section.id }}-{{ loop.index }}"
+                       name="caption" value="{{ image.caption }}">
+              </div>
+              <p class="form-actions">
+                <button type="submit" class="button button--secondary">Save image details</button>
+              </p>
+            </form>
             <form method="post"
                   action="/authoring/guides/{{ guide.id }}/sections/{{ section.id }}/images/remove">
               <input type="hidden" name="asset_id" value="{{ image.asset_id }}">
@@ -207,9 +224,9 @@
             <div class="form-field">
               <label class="form-label" for="query-{{ section.id }}">Image search query</label>
               <input class="form-control" id="query-{{ section.id }}" name="query"
-                     value="{{ section.search_query }}"
+                     value="{{ section.suggested_search_query }}"
                      placeholder="e.g. hands at work in a market">
-              <p class="form-hint">Edit the words before searching. Search only runs when you ask for it.</p>
+              <p class="form-hint">Edit the suggested words before searching. Search only runs when you ask for it.</p>
             </div>
             <p class="form-actions">
               <button type="submit" class="button button--secondary">Search images</button>

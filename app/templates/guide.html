@@ -2,6 +2,18 @@
 {% block title %}{{ guide.title }}{% endblock %}
 {% block content %}
 <article class="guide">
+  {% if return_practice or preview %}
+  <nav class="subnav" aria-label="Guide navigation">
+    {% if return_practice %}
+    <a href="/guides/{{ guide.id }}/return-to-practice?practice_id={{ return_practice }}">
+      <span aria-hidden="true">←</span> Return to the practice
+    </a>
+    {% endif %}
+    {% if preview %}
+    <a href="/authoring/guides/{{ guide.id }}">Back to the guide editor</a>
+    {% endif %}
+  </nav>
+  {% endif %}
   {% if preview %}
   <div class="validation-panel validation-panel--caution" role="status">
     <p><strong>Draft preview.</strong> This is how learners will see the guide.
@@ -72,7 +84,7 @@
         <figcaption class="guide-figure__caption">
           {% if image.caption %}<span class="guide-figure__text">{{ image.caption }}</span>{% endif %}
           <span class="guide-figure__credit">
-            Illustrative stock image{% if image.creator %} by {{ image.creator }}{% endif %}{% if image.source %} on {{ image.source }}{% endif %}.
+            Illustrative stock image{% if image.creator %} by {% if image.creator_url %}<a href="{{ image.creator_url }}" target="_blank" rel="noopener noreferrer nofollow">{{ image.creator }}</a>{% else %}{{ image.creator }}{% endif %}{% endif %}{% if image.source %} on {{ image.source }}{% endif %}.
             {% if image.attribution %}{{ image.attribution }}.{% endif %}
             <a href="{{ image.source_url }}" target="_blank"
                rel="noopener noreferrer nofollow">View source</a>

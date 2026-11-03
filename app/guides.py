@@ -48,8 +48,10 @@ from fablit.application.learning_guides import (
     remove_image,
     remove_section,
     save_guide_details,
+    seed_pilot_guides,
     select_image,
     set_search_candidates,
+    update_image,
     update_section,
     validate_guide,
 )
@@ -98,6 +100,9 @@ def _practice_options(request: Request) -> tuple[tuple[UUID, str], ...]:
             options.append((identifier, activity.title))
             seen.add(identifier)
     registry = getattr(request.app.state, "learner_applications", None)
+    refresh = getattr(registry, "refresh_publications", None)
+    if callable(refresh):
+        refresh()
     for record in getattr(registry, "publications", ()):
         if record.activity_id not in seen:
             options.append((record.activity_id, record.activity.title))
@@ -277,6 +282,30 @@ async def authoring_create_guide(
         url=f"/authoring/guides/{guide.id}",
         status_code=status.HTTP_303_SEE_OTHER,
     )
+
+
+@router.post("/authoring/guides/pilot")
+async def authoring_seed_pilot_guides(request: Request) -> Response:
+    """Load the five initial pilot guides as drafts (SPEC-045 §12)."""
+    require_author_access(request)
+    repository = _repository(request)
+    try:
+        seeded = seed_pilot_guides(repository)
+        guides = repository.list_guides()
+    except PersistenceError:
+        logger.exception("failed to seed pilot learning guides")
+        return _render_guide_list(
+            request,
+            (),
+            error=_STORE_UNAVAILABLE,
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+    message = (
+        f"Loaded {len(seeded)} pilot draft guide{'' if len(seeded) == 1 else 's'}."
+        if seeded
+        else "All five pilot guides are already in the library."
+    )
+    return _render_guide_list(request, guides, message=message)
 
 
 @router.get("/authoring/guides/{guide_id}", response_class=HTMLResponse)
@@ -497,6 +526,7 @@ async def authoring_select_section_image(
     photo_id: str = Form(""),
     alt_text: str = Form(""),
     caption: str = Form(""),
+    replace_asset_id: str = Form(""),
 ) -> Response:
     """Select one displayed candidate, retaining its provenance."""
     require_author_access(request)
@@ -509,6 +539,7 @@ async def authoring_select_section_image(
             photo_id=photo_id,
             alt_text=alt_text,
             caption=caption,
+            replace_asset_id=replace_asset_id,
         )
     except InvalidLearningGuideError as error:
         return _render_editor(
@@ -519,6 +550,38 @@ async def authoring_select_section_image(
         )
     _persist(repository, updated)
     return _render_editor(request, updated, message="Image added to this section.")
+
+
+@router.post("/authoring/guides/{guide_id}/sections/{section_id}/images/update")
+async def authoring_update_section_image(
+    request: Request,
+    guide_id: str,
+    section_id: str,
+    asset_id: str = Form(""),
+    alt_text: str = Form(""),
+    caption: str = Form(""),
+) -> Response:
+    """Refine alt text and optional caption on a selected section image."""
+    require_author_access(request)
+    repository = _repository(request)
+    guide = _load_guide(repository, guide_id)
+    try:
+        updated = update_image(
+            guide,
+            _section_id(section_id),
+            asset_id=asset_id,
+            alt_text=alt_text,
+            caption=caption,
+        )
+    except InvalidLearningGuideError as error:
+        return _render_editor(
+            request,
+            guide,
+            error=str(error),
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        )
+    _persist(repository, updated)
+    return _render_editor(request, updated, message="Image details saved.")
 
 
 @router.post("/authoring/guides/{guide_id}/sections/{section_id}/images/remove")

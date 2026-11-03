@@ -13,17 +13,29 @@
     <p class="practice__intention">🎯 {{ view.intention }}</p>
     {% endif %}
   </header>
-  {% if guide %}
+  {% set practice_guides = guides if guides is defined and guides else ([guide] if guide else []) %}
+  {% if practice_guides %}
   <section class="practice__guide" aria-labelledby="guide-heading">
     <h2 class="practice__step" id="guide-heading">Need help getting started?</h2>
     <p class="practice__guide-copy">
       Explore a few ways to approach this challenge in a short learning guide.
       It is entirely optional, and your practice is waiting whenever you return.
     </p>
+    {% if practice_guides|length == 1 %}
     <a class="button button--secondary"
-       href="/guides/{{ guide.id }}?practice_id={{ practice_id }}">
+       href="/guides/{{ practice_guides[0].id }}?practice_id={{ practice_id }}">
       Explore a Learning Guide <span aria-hidden="true">→</span>
     </a>
+    {% else %}
+    <div class="practice__guide-links">
+      {% for item in practice_guides %}
+      <a class="button button--secondary"
+         href="/guides/{{ item.id }}?practice_id={{ practice_id }}">
+        Explore a Learning Guide: {{ item.title }} <span aria-hidden="true">→</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
   </section>
   {% endif %}
   {% if view.stimulus %}
