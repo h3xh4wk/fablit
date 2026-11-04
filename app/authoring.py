@@ -70,6 +70,7 @@ from fablit.application.publishing import (
 from fablit.application.store import PracticeContentContract
 from fablit.config import AppConfig
 from fablit.platform.authoring_auth import (
+    build_authoring_cookie_token,
     clear_authoring_cookie,
     extract_authoring_credential,
     set_authoring_cookie,
@@ -1428,9 +1429,17 @@ async def authoring_login(request: Request, secret: str = Form("")) -> Response:
 
     response = RedirectResponse(url="/authoring", status_code=status.HTTP_303_SEE_OTHER)
     is_secure = request.url.scheme == "https" or config.environment == "production"
+    cookie_token = build_authoring_cookie_token(config.authoring_secret)
+    if not cookie_token:
+        return templates.TemplateResponse(
+            request,
+            "authoring_login.html",
+            {"error": "Authoring is not configured."},
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
     set_authoring_cookie(
         response,
-        secret,
+        cookie_token,
         secure=is_secure,
     )
     return response
