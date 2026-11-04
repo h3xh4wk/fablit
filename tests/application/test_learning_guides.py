@@ -265,6 +265,43 @@ def test_image_without_attribution_cannot_be_published() -> None:
     )
 
 
+def test_complete_image_provenance_includes_the_provider_licence() -> None:
+    image = GuideImage.from_candidate(_candidate())
+
+    assert image.has_source_credit is True
+    assert image.has_usage_rights is True
+    assert image.has_provenance is True
+
+
+def test_image_without_license_type_cannot_be_published() -> None:
+    section = _section()
+    guide = _guide(sections=(section,))
+    guide = set_search_candidates(
+        guide, section.id, (_candidate(license_type=""),), query="market"
+    )
+    guide = select_image(guide, section.id, photo_id="photo-1")
+
+    image = guide.sections[0].images[0]
+
+    assert image.has_source_credit is True
+    assert image.has_usage_rights is False
+    assert image.has_provenance is False
+    validation = validate_guide(guide)
+    assert validation.is_publishable is False
+    assert any(
+        "usage rights cannot be established" in error for error in validation.errors
+    )
+
+
+def test_provider_result_without_license_type_never_infers_usage_rights() -> None:
+    image = GuideImage.from_candidate(_candidate("photo-1", license_type="  "))
+
+    assert image.license_type.strip() == ""
+    assert image.has_source_credit is True
+    assert image.has_usage_rights is False
+    assert image.has_provenance is False
+
+
 def test_image_rejects_a_non_web_url() -> None:
     with pytest.raises(InvalidLearningGuideError):
         GuideImage(

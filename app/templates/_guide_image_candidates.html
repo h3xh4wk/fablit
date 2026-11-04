@@ -14,8 +14,12 @@
       {% if candidate.photographer %}{{ candidate.photographer }}{% endif %}
       {% if candidate.source %}· {{ candidate.source }}{% endif %}
       {% if candidate.attribution %}<br>{{ candidate.attribution }}{% endif %}
+      {% if candidate.license_type %}<br>Licence: {{ candidate.license_type }}{% endif %}
       {% if not candidate.source or (not candidate.photographer and not candidate.attribution) %}
       <br><strong>Missing creator or source attribution — cannot be published.</strong>
+      {% endif %}
+      {% if not candidate.license_type %}
+      <br><strong>Missing usage licence — cannot be published.</strong>
       {% endif %}
       <br><a href="{{ candidate.source_url }}" target="_blank"
              rel="noopener noreferrer nofollow">View source</a>

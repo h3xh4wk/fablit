@@ -21,6 +21,12 @@ This module owns the smallest representation the workflow needs:
 Guide content is structured data, never template code: presentation is a
 controlled layout hint that falls back to a safe default, and learner
 rendering uses persisted content only — no image search and no LLM call.
+
+Publication requires complete image provenance, including the provider-declared
+licence. The image-search provider indexes free-licence libraries but leaves
+licence verification to the caller, so an image without a ``license_type`` has
+unestablished usage rights and cannot be published; the section stays
+available as text only. See ``docs/engineering/image-usage-rights.md``.
 """
 
 from __future__ import annotations
@@ -218,17 +224,33 @@ class GuideImage:
         return self.thumbnail_url.strip() or self.image_url
 
     @property
-    def has_provenance(self) -> bool:
-        """Whether the provider source, creator/credit, and licence are known.
-
-        SPEC-045 §8.3: a candidate whose usage requirements cannot be
-        established must not be published.
-        """
+    def has_source_credit(self) -> bool:
+        """Whether the provider source and a creator or credit are known."""
         return bool(
             self.source.strip()
             and is_safe_image_url(self.source_url)
             and (self.attribution.strip() or self.creator.strip())
         )
+
+    @property
+    def has_usage_rights(self) -> bool:
+        """Whether the provider declared how this image may be used.
+
+        The provider returns a per-photo ``license_type`` and explicitly makes
+        the caller responsible for checking it; it does not grant a blanket
+        licence for everything it indexes. A missing value therefore means the
+        usage rights cannot be established.
+        """
+        return bool(self.license_type.strip())
+
+    @property
+    def has_provenance(self) -> bool:
+        """Whether source, creator/credit, and usage rights are all known.
+
+        SPEC-045 §8.3: a candidate whose usage requirements cannot be
+        established must not be published.
+        """
+        return self.has_source_credit and self.has_usage_rights
 
     @classmethod
     def from_candidate(
@@ -527,11 +549,17 @@ def validate_guide(
                     f"section {section.heading!r} image {image.asset_id!r} needs "
                     "alternative text before publication"
                 )
-            if not image.has_provenance:
+            if not image.has_source_credit:
                 errors.append(
                     f"section {section.heading!r} image {image.asset_id!r} lacks "
                     "creator, source, or attribution details required for "
                     "publication"
+                )
+            if not image.has_usage_rights:
+                errors.append(
+                    f"section {section.heading!r} image {image.asset_id!r} has no "
+                    "provider licence (license_type), so its usage rights cannot "
+                    "be established; remove it or keep this section text-only"
                 )
 
     if not guide.associated_practice_ids:

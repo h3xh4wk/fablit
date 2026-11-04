@@ -180,7 +180,9 @@
           <h3 class="guide-authoring__images-heading">Section images</h3>
           <p class="form-hint">
             Search the existing image library during authoring. Only an image
-            with a source, creator or attribution, and alt text can be published.
+            with a source, creator or attribution, a provider licence, and alt
+            text can be published. A section without a publishable image stays
+            text-only.
           </p>
           {% for image in section.images %}
           <figure class="guide-authoring__image">
@@ -190,7 +192,14 @@
               {{ image.alt_text }}
               {% if image.creator %}· {{ image.creator }}{% endif %}
               {% if image.source %}· {{ image.source }}{% endif %}
+              {% if image.license_type %}· Licence: {{ image.license_type }}{% endif %}
               <br>{{ image.attribution }}
+              {% if not image.has_source_credit %}
+              <br><strong>Missing creator or source attribution — cannot be published.</strong>
+              {% endif %}
+              {% if not image.has_usage_rights %}
+              <br><strong>Missing usage licence — cannot be published.</strong>
+              {% endif %}
             </figcaption>
             <form method="post"
                   action="/authoring/guides/{{ guide.id }}/sections/{{ section.id }}/images/update">
