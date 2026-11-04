@@ -37,19 +37,19 @@
   </p>
 
   {% if error %}
-  <div class="validation-panel validation-panel--error" role="alert">
+  <div class="validation-panel validation-panel--error" data-focus-target role="alert">
     <p>{{ error }}</p>
   </div>
   {% endif %}
 
   {% if message %}
-  <div class="authoring-outcome" role="status">
+  <div class="authoring-outcome"{% if not error %} data-focus-target{% endif %} role="status">
     <p>{{ message }}</p>
   </div>
   {% endif %}
 
   {% if draft_assumptions or draft_warnings %}
-  <div class="validation-panel validation-panel--caution">
+  <div class="validation-panel validation-panel--caution"{% if not error and not message %} data-focus-target{% endif %} role="status">
     {% if draft_assumptions %}
     <p>Confirm these assumptions before you generate a candidate:</p>
     <ul>

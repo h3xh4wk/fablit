@@ -832,6 +832,23 @@ async def _read_sketchbook_artifact(
     )
 
 
+def _authoring_section_for_path(path: str) -> str | None:
+    """Resolve the active authoring navigation section from exact URL segments."""
+    segments = tuple(segment for segment in path.split("/") if segment)
+    if not segments or segments[0] != "authoring":
+        return None
+    if len(segments) == 1:
+        return "workspace"
+    subsection = segments[1]
+    if subsection in ("candidates", "brief", "generate"):
+        return "workspace"
+    if subsection == "guides":
+        return "guides"
+    if subsection == "pulse":
+        return "pulse"
+    return None
+
+
 async def _http_exception_handler(request: Request, exc: Exception) -> Response:
     """Handle HTTP exceptions with appropriate format (JSON vs HTML).
 
@@ -867,7 +884,11 @@ async def _http_exception_handler(request: Request, exc: Exception) -> Response:
             return templates.TemplateResponse(
                 request,
                 "authoring_error.html",
-                {"message": str(exc.detail), "description": ""},
+                {
+                    "authoring_section": _authoring_section_for_path(path),
+                    "message": str(exc.detail),
+                    "description": "",
+                },
                 status_code=exc.status_code,
                 headers=headers,
             )

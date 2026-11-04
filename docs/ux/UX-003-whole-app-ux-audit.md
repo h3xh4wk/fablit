@@ -74,12 +74,12 @@ included where they affect a visible state (errors, exports, JSON polling).
 
 | Item | Source | Notes |
 | --- | --- | --- |
-| Base layout | `app/templates/base.html` | One `<main id="main">`, skip link, brand, primary nav, vendored HTMX, `export.js`, `session-recovery.js`, `authoring-scroll.js`. |
+| Base layout | `app/templates/base.html` | One `<main id="main">`, skip link, brand, primary nav, vendored HTMX, `export.js`, `session-recovery.js`, `authoring-scroll.js`, `htmx-focus.js`. |
 | Global stylesheet | `app/static/css/fablit.css` | Central tokens, warm-neutral palette, editorial serif display type, focus styles, reduced-motion rule. |
 | Primary learner nav | `base.html` | Practice (`/`), Stories (`/pulse`), Your practice (`/history`); active state via `aria-current="page"`. |
-| Authoring nav partial | `app/templates/_authoring_nav.html` | Learner practice, Candidate workspace, Learning Guides, Pulse, Log out. |
-| Learner error page | `app/templates/error.html` | Message + optional description + "Back to practice". |
-| Authoring error page | `app/templates/authoring_error.html` | Message + description + "Back to the authoring workspace". |
+| Authoring nav partial | `app/templates/_authoring_nav.html` | Learner practice, Candidate workspace, Learning Guides, Pulse, Log out; active section marked via `aria-current="page"` (`authoring_section`, Slice 1 / #197). |
+| Learner error page | `app/templates/error.html` | Message (`data-focus-target`) + optional description + "Back to practice". |
+| Authoring error page | `app/templates/authoring_error.html` | Message (`data-focus-target`) + description + "Back to the authoring workspace". |
 | Authoring login page | `app/templates/authoring_login.html` | Also used by the 401 handler for authoring navigation. |
 
 ### 2.2 Learner routes
@@ -159,10 +159,13 @@ but is documented with its review page because access failures are learner-visib
 - **Observed: consistent primary navigation.** All learner pages use the same three
   destinations and mark the current section with `aria-current="page"`. The dashboard
   ("Practice") stays reachable, and Stories/History are visible on every page.
-- **Observed: no current-page state in authoring navigation.** `_authoring_nav.html`
-  links to the candidate workspace, Learning Guides, and Pulse, but never sets
-  `aria-current`. On the long authoring pages, the only orientation is the title and
-  the subnav order.
+- **Resolved in Slice 1 (#197): current-page state in authoring navigation.** `_authoring_nav.html`
+  initially linked to the candidate workspace, Learning Guides, and Pulse without setting
+  `aria-current`. Slice 1 passes an explicit `authoring_section` (`workspace`, `guides`,
+  `pulse`) from every authoring route and error handler so the active destination carries
+  `aria-current="page"` (and matching `.subnav a[aria-current="page"]` visual styling)
+  without fragile prefix matching across `/authoring`, `/authoring/candidates/{id}`,
+  `/authoring/guides`, `/authoring/guides/{id}`, and `/authoring/pulse`.
 - **Observed: no sticky header.** There is no `position: sticky` header or toolbar in
   the stylesheet, so anchor destinations are not currently obscured by a fixed header.
 - **Observed: skip link.** The first tab stop is "Skip to content", it targets
@@ -181,10 +184,23 @@ Reading the vendored library establishes the following source-level baseline:
   scroll to top or push history.
 - Boosted requests push the final request path into history. HTMX's history cache
   (`historyCacheSize: 10`) and native browser history are expected to restore scroll
-  on back/forward; this has not been verified in a browser.
-- The app has no global `htmx:afterSwap` focus handler. Focus after a swap is
-  therefore governed by HTMX and the browser: when the focused element is removed,
-  focus normally falls back to the document/body.
+  on back/forward.
+- **Resolved in Slice 1 (#197): shared post-swap focus policy (`app/static/js/htmx-focus.js`).**
+  Focus management and scroll positioning are handled separately on `htmx:afterSettle`:
+  - **Anchor target:** if the request path carries a `#fragment`, focus moves to the
+    matching element ID.
+  - **Failed (`4xx`/`5xx`) swaps:** focus moves to `[data-focus-target]`, `[role="alert"]`,
+    `h1`, or `#main` inside the swapped target.
+  - **Boosted page navigation (`target === document.body`) and targeted `#main` swaps
+    (`target.id === "main"`):** focus moves to `[data-focus-target]` within `#main`, an
+    enabled `[autofocus]` control, `#main h1`, or `#main`.
+  - **Smaller targeted partial swaps:** focus moves *only* when the swapped fragment
+    explicitly declares `[data-focus-target]` (or on a failed swap). Background JSON
+    polling (`news-curation-status.js`) and unopted partial updates never steal focus.
+  - **Temporary `tabindex="-1"` and `{ preventScroll: true }`:** non-focusable headings
+    or status panels receive `tabindex="-1"` and `data-htmx-focused="true"` only while
+    focused (cleaned up on `blur`), and every programmatic `.focus({ preventScroll: true })`
+    call preserves page scroll and `authoring-scroll.js` candidate scroll restoration.
 
 **Observed source-level page policies**
 
@@ -949,15 +965,15 @@ scroll/focus issues come before cosmetic polish.
 | F-09 | Reflection is optional server-side and the feedback page offers Skip, but the reflection page has no visible Skip and marks the textarea `required`, so the optionality is inconsistent. | UC | P2 | `/reflect` |
 | F-10 | Workspace draft/generate actions do not preserve the active candidate-queue stage; `_render_workspace` reads only the request's `stage` query parameter and the forms do not carry it. | UR | P2 | `/authoring` |
 | F-11 | The workspace "Curate this week's news" form targets `#main` but receives the Pulse page, so content changes while the URL stays `/authoring`; back/refresh do not match the visible page. | UR | P2 | `/authoring` → `/authoring/pulse/curate` |
-| F-12 | Authoring navigation has no `aria-current`/current-section indication. | UC | P2 | `_authoring_nav.html` |
+| F-12 | Authoring navigation has no `aria-current`/current-section indication. *(Resolved in Slice 1 / #197 via explicit `authoring_section` and `aria-current="page"`.)* | Resolved (#197) | P2 | `_authoring_nav.html` |
 | F-13 | Candidate edit and revision-history `<details>` re-render collapsed after save; scroll is restored but the working disclosure and focus are not. | UC / UR | P2 | `/authoring/candidates/{id}` |
 | F-14 | Reject, withdraw, remove section, remove image, and archive have no confirmation and use the same quiet secondary style as non-destructive actions. | UC | P2 | Candidate and guide authoring |
 | F-15 | The guide editor is one very long page with no outline, section navigation, or compact section summary. | UC | P2 | `/authoring/guides/{id}` |
 | F-16 | Terminal Pulse job status triggers a full `window.location.reload()`, returning the author to the top; the final report can be below the fold. | UR | P2 | `/authoring/pulse` |
-| F-17 | AI brief draft assumptions/warnings are rendered in a caution panel without a live role; draft completion has no status announcement. | UC (accessibility) | P3 | `/authoring` |
+| F-17 | AI brief draft assumptions/warnings are rendered in a caution panel without a live role; draft completion has no status announcement. *(Resolved in Slice 1 / #197: caution panel carries `role="status"` and `.authoring-outcome` carries `data-focus-target role="status"`.)* | Resolved (#197) | P3 | `/authoring` |
 | F-18 | Dashboard and mode-choice pages have no empty state if no activities are available (demo content normally prevents this). | OP / UC | P3 | `/`, `/practice` |
 | F-19 | History is a single undifferentiated list with no grouping or filters as it grows; review has only History/Explore exits. | OP / UC | P3 | `/history` |
-| F-20 | Boosted page navigation and boosted error swaps remove the focused element and do not move focus to the new page's h1/main; keyboard and screen-reader users may lose their place. | UR (accessibility) | P1 | Shared shell, all pages |
+| F-20 | Boosted page navigation and boosted error swaps remove the focused element and do not move focus to the new page's h1/main; keyboard and screen-reader users may lose their place. *(Resolved in Slice 1 / #197 via `app/static/js/htmx-focus.js` and `[data-focus-target]` markers.)* | Resolved (#197) | P1 | Shared shell, all pages |
 | F-21 | The review sketch image uses a generic alt text ("Uploaded sketch for this practice.") rather than describing the image. | OP | P3 | `/history/{completion_id}` |
 
 ### 5.1 What is intentionally not a finding
@@ -994,17 +1010,15 @@ follow-up issues, not changes made here.
 Each slice should be a separate reviewable issue/PR with template tests and, where
 practical, Playwright coverage.
 
-### Slice 1 — Shared navigation, focus and status foundation
+### Slice 1 — Shared navigation, focus and status foundation (Implemented in #197)
 
-**Covers:** F-20, F-03 (shared mechanism), F-17.
-**SPEC-046:** §6.1, §7.3, §8, §11.
-**Scope:** Define one small focus/announcement helper for HTMX swaps (an explicit
-`data-focus-target` or `htmx:afterSwap` handler that focuses the new region's heading
-only for in-place content updates, never for full page navigation); add authoring
-`aria-current`; ensure every post-action status panel has a live role; document the
-scroll policy in `docs/ux`. Acceptance: keyboard focus is visible and predictable after
-practice feedback, authoring main swaps, and error swaps; no full-page navigation is
-forced to a focus jump beyond the page top.
+**Covers:** F-20, F-12, F-03 (shared mechanism), F-17.
+**SPEC-046:** §6.1, §6.2, §6.4, §6.5, §7.3, §8, §11.
+**Implemented:**
+- Added `app/static/js/htmx-focus.js` (loaded from `base.html`) to manage focus on `htmx:afterSettle` using `{ preventScroll: true }` and temporary `tabindex="-1"` cleanup on `blur`.
+- Added explicit `authoring_section` (`workspace`, `guides`, `pulse`) and `aria-current="page"` in `app/templates/_authoring_nav.html` across `/authoring`, `/authoring/candidates/{id}`, `/authoring/guides`, `/authoring/guides/{id}`, `/authoring/pulse`, and authoring error pages.
+- Added `data-focus-target` to authoring/learner error headings and authoring outcome/validation banners, and added `role="status"` to the brief draft assumptions/warnings caution panel (F-17), candidate content warnings panel, and practice `.loading-indicator`.
+- Added web regression tests (`tests/web/test_ux_navigation_and_focus.py`, `tests/web/test_authoring_brief_draft.py`) and opt-in Playwright e2e coverage (`tests/e2e/test_htmx_focus_and_authoring_nav.py`) for desktop (`1280×800`) and mobile (`390×844`) viewports.
 
 ### Slice 2 — Practice input preservation and feedback handoff
 

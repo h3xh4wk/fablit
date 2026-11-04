@@ -455,3 +455,27 @@ def test_reviewed_draft_continues_through_the_existing_generation_flow() -> None
     assert generated.json()["title"] == "Drafted practice"
     assert len(provider.calls) == 1
     assert len(app.state.authoring_candidate_store.list()) == 1
+
+
+def test_brief_draft_assumptions_panel_has_status_role_and_focus_target() -> None:
+    """SPEC-046 (F-17, F-20): draft caution uses role=status; outcome focuses."""
+    client, _, _ = _client()
+
+    drafted = _draft(client, {**CURRENT_BRIEF, "notes": NOTES})
+    assert drafted.status_code == 200
+    assert (
+        '<div class="authoring-outcome" data-focus-target role="status">'
+        in drafted.text
+    )
+    assert (
+        '<div class="validation-panel validation-panel--caution" role="status">'
+        in drafted.text
+    )
+
+    rejected = _draft(client, {"notes": "   "})
+    assert rejected.status_code == 422
+    expected_error = (
+        '<div class="validation-panel validation-panel--error" '
+        'data-focus-target role="alert">'
+    )
+    assert expected_error in rejected.text

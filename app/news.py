@@ -615,6 +615,7 @@ def _pulse_page(
         request,
         "authoring_news.html",
         {
+            "authoring_section": "pulse",
             "sources": sources,
             "job": _job_view(job) if job is not None else None,
             "batch": job.report if job is not None else None,

@@ -1,9 +1,13 @@
+{% set active_authoring_section = authoring_section if authoring_section is defined else none %}
 <div class="authoring__header">
   <nav class="subnav" aria-label="Authoring navigation">
     <a href="/"><span aria-hidden="true">←</span> Learner practice</a>
-    <a href="/authoring">Candidate workspace</a>
-    <a href="/authoring/guides">Learning Guides</a>
-    <a href="/authoring/pulse">Fashion &amp; Design Pulse</a>
+    <a href="/authoring"
+       {% if active_authoring_section == 'workspace' %}aria-current="page"{% endif %}>Candidate workspace</a>
+    <a href="/authoring/guides"
+       {% if active_authoring_section == 'guides' %}aria-current="page"{% endif %}>Learning Guides</a>
+    <a href="/authoring/pulse"
+       {% if active_authoring_section == 'pulse' %}aria-current="page"{% endif %}>Fashion &amp; Design Pulse</a>
   </nav>
   <form method="post" action="/authoring/logout">
     <button type="submit" class="button button--secondary">Log out</button>

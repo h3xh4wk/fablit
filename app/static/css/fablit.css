@@ -113,8 +113,10 @@ ol {
   padding-left: 0;
 }
 
-/* Visible focus states for keyboard navigation (§27) */
-:focus-visible {
+/* Visible focus states for keyboard and programmatic HTMX focus (§27, SPEC-046) */
+:focus-visible,
+[data-focus-target]:focus,
+[data-htmx-focused="true"]:focus {
   outline: 3px solid var(--color-focus);
   outline-offset: 2px;
 }
@@ -1608,7 +1610,8 @@ ol {
   padding: var(--space-1) 0;
 }
 
-.site-header__link[aria-current="page"] {
+.site-header__link[aria-current="page"],
+.subnav a[aria-current="page"] {
   color: var(--color-ink);
   font-weight: 700;
   text-decoration: underline;

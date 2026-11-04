@@ -1108,6 +1108,7 @@ def _render_workspace(
         request,
         "authoring.html",
         {
+            "authoring_section": "workspace",
             "message": message,
             "error": error,
             "brief": brief,
@@ -1140,6 +1141,7 @@ def _candidate_page(
         request,
         "authoring_candidate.html",
         {
+            "authoring_section": "workspace",
             "candidate": candidate,
             "publication": publication,
             "view": _candidate_view(candidate, publication),

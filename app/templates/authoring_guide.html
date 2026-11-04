@@ -20,15 +20,15 @@
   </p>
 
   {% if error %}
-  <div class="validation-panel validation-panel--error" role="alert">
+  <div class="validation-panel validation-panel--error" data-focus-target role="alert">
     <p>{{ error }}</p>
   </div>
   {% endif %}
   {% if message %}
-  <div class="authoring-outcome" role="status"><p>{{ message }}</p></div>
+  <div class="authoring-outcome"{% if not error %} data-focus-target{% endif %} role="status"><p>{{ message }}</p></div>
   {% endif %}
   {% if validation and validation.errors %}
-  <div class="validation-panel validation-panel--error" role="alert">
+  <div class="validation-panel validation-panel--error"{% if not error %} data-focus-target{% endif %} role="alert">
     <p>This guide is not ready to publish:</p>
     <ul>
       {% for item in validation.errors %}<li>{{ item }}</li>{% endfor %}
