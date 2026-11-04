@@ -42,13 +42,16 @@ or accessibility need attention.
 | Template/partial inspection | Yes | All 27 templates and partials under `app/templates/` were read. |
 | CSS/JS inspection | Yes | `app/static/css/fablit.css` and all four scripts under `app/static/js/` were inspected; the vendored HTMX 2.0.10 behaviour referenced below was read from `app/static/htmx.min.js`. |
 | Runtime browser verification | **No** | No browser session, screenshots, or Playwright run was performed for this audit. Linux and Chrome are present in the working environment, but no browser-level checks were executed. |
-| Automated web tests | Not used as evidence | Existing tests were not run as part of this documentation-only change; they remain the regression baseline for follow-up slices. |
+| Automated CI tests | Yes | The existing CI test suite and Playwright browser learner-journey suite ran successfully for PR #196. These are regression checks; they do not constitute a dedicated browser walkthrough of the 22 scenarios in this audit. |
 
-Because no browser was driven, **this audit contains no "reproduced defect" entries.**
-Everything that depends on runtime layout, actual focus movement, browser history, or
-scroll position is recorded as an **unverified source-level risk/hypothesis** with a
-manual reproduction plan in §8. Usability concerns inferred directly from templates and
-routes are labelled **observed usability concern**.
+Because no dedicated browser walkthrough of the audit scenarios was performed,
+**this audit contains no "reproduced defect" entries.** The passing CI test and
+Playwright learner-journey suites provide regression evidence, but they do not verify
+the 22 individual scenarios in §8 or establish that any finding has been reproduced
+or cleared. Everything that depends on runtime layout, actual focus movement, browser
+history, or scroll position is recorded as an **unverified source-level
+risk/hypothesis** with a manual reproduction plan in §8. Usability concerns inferred
+directly from templates and routes are labelled **observed usability concern**.
 
 ### 1.2 Finding classifications
 
@@ -938,7 +941,7 @@ scroll/focus issues come before cosmetic polish.
 | F-01 | Guide editor saves, reorders, removes, and image changes are full-page POSTs with no scroll restoration; the author returns to the top of a long editor. | UR (high confidence) | P1 | `/authoring/guides/{id}` |
 | F-02 | Guide preview renders "Return to the practice" for associated practices, but the return route 404s for an unpublished guide. | UR (high confidence source defect) | P1 | `/authoring/guides/{id}/preview`, `/guides/{id}/return-to-practice` |
 | F-03 | Successful in-place practice feedback removes the focused submit button and does not move focus to the feedback heading/status. | UR (accessibility) | P1 | `/activities/{id}` + `/activities/{id}/submit` |
-| F-04 | In-place feedback is inserted below the old response area; because the submit is a targeted (non-boosted) request, scroll stays where it was and the user may not see the start of the feedback. | UR | P1 | `/activities/{id}/submit` |
+| F-04 | Successful submission replaces the response form inside `#submission-area` with the feedback partial. Because this is a targeted, non-boosted HTMX request, the browser retains the existing scroll position, which may leave the beginning of the feedback outside the viewport. | UR | P1 | `/activities/{id}/submit` |
 | F-05 | The HTMX feedback state is not reflected in the URL/history; back/forward and refresh do not return to that feedback view. | UR | P2 | `/activities/{id}/submit` |
 | F-06 | Pulse success redirects to `/pulse?saved=...#story-{id}`, but the response form is boosted and HTMX sets `show: top`; the saved story may not be brought into view. | UR | P2 | `/pulse` |
 | F-07 | Pulse response validation/persistence errors re-render the whole feed and scroll to top; the reopened composer can be far from the learner's place in a long feed. | UR | P2 | `/pulse` |
