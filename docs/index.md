@@ -3,6 +3,7 @@
 This directory contains project documentation for Fablit.
 
 - [Engineering Toolchain](engineering/toolchain.md)
+- [Image Usage Rights](engineering/image-usage-rights.md) (SPEC-036, SPEC-043, SPEC-045)
 - [Learner Pilot Deployment (SPEC-014)](engineering/deployment.md)
 - [Learner Pilot](pilot/README.md)
   - [Learner Instructions](pilot/learner-instructions.md)

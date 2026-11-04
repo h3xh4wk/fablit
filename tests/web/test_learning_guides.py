@@ -50,6 +50,23 @@ IMAGE = ImageCandidate(
     license_type="free",
 )
 
+UNLICENSED = ImageCandidate(
+    photo_id="unlicensed-1",
+    image_url="https://cdn.example/unlicensed.jpg",
+    thumbnail_url="https://cdn.example/unlicensed-thumb.jpg",
+    alt_text="A market stall at dawn",
+    description="A market stall at dawn.",
+    photographer="A. Photographer",
+    photographer_url="https://example/photographers/a",
+    source="Pixabay",
+    source_url="https://example/photos/unlicensed",
+    attribution="Photo by A. Photographer on Pixabay",
+    width=4000,
+    height=3000,
+    orientation="landscape",
+    license_type="",
+)
+
 UNATTRIBUTED = ImageCandidate(
     photo_id="unattributed-1",
     image_url="https://cdn.example/unattributed.jpg",
@@ -304,11 +321,42 @@ def test_image_search_failure_allows_a_text_only_section() -> None:
     assert "Guide published" in published.text
 
 
+def test_missing_usage_licence_blocks_publication_and_keeps_text_only_fallback() -> (
+    None
+):
+    client, app = _client(image_search=FakeImageSearch(candidate=UNLICENSED))
+    guide_id, _, section_id = _prepare(client, app)
+
+    partial = _search(client, guide_id, section_id)
+    assert "Missing usage licence — cannot be published." in partial.text
+
+    _select(client, guide_id, section_id, photo_id="unlicensed-1")
+    editor = client.get(f"/authoring/guides/{guide_id}", headers=HTML_HEADERS)
+    assert "Missing usage licence — cannot be published." in editor.text
+
+    refused = _publish(client, guide_id)
+
+    assert refused.status_code == 422
+    assert "usage rights cannot be established" in refused.text
+    assert client.get(f"/guides/{guide_id}").status_code == 404
+
+    client.post(
+        f"/authoring/guides/{guide_id}/sections/{section_id}/images/remove",
+        headers=HTML_HEADERS,
+        data={"asset_id": "unlicensed-1"},
+    )
+    published = _publish(client, guide_id)
+    assert published.status_code == 200
+
+
 def test_inadequately_attributed_image_blocks_publication() -> None:
     client, app = _client(image_search=FakeImageSearch(candidate=UNATTRIBUTED))
     guide_id, _, section_id = _prepare(client, app)
     _search(client, guide_id, section_id)
     _select(client, guide_id, section_id, photo_id="unattributed-1")
+
+    editor = client.get(f"/authoring/guides/{guide_id}", headers=HTML_HEADERS)
+    assert "Missing creator or source attribution — cannot be published." in editor.text
 
     refused = _publish(client, guide_id)
 
@@ -353,6 +401,7 @@ def test_published_guide_opens_from_its_practice_and_returns(
     assert "https://cdn.example/large.jpg" in guide_page.text
     assert "https://example/photographers/a" in guide_page.text
     assert "Illustrative stock image" in guide_page.text
+    assert "Licence: free" in guide_page.text
     assert "Photo by A. Photographer on Pixabay" in guide_page.text
 
     returned = client.get(

@@ -1,9 +1,9 @@
 # Fablit Architecture Blueprint
 
 **Document ID:** AB-001
-**Version:** 0.22.0
+**Version:** 0.22.1
 **Status:** Draft
-**Last Updated:** 2026-11-03
+**Last Updated:** 2026-11-04
 
 ---
 
@@ -1234,10 +1234,16 @@ Author ── /authoring/guides (SEC-001) ── LearningGuideRepository ── 
   `fablit/application/image_search.py` and the configured Pexafy adapter,
   including provenance, bounded results, and safe failure. No parallel
   provider, media service, or image abstraction is introduced.
+- **Rights are per image, not per provider:** Pexafy indexes free-licence
+  libraries but makes licence verification the caller's responsibility. Each
+  selected image must therefore retain the provider-declared `license_type`
+  alongside its source page, creator/attribution, alt text, and caption; a
+  documented provider-level assumption is not treated as a licence grant.
+  See `docs/engineering/image-usage-rights.md`.
 - **Runtime boundary:** learner pages render persisted content only — no image
-  search and no LLM call. Publication refuses incomplete sections and
-  inadequately attributed imagery, while text-only sections remain
-  first-class.
+  search and no LLM call. Publication refuses incomplete sections, imagery
+  without a source credit, and imagery whose usage rights cannot be
+  established, while text-only sections remain first-class.
 - **Reuse, not a CMS:** authoring extends the SEC-001-protected authoring
   experience and the existing Datastore conventions
   (`fablit/platform/datastore_learning_guide_store.py`), with guide content in

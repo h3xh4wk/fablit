@@ -1,9 +1,9 @@
 # Fablit Domain Language
 
 **Document ID:** DL-001
-**Version:** 1.18.0
+**Version:** 1.18.1
 **Status:** Draft
-**Last Updated:** 2026-11-03
+**Last Updated:** 2026-11-04
 
 ---
 
@@ -1621,7 +1621,7 @@ Practice 1 ──── *  Learning Guide 1 ──── *  Guide Section
 | DLR-009 | A guide is optional: a learner can start or continue a practice without opening it, and a guide never owns practice progress |
 | DLR-010 | Only published guides are learner-visible; drafts and archived guides never appear beside a practice |
 | DLR-011 | Guide content is structured, versioned data; layout is a controlled hint, never executable markup |
-| DLR-012 | Section imagery requires known provenance (source, creator or attribution, alt text) before publication |
+| DLR-012 | Section imagery requires known provenance and usage rights (source, creator or attribution, provider-declared licence, alt text) before publication; a missing licence leaves the section text-only |
 | DLR-013 | Image search happens only during authoring; learner rendering uses persisted content and makes no image search or LLM call |
 | DLR-014 | Guide associations use stable practice identities, never titles, and creating a guide never creates a practice |
 

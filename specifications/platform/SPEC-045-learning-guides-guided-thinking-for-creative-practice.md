@@ -246,6 +246,7 @@ Support more than one image in a section where the selected editorial layout ben
 - Validate provider metadata and URLs before persistence and rendering.
 - Treat provider-supplied fields as untrusted data; they must not control arbitrary server-side fetches or unsafe HTML.
 - Preserve creator, source, attribution, and licence/usage details wherever supplied or required.
+- Require the provider-declared licence (`license_type`) on every section image. The provider indexes free-licence libraries but leaves licence verification to the caller, so a candidate without a `license_type` has unestablished usage rights and must not be published. A documented provider-level assumption is not sufficient. See `docs/engineering/image-usage-rights.md`.
 - Distinguish illustrative stock imagery from evidence depicting a specific person, designer, collection, product, or event. Do not imply a generic stock image documents a particular subject or event.
 - If a candidate has insufficient provenance or its usage requirements cannot be established, do not publish it.
 - If image search is unavailable, returns no suitable result, or produces incomplete/unsafe metadata, allow the author to continue with a text-only section and provide a clear author-facing explanation.

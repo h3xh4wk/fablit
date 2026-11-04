@@ -85,6 +85,7 @@
           {% if image.caption %}<span class="guide-figure__text">{{ image.caption }}</span>{% endif %}
           <span class="guide-figure__credit">
             Illustrative stock image{% if image.creator %} by {% if image.creator_url %}<a href="{{ image.creator_url }}" target="_blank" rel="noopener noreferrer nofollow">{{ image.creator }}</a>{% else %}{{ image.creator }}{% endif %}{% endif %}{% if image.source %} on {{ image.source }}{% endif %}.
+            {% if image.license_type %}<span class="guide-figure__license">Licence: {{ image.license_type }}.</span>{% endif %}
             {% if image.attribution %}{{ image.attribution }}.{% endif %}
             <a href="{{ image.source_url }}" target="_blank"
                rel="noopener noreferrer nofollow">View source</a>
