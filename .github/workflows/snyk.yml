@@ -19,7 +19,7 @@ jobs:
 
       # 2. Generate the temporary requirements file on the fly
       - name: Generate temporary requirements file
-        run: uv pip compile pyproject.toml -o requirements.txt
+        run: uv pip compile pyproject.toml --all-extras -o requirements.txt
 
       # 3. Upload findings to Snyk Dashboard
       - name: Run Snyk Monitor
