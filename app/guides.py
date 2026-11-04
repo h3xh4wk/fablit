@@ -259,7 +259,20 @@ async def authoring_guides_page(request: Request) -> Response:
             error=_STORE_UNAVAILABLE,
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
-    return _render_guide_list(request, guides)
+    warning = None
+    skipped = getattr(repository, "last_skipped_corrupt_count", 0)
+    if skipped:
+        if skipped == 1:
+            warning = (
+                "One learning guide could not be loaded due to corrupt stored data. "
+                "Check logs for details."
+            )
+        else:
+            warning = (
+                f"{skipped} learning guides could not be loaded due to corrupt "
+                "stored data. Check logs for details."
+            )
+    return _render_guide_list(request, guides, message=warning)
 
 
 @router.post("/authoring/guides")
@@ -305,6 +318,18 @@ async def authoring_seed_pilot_guides(request: Request) -> Response:
         if seeded
         else "All five pilot guides are already in the library."
     )
+    skipped = getattr(repository, "last_skipped_corrupt_count", 0)
+    if skipped:
+        warning = (
+            "One learning guide could not be loaded due to corrupt stored data. "
+            "Check logs for details."
+            if skipped == 1
+            else (
+                f"{skipped} learning guides could not be loaded due to corrupt "
+                "stored data. Check logs for details."
+            )
+        )
+        message = f"{message} {warning}" if message else warning
     return _render_guide_list(request, guides, message=message)
 
 

@@ -238,6 +238,31 @@ def test_list_guides_returns_published_and_archived_guides_newest_first() -> Non
     assert store.published() == ()
 
 
+def test_list_guides_skips_corrupt_records_and_logs_diagnostics(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    client = FakeDatastoreClient()
+    store = DatastoreLearningGuideStore(client)
+    good = _guide(title="Good guide")
+    store.save(good)
+
+    corrupt_id = uuid4()
+    key = client.key(LEARNING_GUIDE_KIND, str(corrupt_id), namespace="guides")
+    entity = client.entity(key)
+    entity.update({"status": "published", "payload": "not-a-mapping"})
+    client.store[key._id()] = entity
+
+    with caplog.at_level("WARNING"):
+        guides = store.list_guides()
+
+    assert [guide.title for guide in guides] == ["Good guide"]
+    assert any(
+        "skipping corrupt learning guide record" in record.message
+        for record in caplog.records
+    )
+    assert any(str(corrupt_id) in str(record.__dict__) for record in caplog.records)
+
+
 def test_publishing_a_restored_guide_keeps_its_identity() -> None:
     client = FakeDatastoreClient()
     store = DatastoreLearningGuideStore(client)
