@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping
-from contextlib import suppress
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -238,6 +237,7 @@ class DatastoreLearningGuideStore(LearningGuideRepository):
     def __init__(self, client: Any, *, namespace: str = DEFAULT_NAMESPACE) -> None:
         self._client = client
         self._namespace = namespace
+        self.last_skipped_corrupt_count = 0
 
     def save(self, guide: LearningGuide) -> LearningGuide:
         try:
@@ -278,6 +278,7 @@ class DatastoreLearningGuideStore(LearningGuideRepository):
             ) from exc
 
     def list_guides(self) -> tuple[LearningGuide, ...]:
+        self.last_skipped_corrupt_count = 0
         try:
             query = self._client.query(
                 kind=LEARNING_GUIDE_KIND, namespace=self._namespace
@@ -288,9 +289,42 @@ class DatastoreLearningGuideStore(LearningGuideRepository):
             raise PersistenceError(f"failed to list learning guides: {exc}") from exc
 
         guides: list[LearningGuide] = []
+        skipped = 0
         for entity in entities:
-            with suppress(PersistenceError):
+            guide_key = getattr(entity, "key", None)
+            guide_id = None
+            if guide_key is not None:
+                guide_id = getattr(guide_key, "name", None)
+                if guide_id is None:
+                    guide_id = getattr(guide_key, "id", None)
+            if guide_id is not None and not isinstance(guide_id, str):
+                guide_id = str(guide_id)
+            try:
                 guides.append(deserialize_learning_guide(entity))
+            except PersistenceError as exc:
+                skipped += 1
+                logger.warning(
+                    "skipping corrupt learning guide record during listing",
+                    extra={
+                        "guide_id": guide_id,
+                        "guide_key_id": guide_id,
+                        "kind": LEARNING_GUIDE_KIND,
+                        "namespace": self._namespace,
+                        "failure_reason": str(exc),
+                    },
+                )
+                continue
+        self.last_skipped_corrupt_count = skipped
+        if skipped:
+            logger.warning(
+                "partial learning guide listing due to corrupt records",
+                extra={
+                    "skipped_corrupt_count": skipped,
+                    "returned_count": len(guides),
+                    "kind": LEARNING_GUIDE_KIND,
+                    "namespace": self._namespace,
+                },
+            )
         return tuple(
             sorted(
                 guides,
