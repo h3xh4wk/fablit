@@ -209,6 +209,7 @@ def _render_editor(
         request,
         "authoring_guide.html",
         {
+            "authoring_section": "guides",
             "guide": guide,
             "practices": _practice_options(request),
             "stages": [(stage.value, label) for stage, label in STAGE_LABELS.items()],
@@ -234,7 +235,12 @@ def _render_guide_list(
     return templates.TemplateResponse(
         request,
         "authoring_guides.html",
-        {"guides": guides, "message": message, "error": error},
+        {
+            "authoring_section": "guides",
+            "guides": guides,
+            "message": message,
+            "error": error,
+        },
         status_code=status_code,
     )
 

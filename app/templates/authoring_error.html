@@ -4,7 +4,7 @@
 <article class="intention">
   {% include "_authoring_nav.html" %}
 
-  <h1 class="display">{{ message }}</h1>
+  <h1 class="display" data-focus-target>{{ message }}</h1>
   {% if description %}
   <p class="authoring__intro">{{ description }}</p>
   {% endif %}
