@@ -4,7 +4,8 @@
 **Owner:** Fablit product
 **Related architecture:** ARCH-001, SEC-001
 **Related specifications:** SPEC-041, SPEC-042, SPEC-043, SPEC-044, SPEC-045
-**Tracking issue:** To be created
+**Tracking issue:** #195
+**Phase 1 audit:** [UX-003 — Whole-App UX, UI, Navigation and Scroll Audit](../../docs/ux/UX-003-whole-app-ux-audit.md)
 
 ## 1. Overview and goal
 
