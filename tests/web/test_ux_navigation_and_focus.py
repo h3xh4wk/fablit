@@ -187,6 +187,8 @@ def test_shared_htmx_focus_script_and_learner_error_focus_target_are_rendered() 
     assert script.status_code == 200
     assert "htmx:afterSettle" in script.text
     assert "preventScroll: true" in script.text
+    assert "isConnected" in script.text
+    assert "resolveSettledTarget" in script.text
 
     missing_page = client.get("/activities/non-existent-activity-id")
     assert missing_page.status_code == 404

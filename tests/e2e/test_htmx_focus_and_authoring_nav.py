@@ -248,9 +248,7 @@ def test_authoring_navigation_aria_current_and_brief_draft_focus() -> None:
                 route.fulfill(status=200, content_type="text/html", body=body)
 
             page.route(f"{base_url}/authoring/brief/draft", fulfill_draft)
-            page.get_by_label("Your notes, source text, or topic").fill(
-                "Compare two posters."
-            )
+            page.get_by_label("Your notes or source text").fill("Compare two posters.")
             page.get_by_role("button", name="Draft the brief").click()
 
             outcome_banner = page.locator(

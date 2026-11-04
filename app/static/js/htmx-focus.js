@@ -58,11 +58,23 @@
     return root.querySelector("[data-focus-target]");
   }
 
+  function resolveLiveRoot(root) {
+    if (root instanceof Element && root.isConnected) {
+      return root;
+    }
+    if (root instanceof Element && root.id) {
+      const byId = document.getElementById(root.id);
+      if (byId) return byId;
+    }
+    return document.getElementById("main") || document.body;
+  }
+
   function resolveMainTarget(scope) {
+    const liveScope = resolveLiveRoot(scope);
     const main =
-      scope instanceof Element && scope.id === "main"
-        ? scope
-        : document.getElementById("main") || scope;
+      liveScope instanceof Element && liveScope.id === "main"
+        ? liveScope
+        : document.getElementById("main") || liveScope;
     if (!(main instanceof Element)) return null;
 
     const explicit = resolveExplicitTarget(main);
@@ -80,7 +92,7 @@
   }
 
   function resolveErrorTarget(target) {
-    const root = target instanceof Element ? target : document.body;
+    const root = resolveLiveRoot(target);
     if (!(root instanceof Element)) return null;
 
     const explicit = resolveExplicitTarget(root);
@@ -95,12 +107,30 @@
     return resolveMainTarget(root);
   }
 
+  function resolveSettledTarget(event, detail) {
+    const eventTarget =
+      event.target instanceof Element && event.target.isConnected
+        ? event.target
+        : null;
+    const detailTarget =
+      detail.target instanceof Element ? detail.target : null;
+
+    if (eventTarget) return eventTarget;
+    if (detailTarget && detailTarget.isConnected) return detailTarget;
+    if (detailTarget && detailTarget.id) {
+      const liveById = document.getElementById(detailTarget.id);
+      if (liveById) return liveById;
+    }
+    return event.target instanceof Element ? event.target : detailTarget;
+  }
+
   function handleAfterSettle(event) {
     const detail = event.detail || {};
-    const target =
-      (detail.target instanceof Element ? detail.target : null) ||
-      (event.target instanceof Element ? event.target : null);
+    const target = resolveSettledTarget(event, detail);
     if (!target) return;
+
+    const rawTarget =
+      detail.target instanceof Element ? detail.target : target;
 
     const anchorTarget = resolveAnchorTarget(detail);
     if (anchorTarget) {
@@ -108,8 +138,9 @@
       return;
     }
 
-    const isBodySwap = target === document.body;
-    const isMainSwap = target.id === "main";
+    const isBodySwap =
+      target === document.body || rawTarget === document.body;
+    const isMainSwap = target.id === "main" || rawTarget.id === "main";
     const isFailedSwap = Boolean(detail.failed);
 
     if (isFailedSwap) {
