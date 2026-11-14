@@ -326,6 +326,43 @@ class AppConfig(BaseSettings):
         ge=1024,
         description="Maximum response size read from one news source.",
     )
+    news_curation_max_attempts: int = Field(
+        3,
+        ge=1,
+        le=10,
+        description=(
+            "Maximum attempts per Gemini curation request, including the "
+            "initial attempt (SPEC-041/SPEC-042 retry reliability)."
+        ),
+    )
+    news_curation_retry_base_seconds: float = Field(
+        1.0,
+        ge=0,
+        le=60,
+        description=(
+            "Base delay in seconds for exponential retry backoff after a "
+            "transient Gemini curation error."
+        ),
+    )
+    news_curation_retry_max_seconds: float = Field(
+        30.0,
+        ge=0,
+        le=300,
+        description=(
+            "Maximum wait in seconds the curation worker will spend on retry "
+            "delays. A larger Retry-After defers the story instead of "
+            "retrying early."
+        ),
+    )
+    news_curation_request_interval_seconds: float = Field(
+        2.0,
+        ge=0,
+        le=60,
+        description=(
+            "Minimum interval in seconds between independent Gemini curation "
+            "requests, applied across sequential stories in one batch."
+        ),
+    )
     news_max_sources_per_task: int = Field(
         2,
         ge=1,
@@ -718,6 +755,12 @@ def _resolve_environment_overrides() -> dict[str, Any]:
         "news_relevance_threshold": "FABLIT_NEWS_RELEVANCE_THRESHOLD",
         "news_fetch_timeout": "FABLIT_NEWS_FETCH_TIMEOUT",
         "news_max_response_bytes": "FABLIT_NEWS_MAX_RESPONSE_BYTES",
+        "news_curation_max_attempts": "FABLIT_NEWS_CURATION_MAX_ATTEMPTS",
+        "news_curation_retry_base_seconds": ("FABLIT_NEWS_CURATION_RETRY_BASE_SECONDS"),
+        "news_curation_retry_max_seconds": ("FABLIT_NEWS_CURATION_RETRY_MAX_SECONDS"),
+        "news_curation_request_interval_seconds": (
+            "FABLIT_NEWS_CURATION_REQUEST_INTERVAL_SECONDS"
+        ),
         "news_max_sources_per_task": "FABLIT_NEWS_MAX_SOURCES_PER_TASK",
         "news_task_dispatch": "FABLIT_NEWS_TASK_DISPATCH",
         "news_task_queue": "FABLIT_NEWS_TASK_QUEUE",

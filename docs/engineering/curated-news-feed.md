@@ -46,6 +46,10 @@ ordinary practice or hide previously published stories.
 | `FABLIT_NEWS_RELEVANCE_THRESHOLD` | `0.5` | Minimum provider relevance score (0–1). |
 | `FABLIT_NEWS_FETCH_TIMEOUT` | `10.0` | Per-source fetch timeout in seconds. |
 | `FABLIT_NEWS_MAX_RESPONSE_BYTES` | `512000` | Maximum bytes read from one feed. |
+| `FABLIT_NEWS_CURATION_MAX_ATTEMPTS` | `3` | Maximum attempts per Gemini curation request, including the initial attempt (1–10). |
+| `FABLIT_NEWS_CURATION_RETRY_BASE_SECONDS` | `1.0` | Base delay for exponential retry backoff after a transient Gemini error. |
+| `FABLIT_NEWS_CURATION_RETRY_MAX_SECONDS` | `30.0` | Maximum time one worker will wait across retry delays. A longer `Retry-After` defers the story instead of retrying early. |
+| `FABLIT_NEWS_CURATION_REQUEST_INTERVAL_SECONDS` | `2.0` | Minimum interval between independent Gemini curation requests in one batch. |
 | `FABLIT_NEWS_MAX_SOURCES_PER_TASK` | `2` | Approved sources processed by one durable task unit (1–10). A larger batch is checkpointed and continued by further units. |
 | `FABLIT_NEWS_TASK_DISPATCH` | `inline` | `inline` for local development and tests (runs the unit in the request, not durable), `cloud_tasks` in production. |
 | `FABLIT_NEWS_TASK_QUEUE` | – | Full Cloud Tasks queue resource name, e.g. `projects/<project>/locations/<region>/queues/news-curation`. Required for `cloud_tasks`. |
@@ -255,11 +259,26 @@ running.
 
 ### Gemini retry observability and safe diagnostics
 
-When curating news with Gemini, transient failures (HTTP 429 Too Many Requests,
-HTTP 503 Service Unavailable) are retried with exponential backoff and jitter,
-honouring `Retry-After` headers bounded by `MAX_RETRY_DELAY_SECONDS` (10 seconds).
-Non-retryable provider errors (such as HTTP 400 Bad Request or HTTP 401/403
-authentication/permission errors) fail immediately without retrying.
+Independent story requests are paced by `FABLIT_NEWS_CURATION_REQUEST_INTERVAL_SECONDS`
+(default 2 seconds), so a batch does not issue stories back-to-back. Pacing
+applies only between separate stories, never between retries of one story; the
+first request after startup is not delayed.
+
+Transient failures (HTTP 429 Too Many Requests, HTTP 503 Service Unavailable)
+are retried with exponential backoff and bounded jitter, up to
+`FABLIT_NEWS_CURATION_MAX_ATTEMPTS` attempts (default 3). The delay for attempt
+*n* is `base × 2^(n-1)` with ±25% jitter, where `base` is
+`FABLIT_NEWS_CURATION_RETRY_BASE_SECONDS` (default 1 second), capped at
+`FABLIT_NEWS_CURATION_RETRY_MAX_SECONDS` (default 30 seconds).
+
+A valid `Retry-After` header (numeric seconds or an HTTP date) is honoured
+exactly and is never shortened. If the provider requests a wait longer than
+`FABLIT_NEWS_CURATION_RETRY_MAX_SECONDS`, the worker does not sleep and retry
+early: it defers the story as an exhausted outcome so the task stays within
+its execution budget. Missing or malformed `Retry-After` values fall back to
+the exponential backoff above. Non-retryable provider errors (such as HTTP 400
+Bad Request or HTTP 401/403 authentication/permission errors) fail immediately
+without retrying.
 
 The batch report and job status distinguish between transient retries and
 terminal failure:

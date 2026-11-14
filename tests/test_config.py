@@ -613,6 +613,10 @@ def test_news_limits_read_from_environment(
     monkeypatch.setenv("FABLIT_NEWS_RELEVANCE_THRESHOLD", "0.7")
     monkeypatch.setenv("FABLIT_NEWS_FETCH_TIMEOUT", "4.5")
     monkeypatch.setenv("FABLIT_NEWS_MAX_RESPONSE_BYTES", "2048")
+    monkeypatch.setenv("FABLIT_NEWS_CURATION_MAX_ATTEMPTS", "4")
+    monkeypatch.setenv("FABLIT_NEWS_CURATION_RETRY_BASE_SECONDS", "1.5")
+    monkeypatch.setenv("FABLIT_NEWS_CURATION_RETRY_MAX_SECONDS", "20")
+    monkeypatch.setenv("FABLIT_NEWS_CURATION_REQUEST_INTERVAL_SECONDS", "3.5")
 
     config = load_config()
 
@@ -622,3 +626,25 @@ def test_news_limits_read_from_environment(
     assert config.news_relevance_threshold == 0.7
     assert config.news_fetch_timeout == 4.5
     assert config.news_max_response_bytes == 2048
+    assert config.news_curation_max_attempts == 4
+    assert config.news_curation_retry_base_seconds == 1.5
+    assert config.news_curation_retry_max_seconds == 20.0
+    assert config.news_curation_request_interval_seconds == 3.5
+
+
+def test_news_curation_retry_defaults_are_worker_safe() -> None:
+    config = load_config()
+
+    assert config.news_curation_max_attempts == 3
+    assert config.news_curation_retry_base_seconds == 1.0
+    assert config.news_curation_retry_max_seconds == 30.0
+    assert config.news_curation_request_interval_seconds == 2.0
+
+
+def test_invalid_news_curation_attempts_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FABLIT_NEWS_CURATION_MAX_ATTEMPTS", "0")
+
+    with pytest.raises(ConfigValidationError):
+        load_config()

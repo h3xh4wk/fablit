@@ -17,6 +17,7 @@ from __future__ import annotations
 import email.utils
 import json
 import logging
+import random
 import time
 import urllib.error
 import urllib.request
@@ -50,8 +51,10 @@ DEFAULT_GEMINI_NEWS_ENDPOINT: Final[str] = (
 )
 
 MAX_NEWS_ATTEMPTS: Final[int] = 3
-NEWS_RETRY_BACKOFF_SECONDS: Final[float] = 0.5
-MAX_RETRY_DELAY_SECONDS: Final[float] = 10.0
+NEWS_RETRY_BACKOFF_SECONDS: Final[float] = 1.0
+MAX_RETRY_DELAY_SECONDS: Final[float] = 30.0
+DEFAULT_REQUEST_INTERVAL_SECONDS: Final[float] = 2.0
+DEFAULT_JITTER_RATIO: Final[float] = 0.25
 _RETRYABLE_STATUS_CODES: Final[frozenset[int]] = frozenset({429, 503})
 _UNAVAILABLE_MESSAGE = "the news curation provider is unavailable"
 
@@ -72,8 +75,13 @@ class GeminiNewsCurationProvider:
         fetch: GeminiNewsTransport | None = None,
         max_attempts: int = MAX_NEWS_ATTEMPTS,
         retry_backoff_seconds: float = NEWS_RETRY_BACKOFF_SECONDS,
+        max_retry_delay_seconds: float = MAX_RETRY_DELAY_SECONDS,
+        min_request_interval_seconds: float = DEFAULT_REQUEST_INTERVAL_SECONDS,
+        jitter_ratio: float = DEFAULT_JITTER_RATIO,
         sleeper: Callable[[float], None] = time.sleep,
         clock: Callable[[], datetime] | None = None,
+        monotonic: Callable[[], float] = time.monotonic,
+        random_source: Callable[[], float] | None = None,
     ) -> None:
         if not isinstance(api_key, str) or not api_key.strip():
             raise NewsCurationProviderError(
@@ -91,6 +99,18 @@ class GeminiNewsCurationProvider:
             raise NewsCurationProviderError(
                 "the Gemini news provider requires a non-negative retry backoff"
             )
+        if max_retry_delay_seconds < 0:
+            raise NewsCurationProviderError(
+                "the Gemini news provider requires a non-negative maximum delay"
+            )
+        if min_request_interval_seconds < 0:
+            raise NewsCurationProviderError(
+                "the Gemini news provider requires a non-negative request interval"
+            )
+        if not 0 <= jitter_ratio <= 1:
+            raise NewsCurationProviderError(
+                "the Gemini news provider requires jitter_ratio between 0 and 1"
+            )
         self._api_key = api_key.strip()
         self._model = model.strip()
         self._endpoint = endpoint.rstrip("/")
@@ -98,8 +118,14 @@ class GeminiNewsCurationProvider:
         self._fetch: GeminiNewsTransport = fetch or self._default_fetch
         self._max_attempts = max_attempts
         self._retry_backoff_seconds = retry_backoff_seconds
+        self._max_retry_delay_seconds = max_retry_delay_seconds
+        self._min_request_interval_seconds = min_request_interval_seconds
+        self._jitter_ratio = jitter_ratio
         self._sleeper = sleeper
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._monotonic = monotonic
+        self._random: Callable[[], float] = random_source or random.random
+        self._last_request_at: float | None = None
 
     @property
     def provider_id(self) -> str:
@@ -111,6 +137,7 @@ class GeminiNewsCurationProvider:
 
     def curate(self, request: NewsCurationRequest) -> NewsCurationResult:
         """Ask Gemini to curate one bounded source story."""
+        self._wait_for_request_interval()
         url = f"{self._endpoint}/models/{self._model}:generateContent"
         body = json.dumps(self._build_payload(request)).encode("utf-8")
         headers = {
@@ -195,6 +222,23 @@ class GeminiNewsCurationProvider:
         ]
         return "\n".join(lines)
 
+    def _wait_for_request_interval(self) -> None:
+        """Space independent story requests by the configured minimum.
+
+        Pacing belongs between separate curation calls, not between retries of
+        one call (those already wait for their own backoff). The first request
+        after construction is never delayed.
+        """
+        now = self._monotonic()
+        if self._last_request_at is not None:
+            remaining = self._min_request_interval_seconds - (
+                now - self._last_request_at
+            )
+            if remaining > 0:
+                self._sleeper(remaining)
+                now = self._monotonic()
+        self._last_request_at = now
+
     def _fetch_with_retry(
         self, url: str, body: bytes, headers: Mapping[str, str]
     ) -> tuple[str, int]:
@@ -228,12 +272,25 @@ class GeminiNewsCurationProvider:
                     ) from exc
 
                 parsed_delay = self._parse_retry_after(getattr(exc, "headers", None))
-                base_delay = (
-                    parsed_delay
-                    if parsed_delay is not None
-                    else (self._retry_backoff_seconds * attempt)
-                )
-                delay = min(MAX_RETRY_DELAY_SECONDS, max(0.0, base_delay))
+                delay = self._retry_delay(attempt, parsed_delay)
+                if delay is None:
+                    logger.warning(
+                        "Gemini news provider requested a wait beyond the "
+                        "worker budget; deferring",
+                        extra={
+                            "status_code": exc.code,
+                            "attempt": attempt,
+                            "max_attempts": self._max_attempts,
+                            "retry_after": parsed_delay,
+                            "max_retry_delay": self._max_retry_delay_seconds,
+                        },
+                    )
+                    raise NewsCurationProviderError(
+                        f"{_UNAVAILABLE_MESSAGE} (status {exc.code} deferred)",
+                        status_code=exc.code,
+                        retries=retries,
+                        exhausted=True,
+                    ) from exc
                 logger.warning(
                     "transient Gemini news provider error; retrying",
                     extra={
@@ -246,6 +303,27 @@ class GeminiNewsCurationProvider:
                 self._sleeper(delay)
                 retries += 1
                 attempt += 1
+
+    def _retry_delay(
+        self, attempt: int, retry_after_seconds: float | None
+    ) -> float | None:
+        """Return the wait before the next attempt, or ``None`` to defer.
+
+        A provider ``Retry-After`` is honoured exactly and never shortened.
+        If it exceeds the worker-safe maximum, the request is deferred (an
+        exhausted outcome) instead of retrying earlier than the provider
+        asked. Without one, delay is exponential in the attempt number plus
+        bounded jitter, capped by the configured maximum.
+        """
+        if retry_after_seconds is not None:
+            if retry_after_seconds > self._max_retry_delay_seconds:
+                return None
+            return retry_after_seconds
+        base: float = self._retry_backoff_seconds * (2 ** (attempt - 1))
+        jittered: float = base * (
+            1 + self._jitter_ratio * (2 * self._random() - 1)
+        )
+        return min(self._max_retry_delay_seconds, max(0.0, jittered))
 
     def _parse_retry_after(self, headers: Any) -> float | None:
         if headers is None:
