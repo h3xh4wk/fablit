@@ -24,7 +24,10 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from fablit.application.errors import NewsCurationJobTransitionError
+from fablit.application.errors import (
+    NewsCurationJobTransitionError,
+    NewsProviderFailureCategory,
+)
 from fablit.application.news import (
     NewsBatchResult,
     NewsCurationDiagnostics,
@@ -178,6 +181,9 @@ def _diagnostics_payload(diagnostics: NewsCurationDiagnostics) -> dict[str, Any]
         "exhausted_retries": diagnostics.exhausted_retries,
         "provider_outcome": diagnostics.provider_outcome.value,
         "last_status_code": diagnostics.last_status_code,
+        "failure_categories": [
+            category.value for category in diagnostics.failure_categories
+        ],
     }
 
 
@@ -196,7 +202,29 @@ def _diagnostics_from_payload(payload: Mapping[str, Any]) -> NewsCurationDiagnos
             if payload.get("last_status_code") is not None
             else None
         ),
+        failure_categories=_failure_categories_from_payload(
+            payload.get("failure_categories", ())
+        ),
     )
+
+
+def _failure_categories_from_payload(
+    raw: object,
+) -> tuple[NewsProviderFailureCategory, ...]:
+    """Read categories defensively; older reports simply have none."""
+    if not isinstance(raw, list | tuple):
+        return ()
+    categories: list[NewsProviderFailureCategory] = []
+    for value in raw:
+        if not isinstance(value, str):
+            continue
+        try:
+            category = NewsProviderFailureCategory(value)
+        except ValueError:
+            category = NewsProviderFailureCategory.UNKNOWN
+        if category not in categories:
+            categories.append(category)
+    return tuple(categories)
 
 
 def _outcome_payload(outcome: NewsItemOutcome) -> dict[str, str]:

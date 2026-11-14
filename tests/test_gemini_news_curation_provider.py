@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import urllib.error
 from datetime import UTC, datetime
@@ -10,7 +11,10 @@ from typing import Any
 
 import pytest
 
-from fablit.application.errors import NewsCurationProviderError
+from fablit.application.errors import (
+    NewsCurationProviderError,
+    NewsProviderFailureCategory,
+)
 from fablit.application.news_curation import NewsCurationRequest
 from fablit.platform.gemini_news_curation_provider import (
     MAX_RETRY_DELAY_SECONDS,
@@ -515,6 +519,247 @@ def test_non_transient_failure_is_not_retried() -> None:
         provider.curate(REQUEST)
 
     assert len(attempts) == 1
+
+
+def _http_error_with_body(status: int, payload: Any) -> urllib.error.HTTPError:
+    raw = payload if isinstance(payload, bytes) else json.dumps(payload).encode("utf-8")
+    return urllib.error.HTTPError(
+        "https://generativelanguage.example/v1beta/models/test:generateContent",
+        status,
+        "provider message that must not leak",
+        Message(),
+        io.BytesIO(raw),
+    )
+
+
+def _category_for(error: BaseException) -> NewsProviderFailureCategory | None:
+    assert isinstance(error, NewsCurationProviderError)
+    return error.category
+
+
+def test_429_rate_limit_with_minute_quota_is_classified_as_rate_limited() -> None:
+    body = {
+        "error": {
+            "code": 429,
+            "message": "Quota exceeded for secret prompt content",
+            "status": "RESOURCE_EXHAUSTED",
+            "details": [
+                {
+                    "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                    "reason": "RATE_LIMIT_EXCEEDED",
+                    "domain": "googleapis.com",
+                },
+                {
+                    "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+                    "violations": [
+                        {
+                            "quotaId": (
+                                "GenerateContentInputTokensPerModelPerMinute-FreeTier"
+                            )
+                        }
+                    ],
+                },
+            ],
+        }
+    }
+
+    def fetch(url: str, body_bytes: bytes, headers: Any) -> str:
+        raise _http_error_with_body(429, body)
+
+    provider = _provider(fetch, max_attempts=1)
+
+    with pytest.raises(NewsCurationProviderError) as excinfo:
+        provider.curate(REQUEST)
+
+    error = excinfo.value
+    assert error.status_code == 429
+    assert error.exhausted is True
+    assert _category_for(error) == NewsProviderFailureCategory.RATE_LIMITED
+    assert "secret prompt content" not in str(error)
+    assert API_KEY not in str(error)
+
+
+def test_429_daily_quota_is_classified_as_quota_exhausted() -> None:
+    body = {
+        "error": {
+            "code": 429,
+            "message": "quota",
+            "status": "RESOURCE_EXHAUSTED",
+            "details": [
+                {
+                    "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+                    "violations": [
+                        {
+                            "quotaId": (
+                                "GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+                            )
+                        }
+                    ],
+                }
+            ],
+        }
+    }
+
+    def fetch(url: str, body_bytes: bytes, headers: Any) -> str:
+        raise _http_error_with_body(429, body)
+
+    provider = _provider(fetch, max_attempts=1)
+
+    with pytest.raises(NewsCurationProviderError) as excinfo:
+        provider.curate(REQUEST)
+
+    assert _category_for(excinfo.value) == NewsProviderFailureCategory.QUOTA_EXHAUSTED
+
+
+def test_billing_restriction_is_not_reported_as_a_rate_limit() -> None:
+    body = {
+        "error": {
+            "code": 429,
+            "status": "RESOURCE_EXHAUSTED",
+            "details": [
+                {
+                    "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                    "reason": "BILLING_DISABLED",
+                }
+            ],
+        }
+    }
+
+    def fetch(url: str, body_bytes: bytes, headers: Any) -> str:
+        raise _http_error_with_body(429, body)
+
+    provider = _provider(fetch, max_attempts=3)
+
+    with pytest.raises(NewsCurationProviderError) as excinfo:
+        provider.curate(REQUEST)
+
+    assert (
+        _category_for(excinfo.value)
+        == NewsProviderFailureCategory.BILLING_OR_CONFIGURATION_RESTRICTED
+    )
+
+
+def test_403_without_a_body_is_classified_as_authentication_or_permission() -> None:
+    def fetch(url: str, body: bytes, headers: Any) -> str:
+        raise urllib.error.HTTPError(url, 403, "forbidden", Message(), None)
+
+    provider = _provider(fetch, max_attempts=1)
+
+    with pytest.raises(NewsCurationProviderError) as excinfo:
+        provider.curate(REQUEST)
+
+    assert (
+        _category_for(excinfo.value)
+        == NewsProviderFailureCategory.AUTHENTICATION_OR_PERMISSION
+    )
+
+
+def test_503_is_classified_as_temporarily_unavailable() -> None:
+    body = {
+        "error": {
+            "code": 503,
+            "status": "UNAVAILABLE",
+            "message": "The service is currently unavailable.",
+        }
+    }
+
+    def fetch(url: str, body_bytes: bytes, headers: Any) -> str:
+        raise _http_error_with_body(503, body)
+
+    provider = _provider(fetch, max_attempts=1)
+
+    with pytest.raises(NewsCurationProviderError) as excinfo:
+        provider.curate(REQUEST)
+
+    assert (
+        _category_for(excinfo.value)
+        == NewsProviderFailureCategory.TEMPORARY_UNAVAILABLE
+    )
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [b"not json", b"[]", b'{"error": "a string"}', b'{"unexpected": true}', b""],
+)
+def test_malformed_error_bodies_degrade_to_unknown(payload: bytes) -> None:
+    def fetch(url: str, body: bytes, headers: Any) -> str:
+        raise _http_error_with_body(400, payload)
+
+    provider = _provider(fetch, max_attempts=1)
+
+    with pytest.raises(NewsCurationProviderError) as excinfo:
+        provider.curate(REQUEST)
+
+    assert _category_for(excinfo.value) == NewsProviderFailureCategory.UNKNOWN
+
+
+def test_oversized_error_body_is_not_parsed() -> None:
+    payload = b'{"error": {"status": "' + b"A" * 20_000 + b'"}}'
+
+    def fetch(url: str, body: bytes, headers: Any) -> str:
+        raise _http_error_with_body(400, payload)
+
+    provider = _provider(fetch, max_attempts=1)
+
+    with pytest.raises(NewsCurationProviderError) as excinfo:
+        provider.curate(REQUEST)
+
+    assert _category_for(excinfo.value) == NewsProviderFailureCategory.UNKNOWN
+
+
+def test_classification_logs_only_stable_safe_fields(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    body = {
+        "error": {
+            "code": 429,
+            "message": "Leaked provider detail",
+            "status": "RESOURCE_EXHAUSTED",
+            "details": [
+                {
+                    "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                    "reason": "RATE_LIMIT_EXCEEDED",
+                }
+            ],
+        }
+    }
+
+    def fetch(url: str, body_bytes: bytes, headers: Any) -> str:
+        raise _http_error_with_body(429, body)
+
+    provider = _provider(fetch, max_attempts=1)
+
+    with (
+        caplog.at_level("WARNING"),
+        pytest.raises(NewsCurationProviderError),
+    ):
+        provider.curate(REQUEST)
+
+    records = [r for r in caplog.records if hasattr(r, "failure_category")]
+    assert records
+    assert all(record.failure_category == "rate_limited" for record in records)
+    for record in caplog.records:
+        message = record.getMessage()
+        assert "Leaked provider detail" not in message
+        assert API_KEY not in message
+        assert INJECTED not in message
+
+
+def test_successful_retry_after_recovery_does_not_set_a_failure_category() -> None:
+    attempts = 0
+
+    def fetch(url: str, body: bytes, headers: Any) -> str:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise urllib.error.HTTPError(url, 429, "rate limited", Message(), None)
+        return _gemini_response(RESULT_PAYLOAD)
+
+    provider = _provider(fetch, max_attempts=2)
+    result = provider.curate(REQUEST)
+
+    assert result.retry_count == 1
+    assert attempts == 2
 
 
 def test_constructor_requires_a_key_and_model() -> None:

@@ -295,21 +295,47 @@ terminal failure:
     retry attempts made across all items in the batch).
   - Structured `NewsCurationDiagnostics` report the provider identity, model,
     total `provider_retries`, `transient_retries_recovered`, `exhausted_retries`,
-    `provider_outcome`, and the `last_status_code` seen on provider failure.
+    `provider_outcome`, the `last_status_code` seen on provider failure, and the
+    safe `failure_categories` observed across failed candidates.
+- **Safe failure classification**:
+  - Failed candidates are mapped to a small, controlled category set:
+    `rate_limited`, `quota_exhausted`,
+    `billing_or_configuration_restricted`, `temporary_unavailable`,
+    `authentication_or_permission`, and `unknown`.
+  - Classification uses only the provider's documented error envelope
+    (`error.status`, `ErrorInfo` reasons, and `QuotaFailure` identifiers).
+    Only a bounded error body is read (16 KiB) and it is discarded immediately;
+    it is never logged, persisted, or re-raised.
+  - A 429 is not assumed to be a daily quota or billing problem. It is reported
+    as `rate_limited` unless the provider details identify a daily or
+    longer-period quota (`per day` / `daily` quota identifiers) or a billing
+    restriction. HTTP 401/403 map to `authentication_or_permission` unless the
+    details identify a billing or API-enablement restriction, and 5xx/503 map
+    to `temporary_unavailable`.
+  - Malformed, oversized, or changed error shapes degrade to `unknown` instead
+    of guessing from the status code alone.
 - **Leak prevention**:
   - Structured diagnostics and structured log entries strictly omit API keys,
-    secrets, full prompt texts, and raw model payloads.
+    secrets, full prompt texts, and raw model payloads. Logs carry only stable
+    fields: HTTP status, retry counts, and the safe failure category.
   - Failure summaries in reports and authoring copy remain bounded, high-level
     reasons (e.g. `curation provider retries exhausted (HTTP 429)` or `curation provider failed (HTTP 400)`).
 - **Safe operator interpretation**:
   - When `provider_retries > 0` with `provider_outcome: recovered`, transient
     throttling or brief service interruptions were safely handled and the batch
     completed; no manual intervention is needed.
-  - If `provider_outcome: retries_exhausted` (typically with HTTP 429), check
-    Gemini quota and rate limits before initiating another refresh.
+  - Read `failure_categories` alongside `provider_outcome`. `rate_limited`
+    points at request frequency; `quota_exhausted` points at a project or model
+    quota; `billing_or_configuration_restricted` points at billing or API
+    enablement; `authentication_or_permission` points at the API key or its
+    permissions; `temporary_unavailable` points at provider availability.
+  - If `provider_outcome: retries_exhausted`, check the reported categories and
+    the Gemini usage dashboard before initiating another refresh.
   - If `provider_outcome: failed` (with HTTP 400 or 401/403), check model
     configuration (`FABLIT_AI_PROVIDER_MODEL`) or API key validity
     (`FABLIT_AI_PROVIDER_API_KEY`).
+  - Reports persisted before failure categories existed omit the field; they
+    remain readable and simply show no category explanations.
 
 ## 7. Local development and tests
 

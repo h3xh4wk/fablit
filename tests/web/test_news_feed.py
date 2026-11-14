@@ -10,6 +10,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from fablit.application.errors import (
+    NewsCurationProviderError,
+    NewsProviderFailureCategory,
+)
 from fablit.application.news import (
     InMemoryNewsRepository,
     NewsCategory,
@@ -384,6 +388,29 @@ def test_batch_report_shows_rejections_without_raw_provider_detail() -> None:
     assert "1 fetched, 0 duplicates, 0 published, 0 rejected, 1 failed" in page.text
     assert "curation provider failed" in page.text
     assert "secret upstream payload" not in page.text
+
+
+def test_batch_report_explains_the_likely_provider_failure_category() -> None:
+    client, app = _client()
+    provider = FakeNewsCurationProvider(
+        error=NewsCurationProviderError(
+            "rate limit exceeded",
+            status_code=429,
+            retries=2,
+            exhausted=True,
+            category=NewsProviderFailureCategory.RATE_LIMITED,
+        )
+    )
+    install_curator(app, items=(make_item(),), provider=provider)
+
+    accepted = client.post("/authoring/pulse/curate", headers=HEADERS)
+    assert accepted.status_code == 202
+
+    page = client.get("/authoring/pulse", headers=HEADERS)
+    assert page.status_code == 200
+    assert 'id="diagnostics-failure-categories"' in page.text
+    assert "The provider is limiting request frequency." in page.text
+    assert "rate limit exceeded" not in page.text
 
 
 def test_authoring_workspace_offers_the_curation_action() -> None:

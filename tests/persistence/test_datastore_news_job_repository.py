@@ -6,12 +6,16 @@ surface the adapter relies on. No test needs GCP credentials.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
 
-from fablit.application.errors import NewsCurationJobTransitionError
+from fablit.application.errors import (
+    NewsCurationJobTransitionError,
+    NewsProviderFailureCategory,
+)
 from fablit.application.news import (
     NewsBatchResult,
     NewsCurationDiagnostics,
@@ -385,6 +389,7 @@ def test_completed_job_round_trips_with_retries_and_diagnostics() -> None:
         exhausted_retries=1,
         provider_outcome=NewsProviderOutcome.RETRIES_EXHAUSTED,
         last_status_code=429,
+        failure_categories=(NewsProviderFailureCategory.RATE_LIMITED,),
     )
     report = make_report(
         provider_retries=3,
@@ -416,3 +421,39 @@ def test_completed_job_round_trips_with_retries_and_diagnostics() -> None:
     assert loaded == job
     assert loaded.counters.provider_retries == 3
     assert loaded.diagnostics == diag
+    assert loaded.diagnostics is not None
+    assert loaded.diagnostics.failure_categories == (
+        NewsProviderFailureCategory.RATE_LIMITED,
+    )
+
+
+def test_older_reports_without_failure_categories_remain_readable() -> None:
+    diag = NewsCurationDiagnostics(
+        provider_id="google-gemini",
+        model_id="gemini-2.5-flash",
+        exhausted_retries=1,
+        provider_outcome=NewsProviderOutcome.RETRIES_EXHAUSTED,
+        last_status_code=429,
+    )
+    report = make_report(
+        diagnostics=diag,
+        failed=1,
+        failures=(
+            NewsItemOutcome(
+                "A", "Title", "https://a.com/1", "curation provider retries exhausted"
+            ),
+        ),
+    )
+    job = running(make_job()).complete(
+        report=report, counters=counters_for(report, sources_configured=1), at=NOW
+    )
+    entity = serialize_news_job(job)
+    payload = json.loads(entity["report_json"])
+    payload["diagnostics"].pop("failure_categories")
+    entity["report_json"] = json.dumps(payload)
+
+    restored = deserialize_news_job(entity)
+
+    assert restored.report is not None
+    assert restored.report.diagnostics is not None
+    assert restored.report.diagnostics.failure_categories == ()

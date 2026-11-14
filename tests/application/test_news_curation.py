@@ -16,6 +16,7 @@ from fablit.application.errors import (
     InvalidNewsSourceError,
     NewsCurationInProgressError,
     NewsCurationProviderError,
+    NewsProviderFailureCategory,
     UnsafeNewsUrlError,
 )
 from fablit.application.image_search import ImageCandidate, ImageSearchError
@@ -850,6 +851,113 @@ def test_batch_curation_aggregates_multiple_provider_outcomes() -> None:
     assert batch.diagnostics.exhausted_retries == 1
     assert batch.diagnostics.last_status_code == 429
     assert batch.diagnostics.provider_outcome == NewsProviderOutcome.RETRIES_EXHAUSTED
+
+
+def test_exhausted_error_category_is_aggregated_with_an_explanation() -> None:
+    provider = FakeNewsCurationProvider(
+        error=NewsCurationProviderError(
+            "rate limit exceeded",
+            status_code=429,
+            retries=2,
+            exhausted=True,
+            category=NewsProviderFailureCategory.RATE_LIMITED,
+        )
+    )
+    curator, _, _ = make_curator(provider=provider)
+
+    batch = curator.curate_batch()
+
+    assert batch.diagnostics is not None
+    assert batch.diagnostics.failure_categories == (
+        NewsProviderFailureCategory.RATE_LIMITED,
+    )
+    explanations = batch.diagnostics.failure_explanations
+    assert len(explanations) == 1
+    assert "limiting request frequency" in explanations[0]
+
+
+def test_error_without_a_category_degrades_to_unknown() -> None:
+    provider = FakeNewsCurationProvider(
+        error=RuntimeError("unexpected provider failure")
+    )
+    curator, _, _ = make_curator(provider=provider)
+
+    batch = curator.curate_batch()
+
+    assert batch.diagnostics is not None
+    assert batch.diagnostics.failure_categories == (
+        NewsProviderFailureCategory.UNKNOWN,
+    )
+
+
+def test_failure_categories_are_aggregated_across_items_in_a_stable_order() -> None:
+    class MultiCategoryProvider:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        @property
+        def provider_id(self) -> str:
+            return "multi-category"
+
+        @property
+        def model_id(self) -> str:
+            return "multi-model"
+
+        def curate(self, request: NewsCurationRequest) -> NewsCurationResult:
+            self.calls += 1
+            if self.calls == 1:
+                raise NewsCurationProviderError(
+                    "rate limited",
+                    status_code=429,
+                    retries=2,
+                    exhausted=True,
+                    category=NewsProviderFailureCategory.RATE_LIMITED,
+                )
+            raise NewsCurationProviderError(
+                "billing disabled",
+                status_code=403,
+                retries=0,
+                exhausted=False,
+                category=(
+                    NewsProviderFailureCategory.BILLING_OR_CONFIGURATION_RESTRICTED
+                ),
+            )
+
+    items = (
+        make_item(url="https://news.example.com/story/1", title="Story 1"),
+        make_item(url="https://news.example.com/story/2", title="Story 2"),
+    )
+    curator, _, _ = make_curator(
+        items=items,
+        provider=MultiCategoryProvider(),  # type: ignore[arg-type]
+    )
+
+    batch = curator.curate_batch()
+
+    assert batch.diagnostics is not None
+    assert batch.diagnostics.failure_categories == (
+        NewsProviderFailureCategory.BILLING_OR_CONFIGURATION_RESTRICTED,
+        NewsProviderFailureCategory.RATE_LIMITED,
+    )
+    assert len(batch.diagnostics.failure_explanations) == 2
+
+
+def test_news_curation_diagnostics_validates_failure_categories() -> None:
+    with pytest.raises(ValueError, match="must be controlled"):
+        NewsCurationDiagnostics(
+            provider_id="test",
+            model_id="test",
+            failure_categories=("rate_limited",),  # type: ignore[arg-type]
+        )
+    with pytest.raises(ValueError, match="must be unique"):
+        NewsCurationDiagnostics(
+            provider_id="test",
+            model_id="test",
+            failure_categories=(
+                NewsProviderFailureCategory.UNKNOWN,
+                NewsProviderFailureCategory.UNKNOWN,
+            ),
+        )
 
 
 def test_news_curation_diagnostics_validates_invariants() -> None:

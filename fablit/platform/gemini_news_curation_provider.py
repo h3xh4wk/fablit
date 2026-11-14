@@ -29,6 +29,7 @@ from typing import Any, Final
 
 from fablit.application.errors import (
     NewsCurationProviderError,
+    NewsProviderFailureCategory,
 )
 from fablit.application.news import NEWS_CATEGORY_LABELS, NewsCategory
 from fablit.application.news_curation import (
@@ -57,6 +58,29 @@ DEFAULT_REQUEST_INTERVAL_SECONDS: Final[float] = 2.0
 DEFAULT_JITTER_RATIO: Final[float] = 0.25
 _RETRYABLE_STATUS_CODES: Final[frozenset[int]] = frozenset({429, 503})
 _UNAVAILABLE_MESSAGE = "the news curation provider is unavailable"
+
+#: Provider error bodies are read only to classify the failure. The read is
+#: bounded and the content is never logged, persisted, or re-raised.
+_MAX_ERROR_BODY_BYTES: Final[int] = 16_384
+#: Error-detail reasons that indicate an account, billing, or API-enablement
+#: restriction rather than a transient rate limit.
+_BILLING_REASON_MARKERS: Final[tuple[str, ...]] = (
+    "BILLING",
+    "API_KEY_SERVICE_BLOCKED",
+    "SERVICE_DISABLED",
+    "CONSUMER_INVALID",
+    "PROJECT_BILLING",
+)
+#: Error-detail reasons that indicate an authentication or permission problem.
+_AUTH_REASON_MARKERS: Final[tuple[str, ...]] = (
+    "API_KEY_INVALID",
+    "API_KEY_EXPIRED",
+    "UNAUTHENTICATED",
+    "PERMISSION_DENIED",
+)
+#: Quota identifiers that describe a daily or longer-period allowance rather
+#: than a short-term request rate.
+_DAILY_QUOTA_MARKERS: Final[tuple[str, ...]] = ("PERDAY", "DAILY")
 
 #: Transport signature: ``(url, body_bytes, headers) -> response_text``.
 GeminiNewsTransport = Callable[[str, bytes, Mapping[str, str]], str]
@@ -149,11 +173,13 @@ class GeminiNewsCurationProvider:
         except NewsCurationProviderError:
             raise
         except urllib.error.HTTPError as exc:
+            category = _classify_http_failure(exc)
             raise NewsCurationProviderError(
                 f"{_UNAVAILABLE_MESSAGE} (status {exc.code})",
                 status_code=exc.code,
                 retries=0,
                 exhausted=False,
+                category=category,
             ) from exc
         except Exception as exc:
             raise NewsCurationProviderError(_UNAVAILABLE_MESSAGE) from exc
@@ -248,12 +274,14 @@ class GeminiNewsCurationProvider:
             try:
                 return self._fetch(url, body, headers), retries
             except urllib.error.HTTPError as exc:
+                category = _classify_http_failure(exc)
                 if exc.code not in _RETRYABLE_STATUS_CODES:
                     raise NewsCurationProviderError(
                         f"{_UNAVAILABLE_MESSAGE} (status {exc.code})",
                         status_code=exc.code,
                         retries=retries,
                         exhausted=False,
+                        category=category,
                     ) from exc
                 if attempt >= self._max_attempts:
                     logger.warning(
@@ -262,6 +290,7 @@ class GeminiNewsCurationProvider:
                             "status_code": exc.code,
                             "attempt": attempt,
                             "max_attempts": self._max_attempts,
+                            "failure_category": category.value,
                         },
                     )
                     raise NewsCurationProviderError(
@@ -269,6 +298,7 @@ class GeminiNewsCurationProvider:
                         status_code=exc.code,
                         retries=retries,
                         exhausted=True,
+                        category=category,
                     ) from exc
 
                 parsed_delay = self._parse_retry_after(getattr(exc, "headers", None))
@@ -281,6 +311,7 @@ class GeminiNewsCurationProvider:
                             "status_code": exc.code,
                             "attempt": attempt,
                             "max_attempts": self._max_attempts,
+                            "failure_category": category.value,
                             "retry_after": parsed_delay,
                             "max_retry_delay": self._max_retry_delay_seconds,
                         },
@@ -290,6 +321,7 @@ class GeminiNewsCurationProvider:
                         status_code=exc.code,
                         retries=retries,
                         exhausted=True,
+                        category=category,
                     ) from exc
                 logger.warning(
                     "transient Gemini news provider error; retrying",
@@ -297,6 +329,7 @@ class GeminiNewsCurationProvider:
                         "status_code": exc.code,
                         "attempt": attempt,
                         "max_attempts": self._max_attempts,
+                        "failure_category": category.value,
                         "retry_delay": delay,
                     },
                 )
@@ -364,32 +397,128 @@ class GeminiNewsCurationProvider:
         return payload.decode("utf-8")
 
     def _parse_response(self, payload: str) -> Mapping[str, object]:
+        unknown = NewsProviderFailureCategory.UNKNOWN
         try:
             data = json.loads(payload)
         except (ValueError, TypeError) as exc:
             raise NewsCurationProviderError(
-                f"{_UNAVAILABLE_MESSAGE} (unreadable response)"
+                f"{_UNAVAILABLE_MESSAGE} (unreadable response)",
+                category=unknown,
             ) from exc
         if not isinstance(data, Mapping):
             raise NewsCurationProviderError(
-                f"{_UNAVAILABLE_MESSAGE} (unexpected response shape)"
+                f"{_UNAVAILABLE_MESSAGE} (unexpected response shape)",
+                category=unknown,
             )
         text = _candidate_text(data)
         if not text:
             raise NewsCurationProviderError(
-                f"{_UNAVAILABLE_MESSAGE} (no result content)"
+                f"{_UNAVAILABLE_MESSAGE} (no result content)",
+                category=unknown,
             )
         try:
             output = json.loads(_extract_json_object(text))
         except (ValueError, TypeError) as exc:
             raise NewsCurationProviderError(
-                f"{_UNAVAILABLE_MESSAGE} (unreadable result)"
+                f"{_UNAVAILABLE_MESSAGE} (unreadable result)",
+                category=unknown,
             ) from exc
         if not isinstance(output, Mapping):
             raise NewsCurationProviderError(
-                f"{_UNAVAILABLE_MESSAGE} (unexpected result shape)"
+                f"{_UNAVAILABLE_MESSAGE} (unexpected result shape)",
+                category=unknown,
             )
         return output
+
+
+def _classify_http_failure(
+    error: urllib.error.HTTPError,
+) -> NewsProviderFailureCategory:
+    """Map one provider HTTP error to a safe, documented category.
+
+    Only the documented error envelope (``error.status``, ``ErrorInfo``
+    reasons, and ``QuotaFailure`` identifiers) is inspected. The raw body is
+    never logged or persisted, and a changed or malformed shape degrades to
+    ``UNKNOWN`` rather than guessing a cause from the status code alone.
+    """
+    body = _http_error_body(error)
+    status_name, reasons, quota_ids = _error_signals(body)
+
+    if any(
+        marker in reason for reason in reasons for marker in _BILLING_REASON_MARKERS
+    ):
+        return NewsProviderFailureCategory.BILLING_OR_CONFIGURATION_RESTRICTED
+    if (
+        error.code in (401, 403)
+        or status_name in {"UNAUTHENTICATED", "PERMISSION_DENIED"}
+        or any(
+            marker in reason for reason in reasons for marker in _AUTH_REASON_MARKERS
+        )
+    ):
+        return NewsProviderFailureCategory.AUTHENTICATION_OR_PERMISSION
+    if error.code == 429 or status_name == "RESOURCE_EXHAUSTED":
+        if any(
+            marker in quota for quota in quota_ids for marker in _DAILY_QUOTA_MARKERS
+        ):
+            return NewsProviderFailureCategory.QUOTA_EXHAUSTED
+        return NewsProviderFailureCategory.RATE_LIMITED
+    if error.code == 503 or status_name == "UNAVAILABLE" or error.code >= 500:
+        return NewsProviderFailureCategory.TEMPORARY_UNAVAILABLE
+    return NewsProviderFailureCategory.UNKNOWN
+
+
+def _http_error_body(
+    error: urllib.error.HTTPError,
+) -> Mapping[str, object] | None:
+    """Read a bounded error body for classification, discarding it afterwards."""
+    read = getattr(error, "read", None)
+    if not callable(read):
+        return None
+    try:
+        raw = read()
+    except Exception:
+        return None
+    if not isinstance(raw, bytes | bytearray) or not raw:
+        return None
+    if len(raw) > _MAX_ERROR_BODY_BYTES:
+        return None
+    try:
+        data = json.loads(bytes(raw).decode("utf-8", errors="replace"))
+    except (ValueError, TypeError):
+        return None
+    return data if isinstance(data, Mapping) else None
+
+
+def _error_signals(
+    body: Mapping[str, object] | None,
+) -> tuple[str, tuple[str, ...], tuple[str, ...]]:
+    """Extract only the documented classification fields from an error body."""
+    if not isinstance(body, Mapping):
+        return "", (), ()
+    error = body.get("error")
+    if not isinstance(error, Mapping):
+        return "", (), ()
+    status_value = error.get("status")
+    status_name = status_value.upper() if isinstance(status_value, str) else ""
+    reasons: list[str] = []
+    quota_ids: list[str] = []
+    details = error.get("details")
+    if isinstance(details, list):
+        for detail in details:
+            if not isinstance(detail, Mapping):
+                continue
+            reason = detail.get("reason")
+            if isinstance(reason, str):
+                reasons.append(reason.upper())
+            violations = detail.get("violations")
+            if isinstance(violations, list):
+                for violation in violations:
+                    if not isinstance(violation, Mapping):
+                        continue
+                    quota_id = violation.get("quotaId")
+                    if isinstance(quota_id, str):
+                        quota_ids.append(quota_id.upper())
+    return status_name, tuple(reasons), tuple(quota_ids)
 
 
 def _candidate_text(data: Mapping[str, object]) -> str:

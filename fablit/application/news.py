@@ -33,6 +33,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from .errors import (
     NewsCurationInProgressError,
     NewsCurationProviderError,
+    NewsProviderFailureCategory,
     UnsafeNewsUrlError,
 )
 from .news_curation import (
@@ -305,6 +306,39 @@ class NewsProviderOutcome(StrEnum):
     FAILED = "failed"
 
 
+#: Operator-facing explanations for the safe provider failure categories.
+#: Each explains the likely cause and the next check, without provider text.
+NEWS_PROVIDER_FAILURE_EXPLANATIONS: dict[NewsProviderFailureCategory, str] = {
+    NewsProviderFailureCategory.RATE_LIMITED: (
+        "The provider is limiting request frequency. Wait before refreshing "
+        "again and check the current rate limits for the configured model."
+    ),
+    NewsProviderFailureCategory.QUOTA_EXHAUSTED: (
+        "The provider reports that a usage quota for this project or model is "
+        "exhausted. Check the provider's usage dashboard and quota limits; "
+        "waiting may be required until the quota resets."
+    ),
+    NewsProviderFailureCategory.BILLING_OR_CONFIGURATION_RESTRICTED: (
+        "The provider rejected requests because of a billing or configuration "
+        "restriction. Check billing status and that the provider API is "
+        "enabled for the project."
+    ),
+    NewsProviderFailureCategory.TEMPORARY_UNAVAILABLE: (
+        "The provider was temporarily unavailable. The story was retried; "
+        "refresh again shortly if the condition continues."
+    ),
+    NewsProviderFailureCategory.AUTHENTICATION_OR_PERMISSION: (
+        "The provider rejected the request as unauthenticated or not "
+        "permitted. Check that the configured API key is valid and allowed "
+        "to use the selected model."
+    ),
+    NewsProviderFailureCategory.UNKNOWN: (
+        "The provider failed for a reason Fablit could not classify safely. "
+        "Check the provider's status and service configuration."
+    ),
+}
+
+
 @dataclass(frozen=True)
 class NewsCurationDiagnostics:
     """Safe structured diagnostics for provider curation and retry behavior.
@@ -320,6 +354,15 @@ class NewsCurationDiagnostics:
     exhausted_retries: int = 0
     provider_outcome: NewsProviderOutcome = NewsProviderOutcome.OK
     last_status_code: int | None = None
+    failure_categories: tuple[NewsProviderFailureCategory, ...] = ()
+
+    @property
+    def failure_explanations(self) -> tuple[str, ...]:
+        """Actionable, human-readable explanations for observed failures."""
+        return tuple(
+            NEWS_PROVIDER_FAILURE_EXPLANATIONS[category]
+            for category in self.failure_categories
+        )
 
     def __post_init__(self) -> None:
         """Enforce non-negative counters and valid outcome."""
@@ -342,6 +385,15 @@ class NewsCurationDiagnostics:
             or not (100 <= self.last_status_code <= 599)
         ):
             raise ValueError("last_status_code must be a valid HTTP status code")
+        if not isinstance(self.failure_categories, tuple):
+            raise ValueError("news failure categories must be a tuple")
+        for category in self.failure_categories:
+            if not isinstance(category, NewsProviderFailureCategory):
+                raise ValueError(
+                    f"news failure categories must be controlled, got {category!r}"
+                )
+        if len(set(self.failure_categories)) != len(self.failure_categories):
+            raise ValueError("news failure categories must be unique")
 
 
 class NewsBatchStage(StrEnum):
@@ -435,6 +487,7 @@ class _ItemCurationStats:
     exhausted: bool = False
     provider_failed: bool = False
     status_code: int | None = None
+    failure_category: NewsProviderFailureCategory | None = None
 
 
 class NewsCurator:
@@ -540,6 +593,7 @@ class NewsCurator:
         exhausted_retries = 0
         provider_failures = 0
         last_status_code: int | None = None
+        failure_categories: set[NewsProviderFailureCategory] = set()
         rejections: list[NewsItemOutcome] = []
         failures: list[NewsItemOutcome] = []
         source_failures: list[NewsSourceFailure] = []
@@ -601,6 +655,8 @@ class NewsCurator:
                     provider_failures += 1
                 if stats.status_code is not None:
                     last_status_code = stats.status_code
+                if stats.failure_category is not None:
+                    failure_categories.add(stats.failure_category)
 
                 if outcome is not None:
                     if outcome.reason == "duplicate":
@@ -636,6 +692,9 @@ class NewsCurator:
             exhausted_retries=exhausted_retries,
             provider_outcome=provider_outcome,
             last_status_code=last_status_code,
+            failure_categories=tuple(
+                sorted(failure_categories, key=lambda category: category.value)
+            ),
         )
 
         return NewsBatchResult(
@@ -742,6 +801,11 @@ class NewsCurator:
             status_code = error.status_code
             exhausted = error.exhausted
             provider_failed = not error.exhausted
+            failure_category = (
+                error.category
+                if error.category is not None
+                else NewsProviderFailureCategory.UNKNOWN
+            )
             if exhausted:
                 reason = (
                     f"curation provider retries exhausted (status {status_code})"
@@ -759,6 +823,7 @@ class NewsCurator:
                     "status_code": status_code,
                     "retries": retries,
                     "exhausted": exhausted,
+                    "failure_category": failure_category.value,
                 },
             )
             return (
@@ -770,12 +835,16 @@ class NewsCurator:
                     exhausted=exhausted,
                     provider_failed=provider_failed,
                     status_code=status_code,
+                    failure_category=failure_category,
                 ),
             )
         except Exception as error:
             logger.warning(
                 "news curation provider failed",
-                extra={"error_type": type(error).__name__},
+                extra={
+                    "error_type": type(error).__name__,
+                    "failure_category": NewsProviderFailureCategory.UNKNOWN.value,
+                },
             )
             return (
                 _outcome(source.name, title, canonical_url, "curation provider failed"),
@@ -786,6 +855,7 @@ class NewsCurator:
                     exhausted=False,
                     provider_failed=True,
                     status_code=None,
+                    failure_category=NewsProviderFailureCategory.UNKNOWN,
                 ),
             )
         try:
@@ -805,6 +875,7 @@ class NewsCurator:
                     exhausted=False,
                     provider_failed=True,
                     status_code=None,
+                    failure_category=NewsProviderFailureCategory.UNKNOWN,
                 ),
             )
 

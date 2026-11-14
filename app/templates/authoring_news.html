@@ -147,6 +147,14 @@
       <dt>Last HTTP status</dt><dd id="diagnostics-last-status">{{ batch.diagnostics.last_status_code }}</dd>
       {% endif %}
     </dl>
+    {% if batch.diagnostics.failure_categories %}
+    <h4 class="subheading">Likely provider causes</h4>
+    <ul id="diagnostics-failure-categories">
+      {% for explanation in batch.diagnostics.failure_explanations %}
+      <li>{{ explanation }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
     {% endif %}
 
     {% if batch.source_failures %}

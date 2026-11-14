@@ -661,6 +661,12 @@ def _merge_diagnostics(
         exhausted_retries=total_exhausted,
         provider_outcome=outcome,
         last_status_code=batch.last_status_code or previous.last_status_code,
+        failure_categories=tuple(
+            sorted(
+                set(previous.failure_categories) | set(batch.failure_categories),
+                key=lambda category: category.value,
+            )
+        ),
     )
 
 
