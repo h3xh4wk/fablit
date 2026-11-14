@@ -43,13 +43,32 @@ def _gemini_response(payload: Any) -> str:
 
 
 def _provider(fetch: Any, **overrides: Any) -> GeminiNewsCurationProvider:
+    options: dict[str, Any] = {
+        "retry_backoff_seconds": 0,
+        "min_request_interval_seconds": 0,
+    }
+    options.update(overrides)
     return GeminiNewsCurationProvider(
         api_key=API_KEY,
         model="gemini-news-test",
         fetch=fetch,
-        retry_backoff_seconds=0,
-        **overrides,
+        **options,
     )
+
+
+class _FakeClock:
+    """Deterministic monotonic time where sleeping advances the clock."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.sleeps: list[float] = []
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+        self.now += seconds
 
 
 def test_curation_builds_a_delimited_prompt_and_returns_the_result() -> None:
@@ -177,7 +196,7 @@ def test_503_service_unavailable_is_retried_and_recovered() -> None:
     assert result.retry_count == 1
 
 
-def test_retry_after_header_seconds_is_honored_and_bounded() -> None:
+def test_retry_after_header_seconds_is_honored_exactly() -> None:
     delays: list[float] = []
 
     def fake_sleeper(seconds: float) -> None:
@@ -201,23 +220,187 @@ def test_retry_after_header_seconds_is_honored_and_bounded() -> None:
     assert result.retry_count == 1
     assert delays == [5.0]
 
-    # Test that Retry-After exceeding MAX_RETRY_DELAY_SECONDS is capped
-    msg_large = Message()
-    msg_large["Retry-After"] = "999"
-    delays.clear()
+
+def test_retry_after_beyond_the_worker_budget_defers_without_sleeping() -> None:
+    delays: list[float] = []
+
+    def fake_sleeper(seconds: float) -> None:
+        delays.append(seconds)
+
+    msg = Message()
+    msg["Retry-After"] = str(MAX_RETRY_DELAY_SECONDS + 1)
     attempts = 0
 
-    def fetch_large(url: str, body: bytes, headers: Any) -> str:
+    def fetch(url: str, body: bytes, headers: Any) -> str:
+        nonlocal attempts
+        attempts += 1
+        raise urllib.error.HTTPError(url, 429, "rate limited", msg, None)
+
+    provider = _provider(fetch, max_attempts=3, sleeper=fake_sleeper)
+
+    with pytest.raises(NewsCurationProviderError, match="status 429") as excinfo:
+        provider.curate(REQUEST)
+
+    error = excinfo.value
+    assert error.exhausted is True
+    assert error.retries == 0
+    assert error.status_code == 429
+    assert attempts == 1
+    assert delays == []
+
+
+def test_retry_delays_use_exponential_backoff() -> None:
+    delays: list[float] = []
+
+    def fake_sleeper(seconds: float) -> None:
+        delays.append(seconds)
+
+    def fetch(url: str, body: bytes, headers: Any) -> str:
+        raise urllib.error.HTTPError(url, 503, "unavailable", Message(), None)
+
+    provider = _provider(
+        fetch,
+        max_attempts=3,
+        retry_backoff_seconds=2.0,
+        jitter_ratio=0.0,
+        sleeper=fake_sleeper,
+    )
+
+    with pytest.raises(NewsCurationProviderError, match="status 503"):
+        provider.curate(REQUEST)
+
+    assert delays == [2.0, 4.0]
+
+
+def test_retry_delays_apply_jitter_within_the_configured_bounds() -> None:
+    delays: list[float] = []
+
+    def fake_sleeper(seconds: float) -> None:
+        delays.append(seconds)
+
+    def fetch(url: str, body: bytes, headers: Any) -> str:
+        raise urllib.error.HTTPError(url, 503, "unavailable", Message(), None)
+
+    provider = _provider(
+        fetch,
+        max_attempts=2,
+        retry_backoff_seconds=4.0,
+        jitter_ratio=0.5,
+        sleeper=fake_sleeper,
+        random_source=lambda: 1.0,
+    )
+
+    with pytest.raises(NewsCurationProviderError, match="status 503"):
+        provider.curate(REQUEST)
+
+    # 4 * (1 + 0.5 * (2 * 1.0 - 1)) = 6
+    assert delays == [6.0]
+
+
+def test_retry_delay_is_capped_at_the_maximum() -> None:
+    delays: list[float] = []
+
+    def fake_sleeper(seconds: float) -> None:
+        delays.append(seconds)
+
+    def fetch(url: str, body: bytes, headers: Any) -> str:
+        raise urllib.error.HTTPError(url, 429, "rate limited", Message(), None)
+
+    provider = _provider(
+        fetch,
+        max_attempts=2,
+        retry_backoff_seconds=100.0,
+        max_retry_delay_seconds=10.0,
+        jitter_ratio=0.0,
+        sleeper=fake_sleeper,
+    )
+
+    with pytest.raises(NewsCurationProviderError, match="status 429"):
+        provider.curate(REQUEST)
+
+    assert delays == [10.0]
+
+
+def test_malformed_retry_after_falls_back_to_backoff() -> None:
+    delays: list[float] = []
+
+    def fake_sleeper(seconds: float) -> None:
+        delays.append(seconds)
+
+    msg = Message()
+    msg["Retry-After"] = "later, maybe"
+    attempts = 0
+
+    def fetch(url: str, body: bytes, headers: Any) -> str:
         nonlocal attempts
         attempts += 1
         if attempts == 1:
-            raise urllib.error.HTTPError(url, 429, "rate limited", msg_large, None)
+            raise urllib.error.HTTPError(url, 429, "rate limited", msg, None)
         return _gemini_response(RESULT_PAYLOAD)
 
-    provider_large = _provider(fetch_large, max_attempts=2, sleeper=fake_sleeper)
-    result_large = provider_large.curate(REQUEST)
-    assert result_large.retry_count == 1
-    assert delays == [MAX_RETRY_DELAY_SECONDS]
+    provider = _provider(
+        fetch,
+        max_attempts=2,
+        retry_backoff_seconds=3.0,
+        jitter_ratio=0.0,
+        sleeper=fake_sleeper,
+    )
+    result = provider.curate(REQUEST)
+
+    assert result.retry_count == 1
+    assert delays == [3.0]
+
+
+def test_requests_are_paced_between_independent_stories() -> None:
+    clock = _FakeClock()
+
+    def fetch(url: str, body: bytes, headers: Any) -> str:
+        return _gemini_response(RESULT_PAYLOAD)
+
+    provider = _provider(
+        fetch,
+        min_request_interval_seconds=5.0,
+        monotonic=clock.monotonic,
+        sleeper=clock.sleep,
+    )
+
+    provider.curate(REQUEST)
+    assert clock.sleeps == []
+
+    provider.curate(REQUEST)
+    assert clock.sleeps == [5.0]
+
+    # The second request reset the pacing window, so a third request waits
+    # again rather than relying on the elapsed time of earlier calls.
+    provider.curate(REQUEST)
+    assert clock.sleeps == [5.0, 5.0]
+
+
+def test_retries_do_not_count_as_independent_requests_for_pacing() -> None:
+    clock = _FakeClock()
+    attempts = 0
+
+    def fetch(url: str, body: bytes, headers: Any) -> str:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise urllib.error.HTTPError(url, 429, "rate limited", Message(), None)
+        return _gemini_response(RESULT_PAYLOAD)
+
+    provider = _provider(
+        fetch,
+        max_attempts=2,
+        retry_backoff_seconds=1.0,
+        jitter_ratio=0.0,
+        min_request_interval_seconds=5.0,
+        monotonic=clock.monotonic,
+        sleeper=clock.sleep,
+    )
+
+    provider.curate(REQUEST)
+
+    # Only the retry backoff slept; pacing was not applied a second time.
+    assert clock.sleeps == [1.0]
 
 
 def test_retry_after_header_http_date_is_parsed_and_bounded() -> None:
@@ -341,3 +524,9 @@ def test_constructor_requires_a_key_and_model() -> None:
         GeminiNewsCurationProvider(api_key=API_KEY, model=" ")
     with pytest.raises(NewsCurationProviderError, match="max_attempts"):
         GeminiNewsCurationProvider(api_key=API_KEY, max_attempts=0)
+    with pytest.raises(NewsCurationProviderError, match="maximum delay"):
+        GeminiNewsCurationProvider(api_key=API_KEY, max_retry_delay_seconds=-1)
+    with pytest.raises(NewsCurationProviderError, match="request interval"):
+        GeminiNewsCurationProvider(api_key=API_KEY, min_request_interval_seconds=-1)
+    with pytest.raises(NewsCurationProviderError, match="jitter_ratio"):
+        GeminiNewsCurationProvider(api_key=API_KEY, jitter_ratio=1.5)

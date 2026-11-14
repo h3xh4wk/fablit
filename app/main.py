@@ -590,6 +590,12 @@ def _build_news_curator(
     provider = GeminiNewsCurationProvider(
         api_key=api_key,
         model=app_config.ai_provider_model,
+        max_attempts=app_config.news_curation_max_attempts,
+        retry_backoff_seconds=app_config.news_curation_retry_base_seconds,
+        max_retry_delay_seconds=app_config.news_curation_retry_max_seconds,
+        min_request_interval_seconds=(
+            app_config.news_curation_request_interval_seconds
+        ),
     )
     fetcher = HttpNewsSourceFetcher(
         timeout=app_config.news_fetch_timeout,
