@@ -11,6 +11,8 @@ response, evaluation feedback, reflection — in chronological order.
 
 from __future__ import annotations
 
+from html.parser import HTMLParser
+
 from fastapi.testclient import TestClient
 
 from app.main import create_app
@@ -148,6 +150,75 @@ def test_feedback_page_shows_structured_reflection_prompts_after_evaluation() ->
     )
     assert "Save reflection" in feedback.text
     assert "Skip reflection" in feedback.text
+
+
+class _FormNestingDetector(HTMLParser):
+    """Flag forms nested in a paragraph or another form (F-08)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.open_paragraphs = 0
+        self.open_forms = 0
+        self.problems: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "p":
+            self.open_paragraphs += 1
+        elif tag == "form":
+            if self.open_paragraphs:
+                self.problems.append("form nested in a paragraph")
+            if self.open_forms:
+                self.problems.append("form nested in another form")
+            self.open_forms += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "p" and self.open_paragraphs:
+            self.open_paragraphs -= 1
+        elif tag == "form" and self.open_forms:
+            self.open_forms -= 1
+
+
+def _form_nesting_problems(markup: str) -> list[str]:
+    detector = _FormNestingDetector()
+    detector.feed(markup)
+    detector.close()
+    return detector.problems
+
+
+def test_feedback_save_and_skip_actions_use_valid_sibling_markup() -> None:
+    """Spec-046 Slice 2B: save and skip are a coherent, valid action group."""
+    with _client() as client:
+        _submit_first_activity(client)
+        feedback = client.get("/feedback")
+        dashboard = client.get("/")
+        href = _first_activity_href(dashboard.text)
+        partial = client.post(
+            href + "/submit",
+            data={"response": "The contrast is striking."},
+            headers={"HX-Request": "true"},
+        )
+
+    for response in (feedback, partial):
+        assert response.status_code == 200
+        assert _form_nesting_problems(response.text) == []
+        assert '<div class="form-actions">' in response.text
+        assert "Save reflection" in response.text
+        assert "Skip reflection" in response.text
+
+
+def test_reflection_page_makes_writing_optional_and_offers_skip() -> None:
+    """Spec-046 Slice 2B: the reflection page matches the server's optionality."""
+    with _client() as client:
+        _submit_first_activity(client)
+        reflection = client.get("/reflect")
+
+    assert reflection.status_code == 200
+    assert "Your reflection (optional)" in reflection.text
+    assert "Writing is optional" in reflection.text
+    assert "Skip reflection" in reflection.text
+    assert "Continue" in reflection.text
+    textarea = reflection.text.split('id="content"', 1)[1].split(">", 1)[0]
+    assert "required" not in textarea
 
 
 def test_reflection_page_carries_the_structured_prompts() -> None:

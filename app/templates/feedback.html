@@ -40,13 +40,13 @@
     {% for prompt in view.prompts %}
     <p class="feedback__reflection-question">{{ prompt }}</p>
     {% endfor %}
-    <p class="form-actions">
+    <div class="form-actions">
       <a class="button" href="/reflect">{{ reflection_save_label }} <span aria-hidden="true">→</span></a>
       <form method="post" action="/reflect" class="inline-form">
         <input type="hidden" name="content" value="">
         <button type="submit" class="button button--secondary">{{ reflection_skip_label }}</button>
       </form>
-    </p>
+    </div>
   </section>
 </article>
 {% endblock %}

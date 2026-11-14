@@ -241,13 +241,12 @@ Reading the vendored library establishes the following source-level baseline:
   `_practice_partial.html` with `submitted_response`; reflection re-renders with
   `submitted_content`; practice requests re-render all selected values; Pulse
   re-renders the draft and reopens the relevant composer.
-- **Observed:** the feedback page nests a `<form>` inside a `<p class="form-actions">`
-  for Skip. A form is not permitted inside a paragraph, so the browser is expected to
-  close the paragraph before the form. This can separate the Skip control from the
-  intended action row (F-08; runtime effect unverified).
-- **Observed:** the reflection page marks the textarea `required` and has no visible
-  Skip button, while the feedback panel offers an explicit Skip. The server accepts a
-  blank reflection. This is an inconsistency in the optionality message (F-09).
+- **Resolved (#203):** the feedback action row is a `<div class="form-actions">`
+  with the Save link and Skip form as valid siblings; a form is no longer nested in
+  a paragraph (F-08).
+- **Resolved (#203):** the reflection textarea is labelled optional, no longer carries
+  `required`, and has a visible Skip action matching the feedback panel. The server
+  still accepts blank/whitespace input as a skip (F-09).
 
 ### 3.5 Cards, filters, expanders and image selection
 
@@ -489,7 +488,8 @@ a field does not apply rather than omitted.
   after a no-JS submit. Exit to `/reflect` via Save, or POST `/reflect` with an empty
   value via Skip; back to activities.
 - **Actions:** Primary — "Save reflection" (link to `/reflect`). Secondary — "Skip
-  reflection" (form post with blank content), back to activities. Destructive — none.
+  reflection" (form post with blank content), back to activities. Save and Skip are
+  siblings in one action group. Destructive — none.
 - **Content hierarchy:** Back subnav, h1, activity title, three feedback sections,
   reflection panel with prompt, intention echo, reflection questions, Save/Skip.
 - **States:** In-place success; full-page success; no explicit loading state on the
@@ -497,8 +497,9 @@ a field does not apply rather than omitted.
   Persistence errors occur on the reflection POST, not here.
 - **Responsive:** Single reading column; feedback lists stack; action row wraps.
 - **Accessibility:** Section headings, list semantics, labelled action links/buttons.
-  The Skip `<form>` is nested in a `<p>` (F-08). The h2 `id="reflect-heading"` is used
-  for the section, but after an in-place swap there is no focus/live announcement.
+  Save and Skip use valid sibling markup (F-08 resolved in #203). The h2
+  `id="reflect-heading"` is used for the section, but after an in-place swap there is
+  no focus/live announcement.
 - **Scroll and focus:** On the full page, boosted navigation starts at top. On the
   in-place HTMX path, the feedback is expected to replace the response form at the
   bottom of the practice page without changing URL or scroll; the user may need to
@@ -514,17 +515,19 @@ a field does not apply rather than omitted.
   forward, or skip.
 - **Entry and exit paths:** Entry from feedback Save. Exit on success to `/complete`;
   stays on the page on validation or persistence failure.
-- **Actions:** Primary — Continue. Secondary — none visible (the server accepts a blank
-  reflection as a skip). Destructive — none.
+- **Actions:** Primary — Continue (save). Secondary — Skip reflection (form post with
+  blank content, matching the feedback panel). Destructive — none.
 - **Content hierarchy:** Back subnav, h1, lede, optional intention echo, prompt,
-  optional reflection questions, error panel, labelled textarea, Continue.
+  optional reflection questions, error panel, optional labelled textarea with a
+  "Writing is optional" hint, Continue and Skip.
 - **States:** Validation error and persistence error both re-render with the submitted
   content and `role="alert"`; persistence error returns HTTP 500. Blank/whitespace
   content is accepted by the application. No loading state.
 - **Responsive:** Single narrow column; textarea 8 rows; action row simple.
-- **Accessibility:** Labelled required textarea; error before the form. A required
-  textarea prevents an intentionally empty submission in the browser even though the
-  application accepts it (F-09).
+- **Accessibility:** Labelled optional textarea described by the optionality hint;
+  error before the form. The textarea is not `required`, and Skip is an explicit
+  button, so browser validation cannot block the intended skip (F-09 resolved in
+  #203).
 - **Scroll and focus:** Boosted POST swaps the page. Errors render above the form and
   the page starts at top; content is preserved but focus is not moved to the error or
   textarea. Success redirects to `/complete` at top.
@@ -1050,6 +1053,19 @@ visible; back/forward behaviour is documented and tested.
   reachable at `/feedback`, Back/Forward keep native browser behaviour, and a
   refresh deliberately reopens the activity. No `hx-push-url` or comparable
   header is used.
+
+**Implemented (#203):**
+- Feedback Save and Skip are siblings in a `<div class="form-actions">`; the Skip
+  `<form>` is no longer nested inside a paragraph (F-08).
+- The reflection page labels the textarea optional, explains that writing is
+  optional, and offers an explicit "Skip reflection" button next to Continue
+  (F-09). The textarea is no longer `required`, so browser validation cannot block
+  skipping.
+- Skipping still posts blank content to the existing `/reflect` route, preserving
+  the server-side lifecycle: blank and whitespace-only input complete the practice
+  without inventing or recording reflection content.
+- Web tests cover the action markup, optional copy, Continue, and empty/whitespace
+  Skip; an opt-in Playwright test runs both paths at a mobile viewport.
 
 ### Slice 3 — Discovery and practice selection clarity
 
