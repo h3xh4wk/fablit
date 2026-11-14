@@ -31,6 +31,10 @@ def test_status_recovers_from_temporary_failure_and_reloads_final_report() -> No
     script = SCRIPT_PATH.read_text(encoding="utf-8")
     page_requests = 0
     status_requests = 0
+    # Keep the job non-terminal until the test has observed the running state.
+    # Otherwise slow CI scheduling can skip straight from the 503 to the
+    # terminal response, which reloads the page before "Running" is seen.
+    progress = {"allow_terminal": False}
 
     def page_html(*, terminal: bool) -> str:
         status = "succeeded" if terminal else "queued"
@@ -85,7 +89,7 @@ def test_status_recovers_from_temporary_failure_and_reloads_final_report() -> No
             )
             return
 
-        if status_requests == 2:
+        if not progress["allow_terminal"]:
             payload = {
                 "job_id": "job-1",
                 "status": "running",
@@ -150,10 +154,11 @@ def test_status_recovers_from_temporary_failure_and_reloads_final_report() -> No
             expect(page.locator("#curation-status-label")).to_have_text("Running")
             expect(page.locator("#curation-items-fetched")).to_have_text("3")
             expect(page.locator("#curation-items-published")).to_have_text("1")
+            progress["allow_terminal"] = True
             expect(page.locator("#curation-batch-report")).to_contain_text(
                 "Final report is available."
             )
             assert page_requests == 2
-            assert status_requests == 3
+            assert status_requests >= 3
         finally:
             browser.close()
