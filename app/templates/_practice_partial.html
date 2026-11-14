@@ -1,7 +1,7 @@
 {# SPEC-017/SPEC-020: the response area content, rendered inside the
    #submission-area target in practice.html and swapped in place by HTMX. #}
 {% if error %}
-<p class="field-error" role="alert">{{ error }}</p>
+<p class="field-error" role="alert" data-focus-target data-focus-scroll>{{ error }}</p>
 {% endif %}
 <form method="post" action="/activities/{{ view.id }}/submit" enctype="multipart/form-data" hx-post="/activities/{{ view.id }}/submit" hx-target="#submission-area" hx-swap="innerHTML" hx-disabled-elt="find button">
   <label class="form-label" for="response">💭 What's your reading of it?</label>

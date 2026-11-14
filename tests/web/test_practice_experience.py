@@ -172,6 +172,10 @@ def test_evaluation_failure_preserves_the_learners_response() -> None:
     assert response.status_code == 200
     assert answer in response.text
     assert 'name="response"' in response.text
+    assert (
+        'class="field-error" role="alert" data-focus-target data-focus-scroll'
+        in response.text
+    )
 
 
 def test_non_htmx_evaluation_failure_preserves_response_on_the_page() -> None:
@@ -221,6 +225,12 @@ def test_successful_submission_still_moves_to_feedback() -> None:
     assert "What you noticed" in response.text
     assert "Try this next" in response.text
     assert 'id="submission-area"' not in response.text
+    # SPEC-046 Slice 2 / #202: the swapped feedback handoff takes focus and
+    # reveals its heading; it does not add a history entry (URL is unchanged).
+    assert '<h1 class="display" data-focus-target data-focus-scroll>' in response.text
+    assert "hx-push-url" not in response.text.lower()
+    assert "hx-replace-url" not in response.text.lower()
+    assert "hx-push-url" not in {k.lower() for k in response.headers}
 
 
 # --- AC-020-09: completion continuity ------------------------------------------
