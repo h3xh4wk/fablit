@@ -493,6 +493,9 @@ def _diagnostics_payload(
         "exhausted_retries": diagnostics.exhausted_retries,
         "provider_outcome": diagnostics.provider_outcome.value,
         "last_status_code": diagnostics.last_status_code,
+        "failure_categories": [
+            category.value for category in diagnostics.failure_categories
+        ],
     }
 
 

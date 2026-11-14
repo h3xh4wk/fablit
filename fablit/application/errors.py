@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
+
 
 class ApplicationError(Exception):
     """Base class for all application-layer errors."""
@@ -184,12 +186,32 @@ class NewsSourceFetchError(NewsFeedError):
     """
 
 
+class NewsProviderFailureCategory(StrEnum):
+    """A small, controlled set of safe provider failure causes (SPEC-041).
+
+    The classification is derived from the provider's documented error
+    details, never from free-form provider messages. Unrecognised statuses,
+    changed response shapes, and unusable payloads degrade to ``UNKNOWN``.
+    """
+
+    RATE_LIMITED = "rate_limited"
+    QUOTA_EXHAUSTED = "quota_exhausted"
+    BILLING_OR_CONFIGURATION_RESTRICTED = "billing_or_configuration_restricted"
+    TEMPORARY_UNAVAILABLE = "temporary_unavailable"
+    AUTHENTICATION_OR_PERMISSION = "authentication_or_permission"
+    UNKNOWN = "unknown"
+
+
 class NewsCurationProviderError(NewsFeedError):
     """Raised when the news-curation provider cannot produce a usable result.
 
     SPEC-041 §6.2: provider failures, timeouts, and unusable responses are
     translated at the provider boundary so the workflow never depends on a
     vendor SDK's exceptions. A failed candidate is never published.
+
+    ``category`` is an optional safe cause classification. It is ``None``
+    when the provider boundary could not classify the request at all, and
+    consumers fall back to ``NewsProviderFailureCategory.UNKNOWN``.
     """
 
     def __init__(
@@ -199,11 +221,13 @@ class NewsCurationProviderError(NewsFeedError):
         status_code: int | None = None,
         retries: int = 0,
         exhausted: bool = False,
+        category: NewsProviderFailureCategory | None = None,
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.retries = max(0, retries)
         self.exhausted = exhausted
+        self.category = category
 
 
 class NewsCurationInProgressError(NewsFeedError):
