@@ -189,6 +189,9 @@ def test_shared_htmx_focus_script_and_learner_error_focus_target_are_rendered() 
     assert "preventScroll: true" in script.text
     assert "isConnected" in script.text
     assert "resolveSettledTarget" in script.text
+    # SPEC-046 Slice 2 / #202: opted-in minimal reveal for in-place feedback.
+    assert "data-focus-scroll" in script.text
+    assert "scrollIntoView" in script.text
 
     missing_page = client.get("/activities/non-existent-activity-id")
     assert missing_page.status_code == 404

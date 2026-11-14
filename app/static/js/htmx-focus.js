@@ -12,6 +12,10 @@
  *   Background status polling and unopted partial updates never steal focus.
  * - All programmatic focus calls use { preventScroll: true } so page scroll
  *   and candidate scroll restoration (authoring-scroll.js) stay intentional.
+ * - A focused target may opt into a minimal reveal with [data-focus-scroll].
+ *   It is scrolled into view only when it falls outside the viewport, using
+ *   the nearest edge rather than jumping the page to the top. This is used by
+ *   the in-place practice feedback handoff (#202).
  */
 (() => {
   "use strict";
@@ -41,6 +45,18 @@
       element.focus({ preventScroll: true });
     } catch (_error) {
       element.focus();
+    }
+
+    if (element.hasAttribute("data-focus-scroll")) {
+      revealElement(element);
+    }
+  }
+
+  function revealElement(element) {
+    try {
+      element.scrollIntoView({ block: "nearest", inline: "nearest" });
+    } catch (_error) {
+      element.scrollIntoView();
     }
   }
 

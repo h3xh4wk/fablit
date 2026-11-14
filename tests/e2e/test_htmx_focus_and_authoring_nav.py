@@ -157,6 +157,59 @@ def test_boosted_navigation_focus_desktop_and_mobile() -> None:
             browser.close()
 
 
+def _open_first_practice(page: Page, base_url: str) -> None:
+    page.goto(base_url)
+    page.locator("a[href$='/intention']").first.click()
+    page.locator("form button[type='submit']").first.click()
+    expect(page.locator("#response")).to_be_visible()
+
+
+def _feedback_heading_in_viewport(page: Page) -> bool:
+    heading = page.get_by_role("heading", name="Something you noticed", level=1)
+    box = heading.bounding_box()
+    height = page.viewport_size["height"] if page.viewport_size else 0
+    return box is not None and box["y"] >= -1 and box["y"] < height
+
+
+def test_practice_feedback_focus_reveal_and_error_handling() -> None:
+    """SPEC-046 Slice 2 / #202: in-place feedback focus, reveal and error focus."""
+    with _running_server() as base_url, sync_playwright() as playwright:
+        browser: Browser = playwright.chromium.launch(**_launch_options())
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 480})
+            _open_first_practice(page, base_url)
+            activity_url = page.url
+            page.locator("#response").scroll_into_view_if_needed()
+            page.locator("#response").fill(
+                "The contrast between the figure and the negative space guides my eye."
+            )
+            page.get_by_role("button", name="I'm ready").click()
+
+            feedback_heading = page.get_by_role(
+                "heading", name="Something you noticed", level=1
+            )
+            expect(feedback_heading).to_be_visible()
+            expect(feedback_heading).to_be_focused()
+            assert page.url == activity_url
+            assert _feedback_heading_in_viewport(page)
+
+            # Validation errors stay in place, keep the response, and move
+            # focus to the alert without returning to the top of the page.
+            error_page = browser.new_page(viewport={"width": 1280, "height": 480})
+            _open_first_practice(error_page, base_url)
+            error_page.locator("#response").scroll_into_view_if_needed()
+            error_page.locator("#response").fill("   ")
+            error_page.get_by_role("button", name="I'm ready").click()
+
+            alert = error_page.locator(".field-error[data-focus-target][role='alert']")
+            expect(alert).to_be_visible()
+            expect(alert).to_be_focused()
+            assert error_page.locator("#response").input_value() == "   "
+            assert error_page.evaluate("() => window.scrollY") > 0
+        finally:
+            browser.close()
+
+
 def test_authoring_navigation_aria_current_and_brief_draft_focus() -> None:
     """SPEC-046 §6.2, §6.4, §6.5: authoring nav aria-current and #main swap focus."""
     with _running_server() as base_url, sync_playwright() as playwright:

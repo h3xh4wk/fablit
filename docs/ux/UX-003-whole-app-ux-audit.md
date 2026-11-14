@@ -1031,6 +1031,26 @@ reflection page an explicit Skip path consistent with the feedback panel. Accept
 a learner never loses typed work; a successful submission makes feedback immediately
 visible; back/forward behaviour is documented and tested.
 
+**Implemented (#202):**
+- `_feedback_partial.html` marks the feedback heading with
+  `data-focus-target data-focus-scroll`, so the successful in-place swap moves
+  focus to “Something you noticed” and announces it once.
+- `_practice_partial.html` gives the error alert the same markers. Validation and
+  evaluation errors keep the submitted response, focus the alert, and do not
+  return the page to the top.
+- `htmx-focus.js` honours the opt-in `data-focus-scroll` attribute with
+  `scrollIntoView({block: "nearest"})` after focusing the swapped target. The
+  heading is revealed only when it falls outside the viewport, and unrelated or
+  polling swaps still never steal focus. This is not a generic scroll-restoration
+  script.
+- **History/URL decision:** the in-place feedback state deliberately keeps the
+  current `/activities/{id}` URL and adds no history entry. Representing feedback
+  in the URL would require the practice lifecycle to serve feedback state from
+  the activity URL; that lifecycle change is out of scope. Feedback remains
+  reachable at `/feedback`, Back/Forward keep native browser behaviour, and a
+  refresh deliberately reopens the activity. No `hx-push-url` or comparable
+  header is used.
+
 ### Slice 3 — Discovery and practice selection clarity
 
 **Covers:** F-18 and card affordance observations.
