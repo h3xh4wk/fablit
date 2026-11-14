@@ -320,9 +320,7 @@ class GeminiNewsCurationProvider:
                 return None
             return retry_after_seconds
         base: float = self._retry_backoff_seconds * (2 ** (attempt - 1))
-        jittered: float = base * (
-            1 + self._jitter_ratio * (2 * self._random() - 1)
-        )
+        jittered: float = base * (1 + self._jitter_ratio * (2 * self._random() - 1))
         return min(self._max_retry_delay_seconds, max(0.0, jittered))
 
     def _parse_retry_after(self, headers: Any) -> float | None:
