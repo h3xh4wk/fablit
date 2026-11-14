@@ -355,6 +355,23 @@ def test_empty_reflection_is_accepted_and_completes() -> None:
     assert response.headers["location"] == "/complete"
 
 
+def test_whitespace_reflection_is_treated_as_a_skip() -> None:
+    """SPEC-046 Slice 2B: whitespace is an intentional skip, not a save."""
+    with TestClient(app) as client:
+        _submit_first_activity(client)
+        response = client.post(
+            "/reflect",
+            data={"content": "   \n\t"},
+            follow_redirects=False,
+        )
+        completion = client.get("/complete")
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/complete"
+    assert "completed this practice" in completion.text
+    assert "reflection has been recorded" not in completion.text
+
+
 # --- Completion (SPEC-013 §21, SPEC-016 §18) ---------------------------------
 
 

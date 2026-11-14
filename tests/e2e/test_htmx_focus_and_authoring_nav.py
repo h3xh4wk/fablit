@@ -210,6 +210,46 @@ def test_practice_feedback_focus_reveal_and_error_handling() -> None:
             browser.close()
 
 
+def test_reflection_continue_and_skip_are_optional_on_mobile() -> None:
+    """SPEC-046 Slice 2B / #203: both reflection paths work on a phone."""
+    with _running_server() as base_url, sync_playwright() as playwright:
+        browser: Browser = playwright.chromium.launch(**_launch_options())
+        try:
+            page = browser.new_page(viewport={"width": 390, "height": 844})
+            _open_first_practice(page, base_url)
+            page.locator("#response").fill("The contrast is striking.")
+            page.get_by_role("button", name="I'm ready").click()
+            page.get_by_role("link", name="Save reflection").click()
+
+            expect(
+                page.get_by_role("heading", name="One last thing", level=1)
+            ).to_be_visible()
+            expect(page.get_by_text("Writing is optional.")).to_be_visible()
+            expect(page.get_by_role("button", name="Skip reflection")).to_be_visible()
+            page.locator("#content").fill("I will slow down next time.")
+            page.get_by_role("button", name="Continue").click()
+            expect(
+                page.get_by_role("heading", name="That's one done.", level=1)
+            ).to_be_visible()
+            expect(page.locator("body")).to_contain_text("reflection has been recorded")
+
+            # Skip from an untouched, empty textarea is not blocked by browser
+            # validation and reaches the same completion state.
+            skip_page = browser.new_page(viewport={"width": 390, "height": 844})
+            _open_first_practice(skip_page, base_url)
+            skip_page.locator("#response").fill("The contrast is striking.")
+            skip_page.get_by_role("button", name="I'm ready").click()
+            skip_page.get_by_role("button", name="Skip reflection").click()
+            expect(
+                skip_page.get_by_role("heading", name="That's one done.", level=1)
+            ).to_be_visible()
+            expect(skip_page.locator("body")).not_to_contain_text(
+                "reflection has been recorded"
+            )
+        finally:
+            browser.close()
+
+
 def test_authoring_navigation_aria_current_and_brief_draft_focus() -> None:
     """SPEC-046 §6.2, §6.4, §6.5: authoring nav aria-current and #main swap focus."""
     with _running_server() as base_url, sync_playwright() as playwright:

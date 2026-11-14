@@ -17,12 +17,17 @@
   {% if error %}
   <p class="field-error" role="alert">{{ error }}</p>
   {% endif %}
-  <form method="post" action="/reflect">
-    <label class="form-label" for="content">Your reflection</label>
-    <textarea id="content" name="content" class="form-control" rows="8" required>{{ submitted_content or "" }}</textarea>
-    <p class="form-actions">
-      <button type="submit" class="button">Continue <span aria-hidden="true">→</span></button>
-    </p>
+  <form id="reflection-form" method="post" action="/reflect">
+    <label class="form-label" for="content">Your reflection (optional)</label>
+    <p class="form-hint" id="reflection-hint">Writing is optional. Save a reflection to carry the feedback forward, or skip this step.</p>
+    <textarea id="content" name="content" class="form-control" rows="8" aria-describedby="reflection-hint">{{ submitted_content or "" }}</textarea>
   </form>
+  <div class="form-actions">
+    <button type="submit" form="reflection-form" class="button">Continue <span aria-hidden="true">→</span></button>
+    <form method="post" action="/reflect" class="inline-form">
+      <input type="hidden" name="content" value="">
+      <button type="submit" class="button button--secondary">Skip reflection</button>
+    </form>
+  </div>
 </article>
 {% endblock %}
