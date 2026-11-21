@@ -16,6 +16,7 @@ This module provides the core authentication primitives:
 from __future__ import annotations
 
 import base64
+import hashlib
 import hmac
 from http.cookies import SimpleCookie
 from typing import Final, Literal
@@ -32,6 +33,32 @@ AUTHORING_COOKIE_MAX_AGE_SECONDS: Final[int] = 7 * 24 * 60 * 60
 AUTHORING_COOKIE_HTTPONLY: Final[bool] = True
 AUTHORING_COOKIE_PATH: Final[str] = "/authoring"
 AUTHORING_COOKIE_SAMESITE: Final[Literal["lax", "strict", "none"]] = "lax"
+_AUTHORING_COOKIE_HMAC_KEY: Final[bytes] = b"fablit-authoring-cookie-v1"
+
+
+def build_authoring_cookie_token(configured_secret: str | None) -> str | None:
+    """Build a stable server-derived cookie token from configured secret."""
+    if not configured_secret or not configured_secret.strip():
+        return None
+    normalized = configured_secret.strip().encode("utf-8")
+    return hmac.new(
+        _AUTHORING_COOKIE_HMAC_KEY,
+        normalized,
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def verify_authoring_cookie_token(
+    provided_token: str | None,
+    configured_secret: str | None,
+) -> bool:
+    """Verify cookie token against configured secret-derived token."""
+    if not provided_token or not provided_token.strip():
+        return False
+    expected = build_authoring_cookie_token(configured_secret)
+    if not expected:
+        return False
+    return hmac.compare_digest(provided_token.strip(), expected)
 
 
 def verify_authoring_secret(
